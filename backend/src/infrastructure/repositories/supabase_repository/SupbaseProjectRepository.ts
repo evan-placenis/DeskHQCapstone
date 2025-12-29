@@ -78,6 +78,9 @@ export class SupabaseProjectRepository implements ProjectRepository {
             organizationId: row.organization_id,
             name: row.name,
             status: row.status,
+
+            createdAt: new Date(row.created_date),
+            updatedAt: new Date(row.last_modified_date),
             metadata: metadata,
             jobInfo: jobInfo,
             
