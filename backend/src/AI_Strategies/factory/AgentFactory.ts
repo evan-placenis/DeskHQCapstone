@@ -4,6 +4,10 @@ import { GrokAgent } from "../strategies/LLM/Grok";
 import { TextOnlyMode } from "../strategies/Execution/TextOnlyMode";
 import { ImageAndTextMode } from "../strategies/Execution/ImageAndTextMode";
 
+import { grokClient } from '../../infrastructure/llm/grokClient'; // Import from Infra
+// import { geminiClient } from '../../infrastructure/llm/geminiClient'; // Import from Infra
+
+
 import { ReportGenerationWorkflow } from "../ReportWorkflows/ReportGenerationWorkflow"
 import { ObservationReportWorkflow } from "../ReportWorkflows/ObservationReportWorkflow";
 
@@ -12,14 +16,14 @@ export class AgentFactory {
   // 1. Create the AI Model Strategy
   public createStrategy(modelName: string): AgentStrategy {
     switch (modelName.toUpperCase()) {
-      case 'GEMMINI':
-        return new GemminiAgent();
+      // case 'GEMMINI':
+      //   return new GemminiAgent();
       case 'GROK':
-        return new GrokAgent();
+        return new GrokAgent(grokClient);
       default:
         // Default to GPT if unknown
         console.warn(`Unknown model '${modelName}', defaulting to Grok.`);
-        return new GrokAgent();
+        return new GrokAgent(grokClient);
     }
   }
 
