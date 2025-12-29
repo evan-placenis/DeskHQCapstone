@@ -1,0 +1,44 @@
+# Project Context
+
+This is a TypeScript backend for an Engineering Report Generation System ("DeskHQ").
+It uses Clean Architecture, AI Agents (LLMs), Vector Databases (RAG), and Trigger.dev for background jobs.
+
+# 1. Architectural Patterns (STRICT)
+
+- **Clean Architecture:** Dependencies flow INWARDS. Domain entities never depend on external libraries.
+- **Workflow Pattern:** All report logic extends `ReportGenerationWorkflow`.
+  - Use the "Template Method" pattern: `collectInputs` -> `invokeAgent` -> `postProcessOutput`.
+  - NEVER put business logic inside the Controller. The Controller only triggers the Workflow.
+- **Builder Pattern:** Always use `ReportBuilder` to construct complex `Report` objects. Never manually assign properties to a partial object.
+- **Strategy Pattern:** AI Models (Gemini, Grok, OpenAI) must implement the `AgentStrategy` interface.
+
+# 2. AI Workflow Guidelines (Architect/Writer)
+
+- **The "Architect" Pattern:**
+  - Complex tasks must be split into two phases:
+    1. **Planning (Architect):** AI analyzes data and outputs a JSON "Plan" (e.g., Chapters).
+    2. **Execution (Writer):** Iterate through the Plan and execute tasks in PARALLEL (`Promise.all`).
+- **RAG Implementation:**
+  - **Global RAG:** Happens once at the start (e.g., Project Location).
+  - **Local RAG:** Happens inside the Writer loop (e.g., finding specific specs for "Roofing").
+- **Prompts:** All prompts reside in `src/AI_Strategies/Prompts/`. Never hardcode prompts in the workflow files.
+
+# 3. TypeScript & Coding Standards
+
+- **Strict Typing:** Avoid `any`. Define Interfaces for all Agent Inputs/Outputs.
+- **Generics:** Use Generics `<T>` in base classes to allow child classes to return different data structures (e.g., `Section[]` vs `string`).
+- **Async/Await:**
+  - Use `Promise.all()` for independent AI calls (Parallel Execution).
+  - Use sequential `for..of` loops only when Step B depends on Step A.
+- **JSON Parsing:** Always use a safe parsing helper (try/catch) when handling LLM responses, as they may contain markdown code blocks (` ```json `).
+
+# 4. Testing Guidelines
+
+- **Mock First:** Always mock external dependencies (`MockLLMClient`, `MockKnowledgeRepo`) when writing test scripts.
+- **Local Testing:** Test scripts reside in `src/test_scripts/`. They should run independently of the Trigger.dev cloud environment.
+- **Dependency Injection:** Inject mocks via the constructor. Never import singletons directly into the logic class.
+
+# 5. Security
+
+- **Secrets:** NEVER commit `.env` files.
+- **API Keys:** If a key is leaked, revoke it immediately and scrub git history.
