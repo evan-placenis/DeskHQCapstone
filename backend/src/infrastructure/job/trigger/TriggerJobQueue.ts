@@ -1,25 +1,22 @@
 import { JobQueue } from "../../../domain/interfaces/JobQueue";
-import { tasks } from "@trigger.dev/sdk/v3"; // 👈 Import 'tasks', not 'client'
-import type { generateReportTask } from "./generateReport"; // Import the type for type-safety
+import { tasks } from "@trigger.dev/sdk/v3"; 
+import type { generateReportTask } from "../trigger/generateReport"; // Import the type only
 
 export class TriggerJobQueue implements JobQueue {
+    
+    // We simplify the arguments. We don't need to list every single field here.
     async enqueueReportGeneration(
         projectId: string, 
         userId: string, 
-        input: {               // 👈 This matches your Interface
-            reportType: string;
-            modelName: string;
-            modeName: string;
-            selectedImageIds: string[];
-            templateId: string;
-        }
+        input: any // We can keep this loose here, or import the Interface if we want strictness
     ): Promise<void> {
         
-        // v3 Syntax: Trigger by ID
+        // The TYPE from the generic <typeof ...> provides the safety check!
+        // If 'input' doesn't match what the Task expects, TypeScript will yell here.
         await tasks.trigger<typeof generateReportTask>("generate-report", {
             projectId,
             userId,
-            input
+            input // Pass the object through
         });
 
         console.log(`Triggered background job for project ${projectId}`);

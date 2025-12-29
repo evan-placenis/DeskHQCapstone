@@ -94,7 +94,7 @@ async function runTest() {
 
     // A. Setup
     // Ensure 'grokClient' is configured with your API Key in .env
-    const aiClient = new MockLLMClient(); 
+    const aiClient = new GrokAgent(grokClient); 
     const repo = new MockKnowledgeRepository();
     const workflow = new ObservationReportWorkflow(aiClient, repo);
 
