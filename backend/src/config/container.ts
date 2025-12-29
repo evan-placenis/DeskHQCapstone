@@ -12,8 +12,6 @@ import { ReportService } from '../Services/ReportService';
 import { ChatService } from '../Services/ChatService';
 import { KnowledgeService } from '../Services/KnowledgeServivce'; 
 
-import { grokClient } from '../infrastructure/llm/grokClient'; // Import from Infra
-import { GrokAgent } from '../AI_Strategies/strategies/LLM/Grok'; // Import Strategy
 
 import { TriggerJobQueue } from '../infrastructure/job/trigger/TriggerJobQueue';
 
@@ -29,7 +27,8 @@ const vectorStore = new PineconeVectorStore();
 
 // 2. Create the Tools (AI & Queue)
 const agentFactory = new AgentFactory();
-const grokStrategy = new GrokAgent(grokClient);
+//const grokStrategy = agentFactory.createStrategy("GROK")
+
 const jobQueue = new TriggerJobQueue();
 
 // 3. Assemble the Services (The Chefs)
@@ -51,7 +50,6 @@ export const Container = {
     projectRepo,
     
     // Strategies
-    grokStrategy,
     agentFactory,
     
     // Services
