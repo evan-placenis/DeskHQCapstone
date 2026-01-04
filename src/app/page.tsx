@@ -1,13 +1,19 @@
-"use client"; // This is required because your Dashboard uses React State
+"use client";
 
-// Import your main component from your old App.tsx
-// You might need to check if App.tsx has a "default export"
-import App from "@/frontend/App"; 
+import { useEffect } from "react";
+import { useRouter } from "next/navigation";
+import { ROUTES } from "@/app/pages/config/routes";
 
 export default function Home() {
+  const router = useRouter();
+
+  useEffect(() => {
+    router.push(ROUTES.login);
+  }, [router]);
+
   return (
-    <main className="min-h-screen">
-      <App />
+    <main className="min-h-screen flex items-center justify-center">
+      <div className="animate-pulse text-slate-500">Loading...</div>
     </main>
   );
 }
