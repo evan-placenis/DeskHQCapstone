@@ -22,7 +22,8 @@
     "paths": {
       "@/*": ["./*"],
       "@/frontend/*": ["src/frontend/src/*"],
-      "@/backend/*": ["src/backend/src/*"]
+      "@/backend/*": ["src/backend/src/*"],
+      "@/app/*": ["src/app/*"]
     }
   },
   "include": [
