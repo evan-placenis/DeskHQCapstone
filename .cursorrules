@@ -1,0 +1,119 @@
+# Project Overview
+
+Monorepo containing a Next.js frontend and a Node.js backend.
+
+# @Frontend(src/frontend):
+
+We follow a **"Thin Client"** philosophy. The frontend is strictly for display and user interaction. All heavy business logic, data transformation, and AI processing must happen on the Backend.
+
+### The 4 Layers (Top to Bottom)
+
+1.  **Pages (`/pages/**`)\*\*: Where each page of the application is stored
+
+2.  **Large Model Components (`/large_model_components`)**: The "Blueprints".
+
+    - Responsibility: High-level layouts used frequently across pages (e.g., `NewProjectModal`).
+    - Usage: These compose multiple "Smart Components" into a full screen.
+
+3.  **Smart Components (`/smart_components`)**: The "Connectors".
+
+    - Responsibility: Handle specific UI sections.
+    - Logic: Can hold local UI state (like `isOpen`, `inputValue`) and trigger API calls.
+    - **Rule**: Do not process data here. If data needs formatting, do it on the backend before sending it.
+
+4.  **UI Components (`/ui_components`)**: The "Atoms".
+    - Responsibility: Pure, dumb styling (Buttons, Inputs, Cards).
+    - **Rule**: Zero dependencies. They only display what is passed via `props`.
+
+---
+
+## 🔄 Data Flow Rules
+
+### 1. "Display Only" Principle
+
+- **Don't** calculate statistics in the browser.
+- **Do** receive pre-calculated values from the API.
+  - _Bad:_ `const average = numbers.reduce(...) / numbers.length`
+  - _Good:_ `<span>{props.precalculatedAverage}</span>`
+
+### 2. State Management
+
+- **Local State:** Use `useState` only for ephemeral UI things (is the modal open? is the dropdown expanded?).
+- **Server State:** For data (reports, user info), rely on fresh fetches from the API rather than complex client-side caching logic if possible.
+
+### 3. API Interaction
+
+- Frontend simply sends user inputs to the backend.
+- Frontend waits for a success/failure response.
+- Frontend updates the UI based on that response.
+- **No data transformation** should happen between the response and the render.
+
+### 4. Routing
+
+- Use the central `PAGE_ROUTES` map for all navigation.
+- Avoid hardcoded URL strings in components.
+
+# @BACKEND(src/backend)
+
+This project strictly follows **Clean Architecture** to separate business logic from the Next.js framework and external tools.
+
+### The 4 Layers
+
+1. **Domain (`src/domain`)**: The "Soul". Contains pure Entities, Interfaces, and Types. **Zero dependencies**. Defines _what_ data is.
+2. **Services (`src/services`)**: The "Brain". Orchestrates logic, connects to AI/DB, and implements business rules.
+3. **Infrastructure (`src/infrastructure`)**: The "Tools". Implements the Interfaces defined in Domain (e.g., specific OpenAI calls, Postgres queries).
+4. **Entry Points (`src/app/api/**`)**: Replaces traditional Controllers. These are Next.js Route Handlers (`route.ts`). Their **ONLY** job is to parse the Request, call a Service, and return a Response.
+
+### 🔄 Data Flow Examples
+
+**1. Report Generation Request**
+
+- **Entry:** `POST /api/reports` (`route.ts`) validates input.
+- **Service:** Calls `ReportService.generateReport()`.
+- **Factory:** Service uses `AgentFactory` to pick the right AI Model (`GrokAgent`) and Mode.
+- **Workflow:** Runs `ReportGenerationWorkflow` (RAG -> Generate -> Format).
+- **Persistence:** Result saved via `PostgresReportRepository`.
+
+**2. Background Jobs (Async)**
+
+- **Producer:** API Route (`route.ts`) calls `JobQueue.enqueue()`.
+- **Adapter:** `TriggerJobQueue` pushes event to Trigger.dev cloud.
+- **Worker:** Background worker resolves `ReportService` and executes logic offline (preventing HTTP timeouts).
+
+### 🛠 Key Design Patterns
+
+- **Strategy (`src/ai/strategies`)**: Swapping AI models (GPT vs Grok) or Modes (Text vs Image) without touching services.
+- **Abstract Factory (`src/ai/factory`)**: `AgentFactory` centralizes complex object creation.
+- **Template Method (`src/workflows`)**: Enforces the execution order of report generation steps.
+- **Builder (`src/domain/reports`)**: Used to construct complex `Report` objects fluently.
+
+### ⚠️ Critical Rules
+
+- **No Logic in Routes:** `route.ts` files must never contain business logic. They should only `await service.doSomething()` and return `NextResponse`.
+- **Dependency Rule:** `Domain` must never import from `Infrastructure` or `App`.
+
+# 🚀 App & Routing (src/app)
+
+The `src/app` directory acts as the **Gateway** for the entire application. It has two distinct responsibilities:
+
+### 1. Frontend Entry Points (`page.tsx`, `layout.tsx`)
+
+- **Role:** These files configure the _environment_ for the UI (metadata, fonts, initial server fetches).
+- **Behavior:** They generally do not contain JSX markup themselves. Instead, they import and render a **Large Model Component**.
+- **Rule:** Keep these files under 20 lines of code.
+  - _Example:_ `Dashboard/page.tsx` just imports `<DashboardView />` and passes it the user ID.
+
+### 2. Backend Entry Points (`api/**/route.ts`)
+
+- **Role:** These are the public-facing API endpoints.
+- **Behavior:** They receive JSON requests from the Frontend and delegate them to the **Backend Services**.
+- **Rule:** strictly a "Pass-Through" layer.
+  - ✅ **DO:** Parse request body -> Call `ReportService` -> Return `NextResponse`.
+  - ❌ **DON'T:** Write SQL queries or business logic inside `route.ts`.
+
+---
+
+## 🛑 Global Boundaries
+
+1.  **Frontend (`/components`)** never imports from **Backend (`/services`, `/domain`)**.
+2.  **App (`/app`)** is the _only_ place that is allowed to touch both sides (rendering components and calling services).

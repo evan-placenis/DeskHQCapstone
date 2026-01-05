@@ -11,13 +11,15 @@ export interface PeerReviewComment {
 }
 
 export interface Project {
-  id: number;
+  id: string | number;
   name: string;
   reports: number;
   photos: number;
   status: string;
   lastUpdated: string;
   description?: string;
+  // Optional fields to match backend structure if needed later
+  organizationId?: string;
 }
 
 export interface PeerReview {
@@ -67,9 +69,10 @@ export interface ChatMessage {
 export interface User {
   id: number;
   name: string;
-  role: "manager" | "technician";
+  role: "manager" | "technician" | "admin" | "employee";
   team?: string;
   reportsTo?: number;
+  email?: string;
 }
 
 export interface Photo {

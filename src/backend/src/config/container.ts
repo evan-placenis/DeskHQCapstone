@@ -12,6 +12,7 @@ import { ReportService } from '../Services/ReportService';
 import { ChatService } from '../Services/ChatService';
 import { ChatAgent } from '../AI_Strategies/ChatSystem/ChatAgent';
 import { KnowledgeService } from '../Services/KnowledgeServivce'; 
+import { UserService } from '../Services/UserService';
 
 
 import { TriggerJobQueue } from '../infrastructure/job/trigger/TriggerJobQueue';
@@ -45,6 +46,9 @@ const chatService = new ChatService(chatRepo, reportService, chatAgent);
 // KnowledgeService needs Repo + Vector Store
 const knowledgeService = new KnowledgeService(knowledgeRepo, vectorStore);
 
+// UserService needs Supabase Admin
+const userService = new UserService(supabaseAdmin);
+
 
 // --- Exports ---
 
@@ -60,6 +64,7 @@ export const Container = {
     reportService,
     chatService,      // Needed by ChatController
     knowledgeService, // Needed by KnowledgeController
+    userService,
     
     // Queue
     jobQueue

@@ -1,7 +1,7 @@
 import { AppHeader } from "./smart_components/AppHeader";
 import { NewProjectModal } from "./large_modal_components/NewProjectModal";
 import { Page } from "@/app/pages/config/routes";
-import { Project, PeerReview } from "@/frontend/types";
+import { Project, PeerReview, User } from "@/frontend/types";
 import { Button } from "./ui_components/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "./ui_components/card";
 import { Badge } from "./ui_components/badge";
@@ -17,13 +17,6 @@ import { useState } from "react";
 import { ProjectCard } from "./ui_components/ProjectCard";
 import { ReportCard } from "./ui_components/ReportCard";
 import { UpcomingReviewCard } from "./shared_ui_components/UpcomingReviewCard";
-
-interface User {
-  id: number;
-  name: string;
-  role: "employee" | "manager" | "director";
-  team?: string;
-}
 
 interface DashboardPageProps {
   onNavigate: (page: Page) => void;
@@ -147,11 +140,58 @@ export function DashboardPage({
   const totalPhotos = projectsList.reduce((sum, p) => sum + p.photos, 0);
   const activeProjects = projectsList.filter(p => p.status === "Active").length;
 
-  const handleCreateProject = (newProject: Omit<Project, "id">) => {
-    // In a real app, this would call an API
-    console.log("Creating project:", newProject);
-    // For now, just close the modal
-    // You could add the project to state here if needed
+  const handleCreateProject = async (newProject: any) => {
+    try {
+      console.log("Creating project:", newProject);
+      
+      // Get the real user ID from local storage (set during login)
+      // This is a bridge until we fully refactor the User context/prop types
+      let userId: string | undefined;
+      if (typeof window !== 'undefined') {
+          const storedUser = localStorage.getItem('user');
+          if (storedUser && storedUser !== "undefined") {
+              try {
+                  const userObj = JSON.parse(storedUser);
+                  userId = userObj.id || userObj.user?.id; // Handle potential structure variations
+              } catch (e) {
+                  console.error("Failed to parse stored user", e);
+                  localStorage.removeItem('user'); // Clear bad data
+              }
+          }
+      }
+
+      if (!userId) {
+          alert("You must be logged in to create a project.");
+          return;
+      }
+
+      const response = await fetch("/api/project/create", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          name: newProject.name,
+          clientName: "Mock Client", 
+          address: "Mock Address",
+          userId: userId // Pass the UUID
+        }),
+      });
+
+      const data = await response.json();
+      console.log("Backend response:", data);
+
+      if (response.ok) {
+        alert(`Project created! ID: ${data.project.id}`);
+        // Add to local state
+        setProjectsList([...projectsList, { ...newProject, id: data.project.id }]);
+      } else {
+        alert(`Error: ${data.error}`);
+      }
+    } catch (error) {
+      console.error("Failed to create project:", error);
+      alert("Failed to send request to backend");
+    }
   };
 
   const handleProjectStatusChange = (projectId: number, newStatus: string) => {
