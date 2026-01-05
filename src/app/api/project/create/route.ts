@@ -2,29 +2,32 @@ import { NextResponse } from "next/server";
 import { Container } from '@/backend/config/container';
 import { Project } from '@/backend/domain/core/project.types';
 import { v4 as uuidv4 } from 'uuid';
+import { createAuthenticatedClient } from "@/app/api/utils";
 
+//This is the API endpoint for the DashboardPage.tsx to create a new project for the current user.
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    // In a real app, you'd get the USER ID from the Session/JWT
-    // For this prototype, we'll accept a 'userId' in the body or header for testing
-    // OR we default to a specific user if known.
     
-    const { name, clientName, address, userId } = body; 
+    const { name, clientName, address } = body; 
 
     if (!name) {
         return NextResponse.json({ error: "Project Name is required" }, { status: 400 });
     }
 
-    if (!userId) {
-         // Fallback for testing ONLY: Fetch the first admin user we can find
-         // In production, this would be an error: "Unauthorized"
-         console.warn("⚠️ No userId provided. Attempting to resolve a default user...");
+    // Authenticate user
+    const { supabase, user } = await createAuthenticatedClient();
+    
+    if (!user) {
+        console.error("❌ Auth Error: No valid session found in project/create route.");
+        return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
+    const userId = user.id;
+
     // 1. Resolve User & Org
-    // We use the userService to get the full profile including organization_id
-    const userProfile = await Container.userService.getUserProfile(userId || '00000000-0000-0000-0000-000000000000'); 
+    // We use the userService to get the full profile including organization_id, passing the authenticated client
+    const userProfile = await Container.userService.getUserProfile(userId, supabase); 
     
     // If no user found (or invalid ID provided), we can't create a project linked to an org
     if (!userProfile || !userProfile.organization_id) {
@@ -66,7 +69,8 @@ export async function POST(request: Request) {
 
     // 3. Save
     console.log(`⚙️ Service: Saving Project "${name}"...`);
-    await Container.projectRepo.save(newProject);
+    // Pass the authenticated client so we respect RLS and created_by user context
+    await Container.projectRepo.save(newProject, supabase);
 
     return NextResponse.json({ 
         success: true, 
@@ -82,8 +86,8 @@ export async function POST(request: Request) {
   } catch (error: any) {
     console.error("❌ Create Project Route Error:", error);
     return NextResponse.json(
-      { error: error.message || "Failed to create project" },
-      { status: 500 }
+        { error: error.message || "Failed to create project" },
+        { status: 500 }
     );
   }
 }

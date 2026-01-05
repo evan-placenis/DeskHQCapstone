@@ -4,12 +4,13 @@ import { ChatSession, ChatMessage } from '../../../domain/chat/chat.types';
 
 export class SupabaseChatRepository implements ChatRepository {
     
-    constructor(private supabase: SupabaseClient) {}
+    // No constructor needed anymore
+    // constructor(private supabase: SupabaseClient) {}
 
     // --- 1. GET SESSION (With Messages) ---
-    async getSessionById(sessionId: string): Promise<ChatSession | null> {
+    async getSessionById(sessionId: string, client: SupabaseClient): Promise<ChatSession | null> {
         // Fetch Session + Messages
-        const { data, error } = await this.supabase
+        const { data, error } = await client
             .from('chat_sessions')
             .select(`
                 *,
@@ -51,12 +52,12 @@ export class SupabaseChatRepository implements ChatRepository {
     }
 
     // --- 2. CREATE SESSION ---
-    async createSession(session: ChatSession): Promise<void> {
+    async createSession(session: ChatSession, client: SupabaseClient): Promise<void> {
         // ⚠️ AUTO-FIX: Your domain doesn't have 'organizationId', but DB needs it.
         // We fetch it from the Project to satisfy the database constraint.
-        const orgId = await this.getOrgIdFromProject(session.projectId);
+        const orgId = await this.getOrgIdFromProject(session.projectId, client);
 
-        const { error } = await this.supabase
+        const { error } = await client
             .from('chat_sessions')
             .insert({
                 id: session.sessionId, // Map sessionId -> id
@@ -73,8 +74,8 @@ export class SupabaseChatRepository implements ChatRepository {
 
     // --- 3. ADD MESSAGE ---
     // Note: Your ChatRepository interface asks for (message: ChatMessage)
-    async addMessage(sessionId: string, message: ChatMessage): Promise<void> {
-        const { error } = await this.supabase
+    async addMessage(sessionId: string, message: ChatMessage, client: SupabaseClient): Promise<void> {
+        const { error } = await client
             .from('chat_messages')
             .insert({
                 id: message.messageId, // Map messageId -> id
@@ -90,8 +91,8 @@ export class SupabaseChatRepository implements ChatRepository {
     }
 
     // --- 4. LIST SESSIONS ---
-    async getSessionsByProject(projectId: string): Promise<ChatSession[]> {
-        const { data, error } = await this.supabase
+    async getSessionsByProject(projectId: string, client: SupabaseClient): Promise<ChatSession[]> {
+        const { data, error } = await client
             .from('chat_sessions')
             .select('*')
             .eq('project_id', projectId)
@@ -112,8 +113,8 @@ export class SupabaseChatRepository implements ChatRepository {
     }
 
     // --- HELPER: Resolve Organization ID ---
-    private async getOrgIdFromProject(projectId: string): Promise<string> {
-        const { data, error } = await this.supabase
+    private async getOrgIdFromProject(projectId: string, client: SupabaseClient): Promise<string> {
+        const { data, error } = await client
             .from('projects')
             .select('organization_id')
             .eq('id', projectId)
@@ -130,8 +131,8 @@ export class SupabaseChatRepository implements ChatRepository {
 
     // --- 5. UPDATE MESSAGE ---
     // Critical for saving the "ACCEPTED" status on suggestions
-    async updateMessage(message: ChatMessage): Promise<void> {
-        const { error } = await this.supabase
+    async updateMessage(message: ChatMessage, client: SupabaseClient): Promise<void> {
+        const { error } = await client
             .from('chat_messages')
             .update({
                 content: message.content,     // In case content was edited
@@ -145,8 +146,8 @@ export class SupabaseChatRepository implements ChatRepository {
 
     // --- 6. UPDATE SESSION TIMESTAMP ---
     // Critical for sorting chats by "Recently Active"
-    async updateSessionTimestamp(sessionId: string, lastActiveAt: Date): Promise<void> {
-        const { error } = await this.supabase
+    async updateSessionTimestamp(sessionId: string, lastActiveAt: Date, client: SupabaseClient): Promise<void> {
+        const { error } = await client
             .from('chat_sessions')
             .update({
                 last_active_at: lastActiveAt

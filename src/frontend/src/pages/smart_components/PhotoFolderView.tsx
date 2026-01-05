@@ -2,7 +2,7 @@
 
 import { Badge } from "../ui_components/badge";
 import { Button } from "../ui_components/button";
-import { ImageWithFallback } from "../figma/ImageWithFallback";
+import { SecureImage } from "./SecureImage";
 import {
   Collapsible,
   CollapsibleContent,
@@ -26,13 +26,13 @@ interface PhotoFolderViewProps {
   
   // For view mode
   onPhotoClick?: (photo: Photo) => void;
-  onDeletePhoto?: (photoId: number) => void;
+  onDeletePhoto?: (photoId: string | number) => void;
   onDeleteFolder?: (folderId: number) => void;
   onAudioTimelineClick?: (folderId: number) => void;
   
   // For select mode
-  selectedPhotoIds?: number[];
-  onTogglePhoto?: (photoId: number) => void;
+  selectedPhotoIds?: (string | number)[];
+  onTogglePhoto?: (photoId: string | number) => void;
   
   // Grid size control
   gridSize?: number;
@@ -83,7 +83,7 @@ export function PhotoFolderView({
                         {folderPhotos.length} photo{folderPhotos.length !== 1 ? 's' : ''}
                         {mode === "select" && selectedPhotoIds.length > 0 && (
                           <span className="text-theme-action-primary ml-2">
-                            • {folderPhotos.filter(p => selectedPhotoIds.includes(p.id)).length} selected
+                            • {folderPhotos.filter(p => selectedPhotoIds.includes(p.id as number)).length} selected
                           </span>
                         )}
                       </p>
@@ -132,14 +132,14 @@ export function PhotoFolderView({
                         key={photo.id}
                         className={`group rounded-lg overflow-hidden border transition-all relative ${
                           mode === "select"
-                            ? selectedPhotoIds.includes(photo.id)
+                            ? selectedPhotoIds.includes(photo.id as number)
                               ? "border-2 border-theme-action-primary bg-theme-focus-ring-light"
                               : "border-slate-200 hover:border-theme-hover-border cursor-pointer"
                             : "border-slate-200 hover:border-theme-hover-border"
                         }`}
                         onClick={() => {
                           if (mode === "select" && onTogglePhoto) {
-                            onTogglePhoto(photo.id);
+                            onTogglePhoto(photo.id as number);
                           }
                         }}
                       >
@@ -148,8 +148,9 @@ export function PhotoFolderView({
                           onClick={() => mode === "view" && onPhotoClick?.(photo)}
                           className={`relative aspect-square ${mode === "view" ? "cursor-pointer" : ""}`}
                         >
-                          <ImageWithFallback
+                          <SecureImage
                             src={photo.url}
+                            storagePath={photo.storagePath}
                             alt={photo.name}
                             className="w-full h-full object-cover"
                           />
@@ -158,11 +159,11 @@ export function PhotoFolderView({
                           {mode === "select" && (
                             <div className="absolute top-1.5 right-1.5">
                               <div className={`w-5 h-5 rounded-full flex items-center justify-center ${
-                                selectedPhotoIds.includes(photo.id)
+                                selectedPhotoIds.includes(photo.id as number)
                                   ? "bg-theme-action-primary"
                                   : "bg-white border-2 border-slate-300"
                               }`}>
-                                {selectedPhotoIds.includes(photo.id) && (
+                                {selectedPhotoIds.includes(photo.id as number) && (
                                   <Check className="w-3.5 h-3.5 text-white" />
                                 )}
                               </div>
@@ -186,7 +187,7 @@ export function PhotoFolderView({
                                   onClick={(e) => {
                                     e.stopPropagation();
                                     if (confirm(`Delete photo "${photo.name}"?`)) {
-                                      onDeletePhoto(photo.id);
+                                      onDeletePhoto(photo.id as number);
                                     }
                                   }}
                                 >

@@ -40,7 +40,8 @@ export function LoginPage() {
       }
 
       // Login successful
-      const userData = data.session?.profile || data.session?.user;
+      const userData = data.profile || data.user;
+      
       if (userData) {
            login(userData); // This handles localStorage and redirect
       } else {

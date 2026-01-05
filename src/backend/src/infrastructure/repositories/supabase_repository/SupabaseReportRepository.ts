@@ -4,16 +4,16 @@ import { Report } from '../../../domain/reports/report.types'; // Check path
 
 export class SupabaseReportRepository implements ReportRepository {
 
-    constructor(private supabase: SupabaseClient) {}
+    // constructor(private supabase: SupabaseClient) {}
 
     // --- 1. SAVE (Create) ---
-    async save(report: Report): Promise<void> {
+    async save(report: Report, client: SupabaseClient): Promise<void> {
         // 1. Fetch Org ID (Required by DB Security)
-        const orgId = await this.getOrgIdFromProject(report.projectId);
+        const orgId = await this.getOrgIdFromProject(report.projectId, client);
 
         // 2. Insert Report
         // We rely on Postgres to store the 'sections' array as JSONB automatically
-        const { error } = await this.supabase
+        const { error } = await client
             .from('reports')
             .insert({
                 id: report.reportId, // Map Domain 'reportId' -> DB 'id'
@@ -31,8 +31,8 @@ export class SupabaseReportRepository implements ReportRepository {
     }
 
     // --- 2. GET BY ID (Read) ---
-    async getById(reportId: string): Promise<Report | null> {
-        const { data, error } = await this.supabase
+    async getById(reportId: string, client: SupabaseClient): Promise<Report | null> {
+        const { data, error } = await client
             .from('reports')
             .select('*')
             .eq('id', reportId)
@@ -60,8 +60,8 @@ export class SupabaseReportRepository implements ReportRepository {
     }
 
     // --- 3. UPDATE ---
-    async update(report: Report): Promise<void> {
-        const { error } = await this.supabase
+    async update(report: Report, client: SupabaseClient): Promise<void> {
+        const { error } = await client
             .from('reports')
             .update({
                 title: report.title,
@@ -76,10 +76,10 @@ export class SupabaseReportRepository implements ReportRepository {
     }
 
     // --- 4. VERSIONING ---
-    async saveVersion(reportId: string, version: number, snapshot: string): Promise<void> {
+    async saveVersion(reportId: string, version: number, snapshot: string, client: SupabaseClient): Promise<void> {
         // We need the organization ID for the version table too
         // (Expensive check, but necessary for RLS if not passed in)
-        const { data: report } = await this.supabase
+        const { data: report } = await client
             .from('reports')
             .select('organization_id')
             .eq('id', reportId)
@@ -87,7 +87,7 @@ export class SupabaseReportRepository implements ReportRepository {
 
         if (!report) throw new Error("Cannot version report: Report not found");
 
-        const { error } = await this.supabase
+        const { error } = await client
             .from('report_versions')
             .insert({
                 report_id: reportId,
@@ -102,8 +102,8 @@ export class SupabaseReportRepository implements ReportRepository {
     }
 
     // --- 5. LIST BY PROJECT ---
-    async getByProject(projectId: string): Promise<Report[]> {
-        const { data, error } = await this.supabase
+    async getByProject(projectId: string, client: SupabaseClient): Promise<Report[]> {
+        const { data, error } = await client
             .from('reports')
             .select('*')
             .eq('project_id', projectId)
@@ -125,8 +125,8 @@ export class SupabaseReportRepository implements ReportRepository {
     }
 
     // --- HELPER ---
-    private async getOrgIdFromProject(projectId: string): Promise<string> {
-        const { data } = await this.supabase
+    private async getOrgIdFromProject(projectId: string, client: SupabaseClient): Promise<string> {
+        const { data } = await client
             .from('projects')
             .select('organization_id')
             .eq('id', projectId)

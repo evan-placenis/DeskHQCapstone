@@ -1,6 +1,7 @@
 //GET (List), POST (Create New)
 import { NextResponse } from 'next/server';
 import {Container} from '@/backend/config/container'
+import { createAuthenticatedClient } from "@/app/api/utils";
 
 // 1. CREATE A NEW SESSION
 export async function POST(req: Request) {
@@ -8,7 +9,13 @@ export async function POST(req: Request) {
         const { userId, projectId, reportId } = await req.json();
         const chatService = Container.chatService
 
-        const session = await chatService.startSession(userId, projectId, reportId);
+        // Authenticate
+        const { supabase, user } = await createAuthenticatedClient();
+        if (!user) {
+            return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+        }
+
+        const session = await chatService.startSession(userId, projectId, supabase, reportId);
         
         return NextResponse.json(session);
     } catch (error: any) {
@@ -25,10 +32,17 @@ export async function GET(req: Request) {
         if (!projectId) return NextResponse.json({ error: "Project ID required" }, { status: 400 });
 
         const chatService = Container.chatService
+        
+        // Authenticate
+        const { supabase, user } = await createAuthenticatedClient();
+        if (!user) {
+            return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+        }
+
         // Accessing repo directly here is fine for simple reads, 
         // or you can add a wrapper method in ChatService if you prefer strict layering.
         // Assuming you made repo public or added a getter:
-        const sessions = await (chatService as any).repo.getSessionsByProject(projectId);
+        const sessions = await (chatService as any).repo.getSessionsByProject(projectId, supabase);
 
         return NextResponse.json(sessions);
     } catch (error: any) {

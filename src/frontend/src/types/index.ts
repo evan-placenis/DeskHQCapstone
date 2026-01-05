@@ -76,7 +76,7 @@ export interface User {
 }
 
 export interface Photo {
-  id: number;
+  id: number | string;
   url: string;
   name: string;
   date: string;
@@ -86,6 +86,7 @@ export interface Photo {
   folderId: number;
   caption?: string;
   section?: string;
+  storagePath?: string;
 }
 
 export interface PhotoFolder {

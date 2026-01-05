@@ -1,4 +1,6 @@
 import { useState, useEffect } from "react";
+import { useAuth } from "@/app/context/AuthContext";
+import { useDelete } from "@/frontend/pages/hooks/useDelete"; // Import the hook
 import { AppHeader } from "@/frontend/pages/smart_components/AppHeader";
 import { NewReportModal } from "@/frontend/pages/large_modal_components/NewReportModal";
 import { PhotoDetailModal } from "@/frontend/pages/large_modal_components/PhotoDetailModal";
@@ -48,7 +50,8 @@ import {
   Search,
   X,
   Filter,
-  Upload
+  Upload,
+  Loader2
 } from "lucide-react";
 import { ReportCard } from "@/frontend/pages/ui_components/ReportCard";
 
@@ -460,6 +463,7 @@ export function ProjectDetailPage({
   onBack,
   onSelectReport 
 }: ProjectDetailPageProps) {
+  const { user } = useAuth();
   const [isNewReportModalOpen, setIsNewReportModalOpen] = useState(false);
   const [reports, setReports] = useState(mockReports);
   const [photos, setPhotos] = useState(mockPhotos);
@@ -469,6 +473,8 @@ export function ProjectDetailPage({
   const [isKnowledgeUploadModalOpen, setIsKnowledgeUploadModalOpen] = useState(false);
   const [isPhotoUploadModalOpen, setIsPhotoUploadModalOpen] = useState(false);
   const [photoFolders, setPhotoFolders] = useState<PhotoFolder[]>(mockPhotoFolders);
+  const [isUploading, setIsUploading] = useState(false); // Add uploading state
+  const [uploadProgress, setUploadProgress] = useState(0); // Track progress percentage
   
   // Photo filter states
   const [photoSearchKeyword, setPhotoSearchKeyword] = useState("");
@@ -476,6 +482,9 @@ export function ProjectDetailPage({
   const [photoFilterDateEnd, setPhotoFilterDateEnd] = useState("");
   const [photoFilterUser, setPhotoFilterUser] = useState("all");
   const [photoGridSize, setPhotoGridSize] = useState(2); // 0=smallest, 1=small, 2=medium, 3=large
+  
+  // Use the hook
+  const { deleteItem } = useDelete();
 
   const handleUploadJobSheet = () => {
     // Create a file input element
@@ -556,7 +565,7 @@ export function ProjectDetailPage({
     setIsPhotoModalOpen(true);
   };
 
-  const handleSavePhotoDescription = (photoId: number, description: string) => {
+  const handleSavePhotoDescription = (photoId: string | number, description: string) => {
     setPhotos(photos.map(photo =>
       photo.id === photoId ? { ...photo, description } : photo
     ));
@@ -617,44 +626,206 @@ export function ProjectDetailPage({
     }
   };
 
-  const handleUploadPhotos = (files: File[], folderId: number, folderName?: string) => {
+  const compressImage = async (file: File): Promise<File> => { //better done on client side
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.readAsDataURL(file);
+      reader.onload = (event) => {
+        const img = new Image();
+        img.src = event.target?.result as string;
+        img.onload = () => {
+          const canvas = document.createElement("canvas");
+          const ctx = canvas.getContext("2d");
+          if (!ctx) {
+            reject(new Error("Failed to get canvas context"));
+            return;
+          }
+
+          // Max dimensions
+          const MAX_WIDTH = 1024;
+          const MAX_HEIGHT = 1024;
+          let width = img.width;
+          let height = img.height;
+
+          if (width > height) {
+            if (width > MAX_WIDTH) {
+              height *= MAX_WIDTH / width;
+              width = MAX_WIDTH;
+            }
+          } else {
+            if (height > MAX_HEIGHT) {
+              width *= MAX_HEIGHT / height;
+              height = MAX_HEIGHT;
+            }
+          }
+
+          canvas.width = width;
+          canvas.height = height;
+          ctx.drawImage(img, 0, 0, width, height);
+
+          canvas.toBlob(
+            (blob) => {
+              if (blob) {
+                const newFile = new File([blob], file.name, {
+                  type: "image/jpeg",
+                  lastModified: Date.now(),
+                });
+                resolve(newFile);
+              } else {
+                reject(new Error("Canvas to Blob conversion failed"));
+              }
+            },
+            "image/jpeg",
+            0.7 // Quality (0.0 to 1.0)
+          );
+        };
+        img.onerror = (err) => reject(err);
+      };
+      reader.onerror = (err) => reject(err);
+    });
+  };
+
+  const handleUploadPhotos = async (files: File[], folderId: number, folderName?: string) => {
+    if (!user) {
+      alert("Please log in to upload photos.");
+      return;
+    }
+
     let targetFolderId = folderId;
+    let targetFolderName = folderName;
     
-    // If creating a new folder
+    // If creating a new folder (Mock for now, UI only)
     if (folderId === -1 && folderName) {
       const newFolder: PhotoFolder = {
         id: Math.max(...photoFolders.map(f => f.id), 0) + 1,
         name: folderName,
         createdDate: new Date().toISOString().split('T')[0]
       };
-      setPhotoFolders([...photoFolders, newFolder]);
+      setPhotoFolders([newFolder, ...photoFolders]); // Prepend new folder to the top
       targetFolderId = newFolder.id;
+    } else {
+        // Find existing folder name
+        const existingFolder = photoFolders.find(f => f.id === folderId);
+        if (existingFolder) {
+            targetFolderName = existingFolder.name;
+        }
     }
 
-    // Create photo entries for uploaded files
-    const newPhotos = files.map((file, index) => ({
-      id: Math.max(...photos.map(p => p.id), 0) + index + 1,
-      url: URL.createObjectURL(file), // In production, this would be uploaded to storage
-      name: file.name.replace(/\.[^/.]+$/, ""), // Remove extension
-      date: new Date().toISOString().split('T')[0],
-      location: "Project Site",
-      linkedReport: null,
-      description: "",
-      folderId: targetFolderId
-    }));
+    // Process files in parallel, limited to 6 concurrent uploads
+    const CONCURRENCY_LIMIT = 6;
+    const uploadedPhotos: Photo[] = [];
+    const results: (Photo | null)[] = [];
 
-    setPhotos([...photos, ...newPhotos]);
+    setIsUploading(true);
+    setUploadProgress(0);
+    const totalFiles = files.length;
+    let completedFiles = 0;
+
+    // Helper to process a single file
+    const processFile = async (file: File) => {
+        try {
+            // Compress image before upload
+            console.log(`Compressing ${file.name}...`);
+            const compressedFile = await compressImage(file);
+            console.log(`Compressed ${file.name}: ${(file.size / 1024).toFixed(2)}KB -> ${(compressedFile.size / 1024).toFixed(2)}KB`);
+
+            const formData = new FormData();
+            formData.append('file', compressedFile);
+            formData.append('userId', user.id.toString());
+            if (targetFolderName) {
+                formData.append('folderName', targetFolderName);
+            }
+            
+            const response = await fetch(`/api/project/${project.id}/images`, {
+                method: 'POST',
+                body: formData
+            });
+
+            const data = await response.json();
+
+            if (!response.ok) {
+                throw new Error(data.error || "Upload failed");
+            }
+
+            const dbImage = data.image;
+            
+            return {
+                id: dbImage.id || Math.random(), 
+                url: dbImage.public_url || URL.createObjectURL(compressedFile), 
+                storagePath: dbImage.storage_path,
+                name: dbImage.file_name || file.name,
+                date: new Date(dbImage.created_at).toISOString().split('T')[0],
+                location: "Project Site",
+                linkedReport: null,
+                description: "",
+                folderId: targetFolderId
+            } as Photo;
+
+        } catch (error) {
+            console.error(`Failed to upload ${file.name}:`, error);
+            // Don't alert for every single failure in a batch, maybe just log
+            return null;
+        } finally {
+            completedFiles++;
+            setUploadProgress(Math.round((completedFiles / totalFiles) * 100));
+        }
+    };
+
+    // Execute uploads with concurrency limit
+    for (let i = 0; i < files.length; i += CONCURRENCY_LIMIT) {
+        const chunk = files.slice(i, i + CONCURRENCY_LIMIT);
+        const chunkResults = await Promise.all(chunk.map(file => processFile(file)));
+        results.push(...chunkResults);
+    }
+
+    setIsUploading(false); // Reset upload state
+    const successfulUploads = results.filter((p): p is Photo => p !== null);
+
+    // Update state with successfully uploaded photos
+    if (successfulUploads.length > 0) {
+        setPhotos([...successfulUploads, ...photos]); // Add new photos to the TOP
+        alert(`Successfully uploaded ${successfulUploads.length} photos.`);
+    }
   };
 
-  const handleDeletePhoto = (photoId: number) => {
+  const handleDeletePhoto = async (photoId: string | number) => {
+    // 1. Optimistic Update (remove from UI immediately)
+    const previousPhotos = [...photos];
     setPhotos(photos.filter(p => p.id !== photoId));
+
+    // 2. Call API (Consolidated Endpoint)
+    await deleteItem(`/api/project/${project.id}/images?imageId=${photoId}`, {
+        onError: (err) => {
+            alert(`Failed to delete photo: ${err}`);
+            setPhotos(previousPhotos); // Revert on error
+        }
+    });
   };
 
-  const handleDeleteFolder = (folderId: number) => {
-    // Delete all photos in the folder
+  const handleDeleteFolder = async (folderId: number) => {
+    const folder = photoFolders.find(f => f.id === folderId);
+    if (!folder) return;
+
+    if (!confirm(`Are you sure you want to delete folder "${folder.name}" and all its photos?`)) return;
+
+    // 1. Optimistic Update
+    const previousPhotos = [...photos];
+    const previousFolders = [...photoFolders];
+
+    // Remove photos in this folder
     setPhotos(photos.filter(p => p.folderId !== folderId));
-    // Delete the folder
+    // Remove the folder itself
     setPhotoFolders(photoFolders.filter(f => f.id !== folderId));
+
+    // 2. Call API (Consolidated Endpoint)
+    await deleteItem(`/api/project/${project.id}/images?folderName=${encodeURIComponent(folder.name)}`, {
+        onError: (err) => {
+            alert(`Failed to delete folder: ${err}`);
+            // Revert state
+            setPhotos(previousPhotos);
+            setPhotoFolders(previousFolders);
+        }
+    });
   };
 
   const handleAudioTimelineClick = (folderId: number) => {
@@ -758,7 +929,66 @@ export function ProjectDetailPage({
     if (typeof window !== "undefined") {
       window.scrollTo(0, 0);
     }
-  }, []);
+
+    // Fetch existing images from backend
+    const fetchImages = async () => {
+        try {
+            const response = await fetch(`/api/project/${project.id}/images`);
+            if (response.ok) {
+                const data = await response.json();
+                if (data.images && Array.isArray(data.images)) {
+                    console.log("Fetched images from DB:", data.images); // Debug log
+                    
+                    // Identify unique folder names from DB images
+                    const fetchedImages = data.images;
+                    const uniqueFolderNames = Array.from(new Set(fetchedImages.map((img: any) => img.folder_name).filter(Boolean))) as string[];
+                    
+                    // Sync folders locally first to determine IDs
+                    // Start with mockPhotoFolders as base
+                    const existingFolders = [...mockPhotoFolders]; 
+                    const newFolders: PhotoFolder[] = [];
+                    
+                    uniqueFolderNames.forEach(name => {
+                        if (!existingFolders.find(f => f.name === name)) {
+                            newFolders.push({
+                                id: Math.max(0, ...existingFolders.map(f => f.id), ...newFolders.map(f => f.id)) + 1,
+                                name: name,
+                                createdDate: new Date().toISOString().split('T')[0]
+                            });
+                        }
+                    });
+                    
+                    // Update folders state: Put new (DB) folders at the TOP
+                    const allFolders = [...newFolders, ...existingFolders];
+                    setPhotoFolders(allFolders);
+
+                    // Map DB images to Frontend Photo objects
+                    const dbPhotos: Photo[] = data.images.map((img: any) => {
+                        const folder = allFolders.find(f => f.name === img.folder_name);
+                        return {
+                            id: img.id, // Use UUID from DB
+                            url: img.public_url,
+                            storagePath: img.storage_path, // Add storage path for signed URLs
+                            name: img.file_name,
+                            date: new Date(img.created_at).toISOString().split('T')[0],
+                            location: "Uploaded",
+                            linkedReport: null,
+                            description: "",
+                            folderId: folder ? folder.id : 1 // Use found folder ID or default
+                        };
+                    });
+                    
+                    // Prepend DB photos to mock photos (showing newest first)
+                    setPhotos([...dbPhotos, ...mockPhotos]);
+                }
+            }
+        } catch (e) {
+            console.error("Failed to fetch images", e);
+        }
+    };
+
+    fetchImages();
+  }, [project.id]);
 
   // Computed values
   const totalPhotos = photos.length;
@@ -1116,6 +1346,25 @@ export function ProjectDetailPage({
                         >
                           <span className="text-base">+</span>
                         </Button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Upload Progress Indicator */}
+                {isUploading && (
+                  <div className="mb-6 p-4 bg-blue-50 border border-blue-100 rounded-lg flex items-center gap-4">
+                    <Loader2 className="w-8 h-8 text-blue-500 animate-spin" />
+                    <div className="flex-1">
+                      <div className="flex justify-between mb-1">
+                        <span className="text-sm font-medium text-blue-700">Uploading photos...</span>
+                        <span className="text-sm font-medium text-blue-700">{uploadProgress}%</span>
+                      </div>
+                      <div className="w-full bg-blue-200 rounded-full h-2.5">
+                        <div 
+                          className="bg-blue-600 h-2.5 rounded-full transition-all duration-300" 
+                          style={{ width: `${uploadProgress}%` }}
+                        ></div>
                       </div>
                     </div>
                   </div>

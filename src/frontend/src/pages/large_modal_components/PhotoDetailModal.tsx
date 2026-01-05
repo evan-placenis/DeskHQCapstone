@@ -10,32 +10,24 @@ import {
   DialogDescription,
 } from "../ui_components/dialog";
 import { ImageWithFallback } from "../figma/ImageWithFallback";
+import { Photo } from "@/frontend/types"; // Import shared Photo type
 import { 
   X, 
   Calendar, 
   MapPin, 
-  Save,
-  Copy,
-  Download,
-  ChevronLeft,
-  ChevronRight,
+  Save, 
+  Copy, 
+  Download, 
+  ChevronLeft, 
+  ChevronRight, 
   Sparkles
 } from "lucide-react";
-
-interface Photo {
-  id: number;
-  url: string;
-  name: string;
-  date: string;
-  location: string;
-  description?: string;
-}
 
 interface PhotoDetailModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   photo: Photo | null;
-  onSaveDescription: (photoId: number, description: string) => void;
+  onSaveDescription: (photoId: string | number, description: string) => void;
   onNavigate?: (direction: "prev" | "next") => void;
   canNavigate?: { prev: boolean; next: boolean };
 }
@@ -64,7 +56,7 @@ export function PhotoDetailModal({
 
   const handleSave = () => {
     if (photo) {
-      onSaveDescription(photo.id, description);
+      onSaveDescription(photo.id as number, description);
       setIsEditing(false);
     }
   };

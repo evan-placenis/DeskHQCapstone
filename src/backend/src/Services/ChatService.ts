@@ -4,6 +4,8 @@ import { ChatSession, ChatMessage } from "../domain/chat/chat.types";
 import { v4 as uuidv4 } from 'uuid';
 import { ReportService } from "./ReportService";
 
+import { SupabaseClient } from "@supabase/supabase-js";
+
 export class ChatService {
     
     // Dependencies
@@ -22,11 +24,12 @@ export class ChatService {
      */
     public async handleUserMessage(
         sessionId: string, 
-        userText: string
+        userText: string,
+        client: SupabaseClient
     ): Promise<ChatMessage> {
         
         // 1. Fetch Context (Load the session history)
-        const session = await this.repo.getSessionById(sessionId);
+        const session = await this.repo.getSessionById(sessionId, client);
         if (!session) throw new Error("Session not found");
 
         // 2. Save USER Message to DB
@@ -37,16 +40,16 @@ export class ChatService {
             content: userText,
             timestamp: new Date()
         };
-        await this.repo.addMessage(sessionId, userMsg);
+        await this.repo.addMessage(sessionId, userMsg, client);
 
-        await this.repo.updateSessionTimestamp(sessionId, new Date());
+        await this.repo.updateSessionTimestamp(sessionId, new Date(), client);
 
         // 3. Ask the AI (The Brain) 🧠
         // We pass the session so the AI knows the project context
         const aiMsg = await this.chatAgent.processUserMessage(session, userText);
 
         // 4. Save AI Message to DB
-        await this.repo.addMessage(sessionId, aiMsg);
+        await this.repo.addMessage(sessionId, aiMsg, client);
 
         // 5. Return the AI response so the UI can show it immediately
         return aiMsg;
@@ -56,10 +59,10 @@ export class ChatService {
      * LOGIC: User clicked "Accept" on the UI. 
      * We must apply the AI's fix to the real Report.
      */
-    public async acceptSuggestion(sessionId: string, messageId: string): Promise<void> {
+    public async acceptSuggestion(sessionId: string, messageId: string, client: SupabaseClient): Promise<void> {
         
         // 1. Validation Logic
-        const session = await this.repo.getSessionById(sessionId);
+        const session = await this.repo.getSessionById(sessionId, client);
         if (!session) throw new Error("Session not found");
         if (!session.reportId) throw new Error("No report linked to this chat");
 
@@ -72,7 +75,8 @@ export class ChatService {
             session.projectId,
             session.reportId,
             message.suggestion.targetSectionId,
-            message.suggestion.suggestedText
+            message.suggestion.suggestedText,
+            client
         );
 
         // 3. Update Chat Status
@@ -81,13 +85,13 @@ export class ChatService {
 
         // 3. CRITICAL: Persist the status change to the DB
         // You need to implement updateMessage in your repo
-        await this.repo.updateMessage(message);
+        await this.repo.updateMessage(message, client);
     }
 
     /**
      * Start a new chat for a specific report or project
      */
-    public async startSession(userId: string, projectId: string, reportId?: string): Promise<ChatSession> {
+    public async startSession(userId: string, projectId: string, client: SupabaseClient, reportId?: string): Promise<ChatSession> {
         const newSession: ChatSession = {
             sessionId: uuidv4(),
             userId,
@@ -98,11 +102,9 @@ export class ChatService {
             lastActiveAt: new Date()
         };
 
-        await this.repo.createSession(newSession);
+        await this.repo.createSession(newSession, client);
         return newSession;
     }
-
-    
 }
 
 

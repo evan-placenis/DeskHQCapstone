@@ -51,6 +51,7 @@ export function AppHeader({ currentPage, currentUser, onNavigate, onLogout, onRo
   };
 
   const getInitials = (name: string) => {
+    if (!name) return "U";
     return name
       .split(" ")
       .map(n => n[0])

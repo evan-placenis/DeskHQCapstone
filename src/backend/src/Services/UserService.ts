@@ -1,8 +1,8 @@
-import { SupabaseClient } from '@supabase/supabase-js';
+import { SupabaseClient, createClient } from '@supabase/supabase-js';
 import { User, UserRole } from '../domain/core/user.types';
 
 export class UserService {
-    constructor(private supabase: SupabaseClient) {}
+    constructor(private supabaseAdmin: SupabaseClient) {}
 
     /**
      * Register a new user and create their profile + organization link.
@@ -12,7 +12,7 @@ export class UserService {
         // Note: For a real client-side flow, user signs up on frontend, 
         // but here we are doing it via admin or assuming we handle the full flow.
         // If we use admin.createUser, we bypass email verification for testing.
-        const { data: authData, error: authError } = await this.supabase.auth.admin.createUser({
+        const { data: authData, error: authError } = await this.supabaseAdmin.auth.admin.createUser({
             email,
             password: password || 'TemporaryPassword123!', // Use provided password or default
             email_confirm: true,
@@ -25,7 +25,7 @@ export class UserService {
         const userId = authData.user.id;
 
         // 2. Create Organization
-        const { data: orgData, error: orgError } = await this.supabase
+        const { data: orgData, error: orgError } = await this.supabaseAdmin
             .from('organizations')
             .insert({ name: organizationName })
             .select()
@@ -36,7 +36,7 @@ export class UserService {
         // 3. Create Profile linked to Org
         // We use upsert because the 'handle_new_user' trigger might have already created the profile
         // We temporarily remove 'role' because the user reported it missing in their DB schema
-        const { error: profileError } = await this.supabase
+        const { error: profileError } = await this.supabaseAdmin
             .from('profiles')
             .upsert({
                 id: userId,
@@ -58,34 +58,16 @@ export class UserService {
         };
     }
 
-    /**
-     * Authenticate user with Supabase Auth
-     */
-    async loginUser(email: string, password: string): Promise<any> {
-        const { data, error } = await this.supabase.auth.signInWithPassword({
-            email,
-            password
-        });
-
-        if (error) throw new Error(error.message);
-        
-        // Also fetch the profile to return full user context
-        if (data.session?.user) {
-             const profile = await this.getUserProfile(data.session.user.id);
-             return {
-                 ...data.session,
-                 profile
-             };
-        }
-
-        return data.session;
-    }
+  
 
     /**
      * Get user profile details by Auth ID
      */
-    async getUserProfile(userId: string): Promise<any> {
-        const { data, error } = await this.supabase
+    async getUserProfile(userId: string, client: SupabaseClient): Promise<any> {
+        // Use the provided client (user context) or fallback to the instance client (admin/service role)
+        const supabase = client;
+        
+        const { data, error } = await supabase
             .from('profiles')
             .select('*, organization:organizations(*)')
             .eq('id', userId)

@@ -4,15 +4,15 @@ import { KnowledgeItem } from '../../../domain/knowledge/rag.types';
 
 export class SupabaseKnowledgeRepository implements KnowledgeRepository {
     
-    constructor(private supabase: SupabaseClient) {}
+    // constructor(private supabase: SupabaseClient) {}
 
     // --- SAVE ---
-    async save(item: KnowledgeItem): Promise<void> {
+    async save(item: KnowledgeItem, client: SupabaseClient): Promise<void> {
         // 1. Fetch Organization ID (Required by Database RLS)
-        const orgId = await this.getOrgIdFromProject(item.projectId);
+        const orgId = await this.getOrgIdFromProject(item.projectId, client);
 
         // 2. Insert into Supabase
-        const { error } = await this.supabase
+        const { error } = await client
             .from('knowledge_items')
             .insert({
                 k_id: item.kId,
@@ -32,8 +32,8 @@ export class SupabaseKnowledgeRepository implements KnowledgeRepository {
     }
 
     // --- GET BY ID ---
-    async getById(kId: string): Promise<KnowledgeItem | null> {
-        const { data, error } = await this.supabase
+    async getById(kId: string, client: SupabaseClient): Promise<KnowledgeItem | null> {
+        const { data, error } = await client
             .from('knowledge_items')
             .select('*')
             .eq('k_id', kId)
@@ -45,8 +45,8 @@ export class SupabaseKnowledgeRepository implements KnowledgeRepository {
     }
 
     // --- LIST BY PROJECT ---
-    async listByProject(projectId: string): Promise<KnowledgeItem[]> {
-        const { data, error } = await this.supabase
+    async listByProject(projectId: string, client: SupabaseClient): Promise<KnowledgeItem[]> {
+        const { data, error } = await client
             .from('knowledge_items')
             .select('*')
             .eq('project_id', projectId)
@@ -58,13 +58,13 @@ export class SupabaseKnowledgeRepository implements KnowledgeRepository {
     }
 
     // --- UPDATE STATUS ---
-    async updateStatus(kId: string): Promise<void> {
+    async updateStatus(kId: string, status: 'PROCESSING' | 'INDEXED' | 'FAILED', client: SupabaseClient): Promise<void> {
         // Since the current SQL schema for 'knowledge_items' does not have a 'status' column,
         // we perform a No-Op (do nothing) to satisfy the interface without crashing.
         return Promise.resolve();
         
         /* // If you add a status column later, uncomment this:
-        const { error } = await this.supabase
+        const { error } = await client
             .from('knowledge_items')
             .update({ status: status }) // Ensure DB column exists first!
             .eq('k_id', kId);
@@ -89,8 +89,8 @@ export class SupabaseKnowledgeRepository implements KnowledgeRepository {
     }
 
     // --- HELPER: GET ORG ID ---
-    private async getOrgIdFromProject(projectId: string): Promise<string> {
-        const { data } = await this.supabase
+    private async getOrgIdFromProject(projectId: string, client: SupabaseClient): Promise<string> {
+        const { data } = await client
             .from('projects')
             .select('organization_id')
             .eq('id', projectId)
