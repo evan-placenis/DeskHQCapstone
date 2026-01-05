@@ -8,7 +8,8 @@ import { ROUTES, getRoute } from "@/app/pages/config/routes";
 export default function ProjectDetail() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const projectId = parseInt(searchParams.get("projectId") || "1");
+  const projectIdParam = searchParams.get("projectId");
+  const projectId = projectIdParam || 1;
 
   // Mock project lookup
   const project: Project = {

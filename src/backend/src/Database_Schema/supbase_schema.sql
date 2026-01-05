@@ -90,9 +90,61 @@ CREATE TABLE public.chat_messages (
 );
 
 -- =============================================================================
--- 3. ROW LEVEL SECURITY (RLS) - The "Firewall"
+-- 3. ASSETS (Updated for Storage Buckets)
 -- =============================================================================
 
+-- 1. THE MASTER GALLERY (Represents the file in the bucket)
+CREATE TABLE public.project_images (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    project_id UUID NOT NULL REFERENCES public.projects(id) ON DELETE CASCADE,
+    organization_id UUID NOT NULL REFERENCES public.organizations(id),
+
+    -- STORAGE BUCKET FIELDS
+    storage_path TEXT NOT NULL,  -- e.g., "project-123/site-visit/photo-1.jpg" (Used for deletion/download)
+    public_url TEXT NOT NULL,    -- e.g., "https://xyz.supabase.co/storage/v1/object/public/..." (Used for <img> src)
+
+    -- METADATA
+    file_name TEXT,              -- Original filename (e.g., "IMG_2024.jpg")
+    mime_type TEXT,              -- e.g., "image/jpeg"
+    size_bytes BIGINT,           
+    
+    folder_name TEXT,            -- Folder/Category name (e.g., "Kitchen", "Living Room")
+
+    -- CONTEXT
+    uploaded_by UUID REFERENCES public.profiles(id),
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    
+    -- GEOSPATIAL (Optional but good for reports)
+    gps_latitude DOUBLE PRECISION,
+    gps_longitude DOUBLE PRECISION
+);
+
+-- 2. THE REPORT USAGE (Links an image to a report)
+CREATE TABLE public.report_images (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    report_id UUID NOT NULL REFERENCES public.reports(id) ON DELETE CASCADE,
+    image_id UUID NOT NULL REFERENCES public.project_images(id) ON DELETE CASCADE,
+    organization_id UUID NOT NULL REFERENCES public.organizations(id),
+    
+    -- Context specific to THIS report
+    caption TEXT,                -- "Crack in north wall" (Specific to this report)
+    sort_order INTEGER DEFAULT 0, -- To keep images in order
+    
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+
+    -- Prevent adding the same image to the same report twice
+    UNIQUE(report_id, image_id)
+);
+
+-- =============================================================================
+-- 3. ROW LEVEL SECURITY (RLS) - The "Firewall"
+-- =============================================================================
+-- Enable RLS
+ALTER TABLE public.report_images ENABLE ROW LEVEL SECURITY;
+
+-- Add Policy
+CREATE POLICY "Org report images" ON public.report_images 
+FOR ALL USING (organization_id = get_auth_org_id());
 -- Enable RLS on all tables
 ALTER TABLE public.organizations ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;

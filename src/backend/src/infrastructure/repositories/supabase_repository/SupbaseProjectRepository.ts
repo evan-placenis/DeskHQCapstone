@@ -3,15 +3,15 @@ import { ProjectRepository } from '../../../domain/interfaces/ProjectRepository'
 import { Project, ProjectMetadata, JobInfoSheet } from '../../../domain/core/project.types'; // Verify path
 
 export class SupabaseProjectRepository implements ProjectRepository {
-    
-    constructor(private supabase: SupabaseClient) {}
+
 
     /**
      * FETCH Project by ID
      * Reconstructs the nested Domain Object from the flat Database Row
      */
-    async getById(projectId: string): Promise<Project | null> {
-        const { data, error } = await this.supabase
+    async getById(projectId: string, client: SupabaseClient): Promise<Project | null> {
+        const supabase = client;
+        const { data, error } = await supabase
             .from('projects')
             .select('*')
             .eq('id', projectId)
@@ -23,11 +23,29 @@ export class SupabaseProjectRepository implements ProjectRepository {
     }
 
     /**
+     * FETCH Projects by Organization ID
+     */
+    async getByOrgId(organizationId: string, client: SupabaseClient): Promise<Project[]> {
+        const supabase = client;
+        const { data, error } = await supabase
+            .from('projects')
+            .select('*')
+            .eq('organization_id', organizationId)
+            .order('created_at', { ascending: false });
+
+        if (error) throw new Error(`Failed to fetch projects: ${error.message}`);
+        if (!data) return [];
+
+        return data.map(row => this.mapToDomain(row));
+    }
+
+    /**
      * SAVE (Create) a Project
      * Flattens the nested Domain Object into the Database Row
      */
-    async save(project: Project): Promise<void> {
-        const { error } = await this.supabase
+    async save(project: Project, client: SupabaseClient): Promise<void> {
+        const supabase = client;
+        const { error } = await supabase
             .from('projects')
             .insert({
                 // 1. Root Fields

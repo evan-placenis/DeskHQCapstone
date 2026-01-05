@@ -2,6 +2,7 @@
 
 import { NextResponse } from 'next/server';
 import {Container} from '@/backend/config/container'
+import { createAuthenticatedClient } from "@/app/api/utils";
 
 export async function POST(
     req: Request,
@@ -13,7 +14,13 @@ export async function POST(
         
         const chatService = Container.chatService
 
-        await chatService.acceptSuggestion(params.sessionId, messageId);
+        // Authenticate
+        const { supabase, user } = await createAuthenticatedClient();
+        if (!user) {
+            return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+        }
+
+        await chatService.acceptSuggestion(params.sessionId, messageId, supabase);
 
         return NextResponse.json({ success: true });
     } catch (error: any) {

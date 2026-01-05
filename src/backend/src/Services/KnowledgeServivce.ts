@@ -11,6 +11,8 @@ import { KnowledgeRepository } from '../domain/interfaces/KnowledgeRepository';
 import { VectorStore } from '../domain/interfaces/VectorStore';
 import { KnowledgeItem, DocumentChunk } from '../domain/knowledge/rag.types';
 
+import { SupabaseClient } from "@supabase/supabase-js";
+
 export class KnowledgeService {
     
     // Dependencies
@@ -26,7 +28,8 @@ export class KnowledgeService {
         projectId: string,
         fileBuffer: Buffer,
         fileName: string,
-        mimeType: 'application/pdf' | 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+        mimeType: 'application/pdf' | 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        client: SupabaseClient
     ): Promise<void> {
         
         const kId = uuidv4();
@@ -60,7 +63,7 @@ export class KnowledgeService {
         };
 
         // Save metadata to Postgres immediately
-        await this.repo.save(knowledgeItem);
+        await this.repo.save(knowledgeItem, client);
 
         try {
             // 3. CHUNK THE TEXT (Split into smaller pieces)
@@ -84,12 +87,12 @@ export class KnowledgeService {
             await this.vectorStore.upsertChunks(documentChunks);
 
             // 6. UPDATE STATUS
-            await this.repo.updateStatus(kId, 'INDEXED');
+            await this.repo.updateStatus(kId, 'INDEXED', client);
             console.log(`✅ Document ${fileName} fully indexed!`);
 
         } catch (error) {
             console.error("Failed to process document:", error);
-            await this.repo.updateStatus(kId, 'FAILED');
+            await this.repo.updateStatus(kId, 'FAILED', client);
             throw error;
         }
     }
@@ -117,7 +120,7 @@ export class KnowledgeService {
         return chunks;
     }
     
-    public async getDocuments(projectId: string) {
-        return await this.repo.listByProject(projectId);
+    public async getDocuments(projectId: string, client: SupabaseClient) {
+        return await this.repo.listByProject(projectId, client);
     }
 }

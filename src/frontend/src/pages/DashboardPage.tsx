@@ -17,7 +17,7 @@ import { useState } from "react";
 import { ProjectCard } from "./ui_components/ProjectCard";
 import { ReportCard } from "./ui_components/ReportCard";
 import { UpcomingReviewCard } from "./shared_ui_components/UpcomingReviewCard";
-
+import { useEffect } from "react";
 interface DashboardPageProps {
   onNavigate: (page: Page) => void;
   onLogout: () => void;
@@ -135,7 +135,45 @@ export function DashboardPage({
 }: DashboardPageProps) {
   const [isNewProjectModalOpen, setIsNewProjectModalOpen] = useState(false);
   const [filterStatus, setFilterStatus] = useState("all");
-  const [projectsList, setProjectsList] = useState(projects);
+  const [projectsList, setProjectsList] = useState<Project[]>([]); // Start empty, fetch on load
+  const [isLoadingProjects, setIsLoadingProjects] = useState(true);
+
+  // Fetch Projects on Mount
+  useEffect(() => {
+      const fetchProjects = async () => {
+          if (!currentUser?.id) return;
+          
+          try {
+              const response = await fetch(`/api/project/list?userId=${currentUser.id}`);
+              
+              if (response.status === 401) {
+                  console.error("Unauthorized: Redirecting to login...");
+                  onLogout(); // Or explicit navigate to login
+                  return;
+              }
+
+              const data = await response.json();
+              
+              if (response.ok && data.projects) {
+                  setProjectsList(data.projects);
+              } else {
+                  console.error("Failed to fetch projects:", data.error);
+                  if (response.status === 404 && data.error.includes("User profile")) {
+                      alert("Your user profile is incomplete. Please contact support.");
+                  }
+              }
+          } catch (error) {
+              console.error("Error loading projects:", error);
+          } finally {
+              setIsLoadingProjects(false);
+          }
+      };
+
+      if (currentUser) {
+          fetchProjects();
+      }
+  }, [currentUser]);
+
   const totalReports = projectsList.reduce((sum, p) => sum + p.reports, 0);
   const totalPhotos = projectsList.reduce((sum, p) => sum + p.photos, 0);
   const activeProjects = projectsList.filter(p => p.status === "Active").length;
@@ -361,7 +399,9 @@ export function DashboardPage({
               </CardHeader>
               <CardContent className="space-y-3 sm:space-y-4 p-2 sm:p-6 pt-1 sm:pt-0">
                 {/* Active Projects */}
-                {projectsList.filter(p => p.status === "Active").length > 0 && (
+                {isLoadingProjects ? (
+                    <div className="p-8 text-center text-slate-500">Loading projects...</div>
+                ) : projectsList.filter(p => p.status === "Active").length > 0 ? (
                   <div>
                     <h3 className="text-sm font-semibold text-slate-700 mb-2 px-1">Active Projects</h3>
                     <div className="space-y-1.5 sm:space-y-3 max-h-[500px] overflow-y-auto">
@@ -375,10 +415,14 @@ export function DashboardPage({
                       ))}
                     </div>
                   </div>
+                ) : (
+                    <div className="p-8 text-center text-slate-500">
+                        No active projects found. Create one to get started!
+                    </div>
                 )}
 
                 {/* Completed Projects */}
-                {projectsList.filter(p => p.status === "Completed").length > 0 && (
+                {!isLoadingProjects && projectsList.filter(p => p.status === "Completed").length > 0 && (
                   <div>
                     <h3 className="text-sm font-semibold text-slate-700 mb-2 px-1">Completed Projects</h3>
                     <div className="space-y-1.5 sm:space-y-3 max-h-[500px] overflow-y-auto">

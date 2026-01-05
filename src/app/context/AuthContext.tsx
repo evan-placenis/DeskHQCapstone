@@ -21,6 +21,9 @@ const PUBLIC_ROUTES = [
   ROUTES.selectOrg,
   ROUTES.orgPassword,
   "/", // Home
+  "/api/auth/login", // API routes should not be blocked by client-side auth
+  "/api/auth/register",
+  "/pages/login" // Explicitly adding the path from ROUTES.login to be safe
 ];
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
@@ -67,10 +70,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // 2. Protect Routes
     if (!loading) {
       // Check if current path is public
-      const isPublicRoute = PUBLIC_ROUTES.some(route => pathname?.startsWith(route));
+      // IMPORTANT: Use exact match for public routes to prevent "/" matching everything
+      const isPublicRoute = PUBLIC_ROUTES.some(route => {
+          if (route === "/") {
+              return pathname === "/";
+          }
+          return pathname?.startsWith(route);
+      });
       
       if (!user && !isPublicRoute) {
-        console.log("🔒 Access Denied: Redirecting to login");
         // Ensure we don't redirect if we are already on a public route to avoid loops
         router.push(ROUTES.login);
       }
@@ -91,7 +99,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   return (
     <AuthContext.Provider value={{ user, loading, login, logout }}>
-      {!loading || PUBLIC_ROUTES.some(route => pathname?.startsWith(route)) ? (
+      {!loading || (PUBLIC_ROUTES.some(route => {
+          if (route === "/") return pathname === "/";
+          return pathname?.startsWith(route);
+      })) ? (
         children
       ) : (
         <div className="flex items-center justify-center min-h-screen bg-slate-50">

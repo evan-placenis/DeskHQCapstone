@@ -4,6 +4,8 @@ import { AgentFactory } from "../AI_Strategies/factory/AgentFactory";
 import { Report } from "../domain/reports/report.types";
 import { v4 as uuidv4 } from 'uuid';
 
+import { SupabaseClient } from "@supabase/supabase-js";
+
 export class ReportService {
     
     private reportRepo: ReportRepository;
@@ -28,13 +30,14 @@ export class ReportService {
             modeName: string;      // 'IMAGE_AND_TEXT'
             selectedImageIds: string[];
             templateId: string;
-        }
+        },
+        client: SupabaseClient
     ): Promise<Report> {
         
         console.log(`⚙️ Service: Starting generation for Project ${projectId}`);
 
         // 1. Fetch the Project Data (The Context)
-        const project = await this.projectRepo.getById(projectId);
+        const project = await this.projectRepo.getById(projectId, client);
         if (!project) throw new Error("Project not found");
 
         // 2. Build the Workflow using our Factory INSTANCE
@@ -52,7 +55,7 @@ export class ReportService {
         });
 
         // 4. Save the result to the Database
-        await this.reportRepo.save(newReport);
+        await this.reportRepo.save(newReport, client);
 
         console.log(`✅ Service: Report ${newReport.reportId} saved.`);
         return newReport;
@@ -65,15 +68,16 @@ export class ReportService {
         projectId: string, 
         reportId: string, 
         sectionId: string, 
-        newContent: string
+        newContent: string,
+        client: SupabaseClient
     ): Promise<void> {
         // 1. Fetch Report
-        const report = await this.reportRepo.getById(reportId);
+        const report = await this.reportRepo.getById(reportId, client);
         if (!report) throw new Error("Report not found");
 
         // 2. 👇 SAVE THE SNAPSHOT BEFORE EDITING
         // This saves "Version 1" before we turn it into "Version 2"
-        await this.createVersionSnapshot(report);
+        await this.createVersionSnapshot(report, client);
 
         // 3. Now it is safe to modify the data
         const section = report.sections.find(s => s.id === sectionId);
@@ -83,7 +87,7 @@ export class ReportService {
         section.isReviewRequired = false;
 
         // 4. Save the new version
-        await this.reportRepo.update(report);
+        await this.reportRepo.update(report, client);
         
         console.log(`📝 Saved Version ${report.versionNumber - 1} and updated report.`);
     }
@@ -92,13 +96,14 @@ export class ReportService {
     /**
      * Helper to save a history snapshot
      */
-    private async createVersionSnapshot(report: Report) {
+    private async createVersionSnapshot(report: Report, client: SupabaseClient) {
         // Snapshot the current state before changes
         const snapshot = JSON.stringify(report);
         await this.reportRepo.saveVersion(
             report.reportId, 
             report.versionNumber, 
-            snapshot
+            snapshot,
+            client
         );
         report.versionNumber++; // Increment current version
     }
