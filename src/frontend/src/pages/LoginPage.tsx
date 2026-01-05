@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/frontend/pages/ui_components/button";
 import { Input } from "@/frontend/pages/ui_components/input";
@@ -7,14 +8,51 @@ import { Label } from "@/frontend/pages/ui_components/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/frontend/pages/ui_components/card";
 import { Cpu } from "lucide-react";
 import { ROUTES } from "@/app/pages/config/routes";
+import { useAuth } from "@/src/app/context/AuthContext";
 
 export function LoginPage() {
   const router = useRouter();
+  const { login } = useAuth(); // Use the global login function
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    // Logic for login authentication would go here
-    router.push(ROUTES.dashboard);
+    setError("");
+    setIsLoading(true);
+
+    try {
+      const response = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ email, password }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Login failed');
+      }
+
+      // Login successful
+      const userData = data.session?.profile || data.session?.user;
+      if (userData) {
+           login(userData); // This handles localStorage and redirect
+      } else {
+          // Fallback if structure is unexpected
+          router.push(ROUTES.dashboard);
+      }
+
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const handleRegister = () => {
@@ -45,6 +83,8 @@ export function LoginPage() {
                 placeholder="engineer@company.com"
                 required
                 className="rounded-lg focus-visible:ring-theme-focus-ring"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
               />
             </div>
             <div className="space-y-2">
@@ -55,8 +95,15 @@ export function LoginPage() {
                 placeholder="Enter your password"
                 required
                 className="rounded-lg focus-visible:ring-theme-focus-ring"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
               />
             </div>
+            {error && (
+              <div className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg p-3">
+                {error}
+              </div>
+            )}
             <div className="flex items-center justify-between text-sm">
               <label className="flex items-center gap-2">
                 <input type="checkbox" className="rounded accent-theme-primary focus:ring-theme-focus-ring" />
@@ -66,8 +113,8 @@ export function LoginPage() {
                 Forgot password?
               </a>
             </div>
-            <Button type="submit" className="w-full rounded-lg bg-theme-primary hover:bg-theme-primary-hover text-white">
-              Sign In
+            <Button type="submit" disabled={isLoading} className="w-full rounded-lg bg-theme-primary hover:bg-theme-primary-hover text-white">
+              {isLoading ? "Signing In..." : "Sign In"}
             </Button>
             <div className="relative my-4">
               <div className="absolute inset-0 flex items-center">

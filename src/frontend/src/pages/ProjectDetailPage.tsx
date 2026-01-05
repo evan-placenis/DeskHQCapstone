@@ -504,11 +504,45 @@ export function ProjectDetailPage({
     input.click();
   };
 
-  const handleCreateReport = (reportData: { title: string; description: string }) => {
-    // In a real app, this would create a new report and navigate to it
-    console.log("Creating report:", reportData);
-    // For demo, just navigate to report viewer with a new ID
-    onSelectReport(999); // Use a unique ID for the new report
+  const handleCreateReport = async (reportData: any) => {
+    try {
+      console.log("Creating report with data:", reportData);
+      
+      const payload = {
+        projectId: project.id,
+        title: reportData.title,
+        templateId: reportData.templateId,
+        modeName: reportData.mode,
+        selectedImageIds: reportData.photoIds,
+        sections: reportData.sections,
+        style: reportData.style,
+        tone: reportData.tone,
+        // Additional fields that might be needed
+        reportType: "generation" 
+      };
+
+      const response = await fetch("/api/report/generate", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(payload),
+      });
+
+      const data = await response.json();
+      console.log("Backend response:", data);
+
+      if (response.ok) {
+        alert(`Report generation started! Backend received: ${JSON.stringify(data.receivedData, null, 2)}`);
+        // Navigate to the (mock) new report
+        onSelectReport(999); 
+      } else {
+        alert(`Error: ${data.error}`);
+      }
+    } catch (error) {
+      console.error("Failed to create report:", error);
+      alert("Failed to send request to backend");
+    }
   };
 
   const handleStatusChange = (reportId: number, newStatus: string) => {

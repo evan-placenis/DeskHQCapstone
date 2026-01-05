@@ -32,6 +32,14 @@ export function RegisterPage() {
     }
 
     // Pass data via query params for now, or use a global state/context in a real app
+    // We also pass the password securely (in a real app, this should be handled differently, e.g., via state management)
+    // For now, we will assume the password is set in the final step or passed along.
+    // However, passing password in URL is bad practice. 
+    // Let's store it in sessionStorage for the short term flow or redesign the flow.
+    if (typeof window !== 'undefined') {
+        sessionStorage.setItem('temp_registration_password', password);
+    }
+    
     const params = new URLSearchParams({ email });
     router.push(`${ROUTES.selectOrg}?${params.toString()}`);
   };

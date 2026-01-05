@@ -5,17 +5,11 @@ import { Page } from "@/app/pages/config/routes";
 import { Project, PeerReview } from "@/frontend/types";
 import { ROUTES, getRoute } from "@/app/pages/config/routes";
 import { useState } from "react";
+import { useAuth } from "@/src/app/context/AuthContext";
 
 export default function Dashboard() {
   const router = useRouter();
-
-  // Mock user
-  const currentUser = {
-    id: 2,
-    name: "Sarah Johnson",
-    role: "manager" as const,
-    team: "Team A"
-  };
+  const { user, logout } = useAuth(); // Use the global auth context
 
   // Mock peer reviews
   const [peerReviews, setPeerReviews] = useState<PeerReview[]>([
@@ -40,7 +34,7 @@ export default function Dashboard() {
   };
 
   const handleLogout = () => {
-    router.push(ROUTES.login);
+    logout();
   };
 
   const handleSelectProject = (project: Project) => {
@@ -61,13 +55,17 @@ export default function Dashboard() {
     // In a real app, update user context
   };
 
+  // If user is null, the AuthProvider will handle the redirect/loading state
+  // But we can return null here to be safe
+  if (!user) return null;
+
   return (
     <DashboardPage 
       onNavigate={handleNavigate}
       onLogout={handleLogout}
       onSelectProject={handleSelectProject}
       onSelectReport={handleSelectReport}
-      currentUser={currentUser}
+      currentUser={user}
       peerReviews={peerReviews}
       handleRequestPeerReview={handleRequestPeerReview}
       onRoleSwitch={handleRoleSwitch}

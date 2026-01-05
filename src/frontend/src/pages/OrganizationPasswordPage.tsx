@@ -26,21 +26,69 @@ function OrganizationPasswordForm() {
   
   const [orgPassword, setOrgPassword] = useState("");
   const [error, setError] = useState("");
-
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const organizationName = organizationNames[organizationId] || "Unknown Organization";
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
+    setIsSubmitting(true);
 
-    // Mock validation - in production, this would verify against the backend
+    // 1. Validate Organization Password (Mock check)
+    // In a real app, this would verify the org password against the backend
     if (orgPassword.length < 6) {
       setError("Please enter a valid organization password");
+      setIsSubmitting(false);
       return;
     }
 
-    // Simulate successful registration
-    router.push(ROUTES.dashboard);
+    // 2. Retrieve user password from session storage (stored in RegisterPage)
+    // This is a temporary solution for this multi-step flow
+    const userPassword = typeof window !== 'undefined' ? sessionStorage.getItem('temp_registration_password') : null;
+
+    if (!userPassword) {
+        setError("Session expired. Please start registration again.");
+        setIsSubmitting(false);
+        // setTimeout(() => router.push(ROUTES.register), 2000);
+        return;
+    }
+
+    try {
+        // 3. Call the Registration API
+        const response = await fetch('/api/auth/register', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                email,
+                fullName: email.split('@')[0], // Extracting a temporary name from email
+                organizationName: organizationName,
+                password: userPassword
+            }),
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+            throw new Error(data.error || 'Registration failed');
+        }
+
+        // 4. Success Handling
+        // Clear sensitive data
+        if (typeof window !== 'undefined') {
+            sessionStorage.removeItem('temp_registration_password');
+        }
+        
+        // Auto-login or redirect to login
+        alert("Registration successful! Please sign in.");
+        router.push(ROUTES.login);
+
+    } catch (err: any) {
+        setError(err.message || "An error occurred during registration");
+    } finally {
+        setIsSubmitting(false);
+    }
   };
 
   const handleBack = () => {
