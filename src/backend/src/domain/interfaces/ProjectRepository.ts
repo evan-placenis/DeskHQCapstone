@@ -5,4 +5,5 @@ export interface ProjectRepository {
     getById(projectId: string, client: SupabaseClient): Promise<Project | null>;
     getByOrgId(organizationId: string, client: SupabaseClient): Promise<Project[]>;
     save(project: Project, client: SupabaseClient): Promise<void>;
+    delete(projectId: string, client: SupabaseClient): Promise<void>;
 }

@@ -41,14 +41,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (storedUser) {
           try {
             const userObj = JSON.parse(storedUser);
-            // Adapt to User interface if needed
+            // Adapt to User interface
             const adaptedUser: User = {
                 id: userObj.id,
-                name: userObj.name || userObj.user_metadata?.full_name || userObj.email?.split('@')[0] || "User",
+                name: userObj.name || userObj.user_metadata?.full_name || userObj.full_name || userObj.email?.split('@')[0] || "User",
                 role: userObj.role || "manager",
                 email: userObj.email,
                 team: userObj.team,
-                reportsTo: userObj.reportsTo
+                reportsTo: userObj.reportsTo,
+                organizationId: userObj.organization_id || userObj.organizationId
             };
             setUser(adaptedUser);
           } catch (e) {
@@ -85,9 +86,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, [user, loading, pathname, router]);
 
-  const login = (userData: User) => {
-    localStorage.setItem("user", JSON.stringify(userData));
-    setUser(userData);
+  const login = (userData: any) => {
+    // Adapt any raw data structure (from Supabase or DB) to our User interface
+    const adaptedUser: User = {
+        id: userData.id,
+        name: userData.name || userData.user_metadata?.full_name || userData.full_name || userData.email?.split('@')[0] || "User",
+        role: userData.role || "manager",
+        email: userData.email,
+        team: userData.team,
+        reportsTo: userData.reportsTo,
+        organizationId: userData.organization_id || userData.organizationId
+    };
+
+    console.log("Logging in user:", adaptedUser); // Debug log
+
+    localStorage.setItem("user", JSON.stringify(adaptedUser));
+    setUser(adaptedUser);
     router.push(ROUTES.dashboard);
   };
 

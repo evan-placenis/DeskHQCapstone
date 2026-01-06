@@ -17,42 +17,41 @@ import {
   SelectTrigger,
   SelectValue,
 } from "../ui_components/select";
-import { Upload, FileText, X, File } from "lucide-react";
+import { Upload, FileText, X, File, Plus } from "lucide-react";
 import { KnowledgeDocument } from "@/frontend/types";
 
 interface KnowledgeUploadModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onUpload: (document: Omit<KnowledgeDocument, "id" | "uploadDate">) => void;
+  onUpload: (document: Omit<KnowledgeDocument, "id" | "uploadDate">, files: File[]) => void;
 }
 
 const documentTypes = [
   { value: "specification", label: "Technical Specification", icon: "📋" },
-  { value: "standard", label: "Industry Standard", icon: "⚖️" },
   { value: "previous_report", label: "Previous Report", icon: "📊" },
-  { value: "guideline", label: "Project Guideline", icon: "📖" },
-  { value: "reference", label: "Reference Material", icon: "📚" },
-  { value: "job_sheet", label: "Job Sheet", icon: "💼" },
   { value: "other", label: "Other", icon: "📄" },
 ];
 
 export function KnowledgeUploadModal({ open, onOpenChange, onUpload }: KnowledgeUploadModalProps) {
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [documentType, setDocumentType] = useState<string>("specification");
   const [description, setDescription] = useState("");
   const [isDragging, setIsDragging] = useState(false);
 
-  const handleFileSelect = (file: File) => {
-    setSelectedFile(file);
+  const handleFileSelect = (files: File[]) => {
+    setSelectedFiles(prev => [...prev, ...files]);
+  };
+
+  const handleRemoveFile = (index: number) => {
+    setSelectedFiles(prev => prev.filter((_, i) => i !== index));
   };
 
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
     setIsDragging(false);
     
-    const file = e.dataTransfer.files[0];
-    if (file) {
-      handleFileSelect(file);
+    if (e.dataTransfer.files) {
+      handleFileSelect(Array.from(e.dataTransfer.files));
     }
   };
 
@@ -66,21 +65,22 @@ export function KnowledgeUploadModal({ open, onOpenChange, onUpload }: Knowledge
   };
 
   const handleUpload = () => {
-    if (!selectedFile) return;
+    if (selectedFiles.length === 0) return;
 
-    const fileExtension = selectedFile.name.split('.').pop() || '';
-    const fileSizeKB = (selectedFile.size / 1024).toFixed(2);
+    // Calculate total size for display purposes (just sum of all files)
+    const totalSizeKB = (selectedFiles.reduce((acc, file) => acc + file.size, 0) / 1024).toFixed(2);
+    const fileExtension = selectedFiles.length === 1 ? selectedFiles[0].name.split('.').pop() || '' : 'Multiple';
 
     onUpload({
-      name: selectedFile.name,
+      name: selectedFiles.length === 1 ? selectedFiles[0].name : `${selectedFiles.length} files`, // Placeholder name, handled individually in parent
       type: documentType as KnowledgeDocument["type"],
       description,
-      fileSize: `${fileSizeKB} KB`,
+      fileSize: `${totalSizeKB} KB`,
       fileType: fileExtension.toUpperCase(),
-    });
+    }, selectedFiles);
 
     // Reset form
-    setSelectedFile(null);
+    setSelectedFiles([]);
     setDescription("");
     setDocumentType("specification");
     onOpenChange(false);
@@ -94,9 +94,9 @@ export function KnowledgeUploadModal({ open, onOpenChange, onUpload }: Knowledge
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[600px] rounded-xl">
+      <DialogContent className="sm:max-w-[600px] rounded-xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Upload Knowledge Document</DialogTitle>
+          <DialogTitle>Upload Knowledge Documents</DialogTitle>
           <DialogDescription>
             Add reference materials that AI will use when generating and editing reports
           </DialogDescription>
@@ -105,45 +105,69 @@ export function KnowledgeUploadModal({ open, onOpenChange, onUpload }: Knowledge
         <div className="space-y-6 py-4">
           {/* File Upload Area */}
           <div>
-            <label className="text-sm text-slate-700 mb-2 block">Document File</label>
+            <label className="text-sm text-slate-700 mb-2 block">Document Files</label>
             <div
               className={`border-2 border-dashed rounded-xl p-8 text-center transition-all ${
                 isDragging
                   ? "border-theme-primary bg-theme-primary-10"
-                  : selectedFile
-                  ? "border-green-300 bg-green-50"
                   : "border-slate-300 hover:border-slate-400"
               }`}
               onDrop={handleDrop}
               onDragOver={handleDragOver}
               onDragLeave={handleDragLeave}
             >
-              {selectedFile ? (
-                <div className="flex items-center justify-center gap-4">
-                  <div className="w-12 h-12 bg-theme-primary-10 rounded-lg flex items-center justify-center">
-                    <FileText className="w-6 h-6 text-theme-primary" />
+              {selectedFiles.length > 0 ? (
+                <div className="space-y-2">
+                  {selectedFiles.map((file, index) => (
+                    <div key={index} className="flex items-center justify-between gap-4 bg-slate-50 p-2 rounded-lg border border-slate-200">
+                      <div className="flex items-center gap-3 overflow-hidden">
+                        <div className="w-10 h-10 bg-theme-primary-10 rounded-lg flex items-center justify-center flex-shrink-0">
+                          <FileText className="w-5 h-5 text-theme-primary" />
+                        </div>
+                        <div className="text-left min-w-0">
+                          <p className="text-sm text-slate-900 truncate">{file.name}</p>
+                          <p className="text-xs text-slate-500">{formatFileSize(file.size)}</p>
+                        </div>
+                      </div>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="rounded-lg h-8 w-8 text-slate-400 hover:text-red-500"
+                        onClick={() => handleRemoveFile(index)}
+                      >
+                        <X className="w-4 h-4" />
+                      </Button>
+                    </div>
+                  ))}
+                  <div className="pt-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        const input = document.createElement("input");
+                        input.type = "file";
+                        input.multiple = true;
+                        input.accept = ".pdf,.doc,.docx,.txt,.xls,.xlsx";
+                        input.onchange = (e) => {
+                          const files = (e.target as HTMLInputElement).files;
+                          if (files) handleFileSelect(Array.from(files));
+                        };
+                        input.click();
+                      }}
+                    >
+                      <Plus className="w-4 h-4 mr-2" />
+                      Add More Files
+                    </Button>
                   </div>
-                  <div className="text-left flex-1">
-                    <p className="text-sm text-slate-900">{selectedFile.name}</p>
-                    <p className="text-xs text-slate-500">{formatFileSize(selectedFile.size)}</p>
-                  </div>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="rounded-lg"
-                    onClick={() => setSelectedFile(null)}
-                  >
-                    <X className="w-4 h-4" />
-                  </Button>
                 </div>
               ) : (
                 <div>
                   <Upload className="w-10 h-10 text-slate-400 mx-auto mb-3" />
                   <p className="text-sm text-slate-700 mb-1">
-                    Drag and drop your file here, or click to browse
+                    Drag and drop your files here, or click to browse
                   </p>
                   <p className="text-xs text-slate-500 mb-4">
-                    PDF, DOCX, TXT, or Excel files up to 50MB
+                    DOCX, TXT, or Excel files up to 50MB
                   </p>
                   <Button
                     variant="outline"
@@ -151,16 +175,17 @@ export function KnowledgeUploadModal({ open, onOpenChange, onUpload }: Knowledge
                     onClick={() => {
                       const input = document.createElement("input");
                       input.type = "file";
+                      input.multiple = true;
                       input.accept = ".pdf,.doc,.docx,.txt,.xls,.xlsx";
                       input.onchange = (e) => {
-                        const file = (e.target as HTMLInputElement).files?.[0];
-                        if (file) handleFileSelect(file);
+                        const files = (e.target as HTMLInputElement).files;
+                        if (files) handleFileSelect(Array.from(files));
                       };
                       input.click();
                     }}
                   >
                     <Upload className="w-4 h-4 mr-2" />
-                    Choose File
+                    Choose Files
                   </Button>
                 </div>
               )}
@@ -183,6 +208,7 @@ export function KnowledgeUploadModal({ open, onOpenChange, onUpload }: Knowledge
                 ))}
               </SelectContent>
             </Select>
+            <p className="text-xs text-slate-500 mt-1">Applies to all uploaded files</p>
           </div>
 
           {/* Description */}
@@ -192,12 +218,13 @@ export function KnowledgeUploadModal({ open, onOpenChange, onUpload }: Knowledge
               <span className="text-slate-400 ml-1">(Optional)</span>
             </label>
             <Textarea
-              placeholder="Briefly describe what this document contains and how it should be used..."
+              placeholder="Briefly describe what these documents contain..."
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               className="rounded-lg resize-none"
               rows={3}
             />
+            <p className="text-xs text-slate-500 mt-1">Applies to all uploaded files</p>
           </div>
 
           {/* Info Box */}
@@ -221,11 +248,11 @@ export function KnowledgeUploadModal({ open, onOpenChange, onUpload }: Knowledge
           </Button>
           <Button
             onClick={handleUpload}
-            disabled={!selectedFile}
+            disabled={selectedFiles.length === 0}
             className="bg-theme-primary hover:bg-theme-primary-hover text-white rounded-lg"
           >
             <Upload className="w-4 h-4 mr-2" />
-            Upload Document
+            Upload {selectedFiles.length > 0 ? `(${selectedFiles.length})` : ''}
           </Button>
         </div>
       </DialogContent>

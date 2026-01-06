@@ -8,6 +8,7 @@ import { SupabaseKnowledgeRepository } from '../infrastructure/repositories/supa
 
 import { PineconeVectorStore } from '../infrastructure/vector_store/PineconeVectorStore'; 
 import { AgentFactory } from '../AI_Strategies/factory/AgentFactory';
+import { DocumentStrategyFactory } from '../Document_Strategies/factory/DocumentFactory';
 import { ReportService } from '../Services/ReportService';
 import { ChatService } from '../Services/ChatService';
 import { ChatAgent } from '../AI_Strategies/ChatSystem/ChatAgent';
@@ -39,6 +40,7 @@ const vectorStore = new PineconeVectorStore();
 
 // 2. Create the Tools (AI & Queue)
 const agentFactory = new AgentFactory();
+const documentFactory = new DocumentStrategyFactory();
 //const grokStrategy = agentFactory.createStrategy("GROK")
 
 const chatAgent = new ChatAgent();
@@ -52,8 +54,8 @@ const reportService = new ReportService(reportRepo, projectRepo, agentFactory);
 // ChatService needs the ReportService to do its job
 const chatService = new ChatService(chatRepo, reportService, chatAgent);
 
-// KnowledgeService needs Repo + Vector Store
-const knowledgeService = new KnowledgeService(knowledgeRepo, vectorStore);
+// KnowledgeService needs Repo + Vector Store + DocumentFactory
+const knowledgeService = new KnowledgeService(knowledgeRepo, vectorStore, documentFactory);
 
 // UserService needs Supabase Admin to register users
 const userService = new UserService(supabaseAdminClient);
@@ -72,6 +74,7 @@ export const Container = {
     
     // Strategies
     agentFactory,
+    documentFactory,
     
     // Services
     reportService,
@@ -83,33 +86,3 @@ export const Container = {
     // Queue
     jobQueue
 };
-
-
-
-
-
-
-
-
-
-
-
-
-
-// This is the biggest shift. In software engineering, this is called moving from Tight Coupling to Dependency Injection.
-
-// BEFORE (The "DIY" Approach)
-// Every file was responsible for building its own tools.
-
-// The Controller said: "I need a Service, so I will run new Service() right now."
-
-// The Service said: "I need a Repository, so I will run new Repository() right now."
-
-// The Problem: You ended up with multiple copies of everything. If you had 5 requests, you might accidentally create 5 database connections.
-
-// AFTER (The "Container" Approach)
-// We moved all the new ...() calls to one single file (container.ts).
-
-// The Container says: "I will build the Repository, the Factory, and the Service once when the app starts."
-
-// The Controller says: "I'll just borrow that finished Service you made."

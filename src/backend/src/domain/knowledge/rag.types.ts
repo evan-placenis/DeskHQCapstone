@@ -4,7 +4,7 @@
 export interface KnowledgeItem {
     kId: string;             // UUID
     projectId: string;       // Belongs to a specific project
-    documentType: 'PDF' | 'WORD' | 'WEBSITE';
+    documentType: 'DOCX';
     originalFileName: string;
     content: string;         // The full extracted text
     uploadedAt: Date;
@@ -23,6 +23,8 @@ export interface DocumentChunk {
     embeddingVector?: number[]; 
     
     metadata: {
+        documentName: string;
+        projectId: string;
         pageNumber: number;
         sectionTitle?: string;
     };

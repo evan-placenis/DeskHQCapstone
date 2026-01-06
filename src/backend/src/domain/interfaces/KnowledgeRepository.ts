@@ -6,4 +6,7 @@ export interface KnowledgeRepository {
     getById(kId: string, client: SupabaseClient): Promise<KnowledgeItem | null>;
     listByProject(projectId: string, client: SupabaseClient): Promise<KnowledgeItem[]>;
     updateStatus(kId: string, status: 'PROCESSING' | 'INDEXED' | 'FAILED', client: SupabaseClient): Promise<void>;
+    delete(kId: string, client: SupabaseClient): Promise<void>;
+    getOrgId(projectId: string, client: SupabaseClient): Promise<string>;
+    getOrgNamespace(projectId: string, client: SupabaseClient): Promise<string>;
 }
