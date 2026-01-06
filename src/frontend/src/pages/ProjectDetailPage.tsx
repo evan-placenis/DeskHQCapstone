@@ -456,6 +456,8 @@ const mockKnowledgeDocuments: KnowledgeDocument[] = [
   },
 ];
 
+import { UploadProgress } from "@/frontend/pages/ui_components/UploadProgress";
+
 export function ProjectDetailPage({ 
   project, 
   onNavigate, 
@@ -464,17 +466,35 @@ export function ProjectDetailPage({
   onSelectReport 
 }: ProjectDetailPageProps) {
   const { user } = useAuth();
+  const TEST_RUNNER_ORG_ID = "b5df0650-c7eb-4b49-afc0-b0640f6a741f";
+  const shouldShowMocks = user?.organizationId === TEST_RUNNER_ORG_ID;
+
   const [isNewReportModalOpen, setIsNewReportModalOpen] = useState(false);
-  const [reports, setReports] = useState(mockReports);
-  const [photos, setPhotos] = useState(mockPhotos);
+  const [reports, setReports] = useState<typeof mockReports>([]);
+  const [photos, setPhotos] = useState<Photo[]>([]);
   const [selectedPhoto, setSelectedPhoto] = useState<typeof mockPhotos[0] | null>(null);
   const [isPhotoModalOpen, setIsPhotoModalOpen] = useState(false);
-  const [knowledgeDocuments, setKnowledgeDocuments] = useState<KnowledgeDocument[]>(mockKnowledgeDocuments);
+  const [knowledgeDocuments, setKnowledgeDocuments] = useState<KnowledgeDocument[]>([]);
   const [isKnowledgeUploadModalOpen, setIsKnowledgeUploadModalOpen] = useState(false);
   const [isPhotoUploadModalOpen, setIsPhotoUploadModalOpen] = useState(false);
-  const [photoFolders, setPhotoFolders] = useState<PhotoFolder[]>(mockPhotoFolders);
-  const [isUploading, setIsUploading] = useState(false); // Add uploading state
-  const [uploadProgress, setUploadProgress] = useState(0); // Track progress percentage
+  const [photoFolders, setPhotoFolders] = useState<PhotoFolder[]>([]);
+
+  // Update mocks for static data
+  useEffect(() => {
+    if (shouldShowMocks) {
+        setReports(mockReports);
+        setKnowledgeDocuments(mockKnowledgeDocuments);
+    } else {
+        setReports([]);
+        setKnowledgeDocuments([]);
+    }
+  }, [shouldShowMocks]);
+  
+  // Upload States
+  const [isUploading, setIsUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [isKnowledgeUploading, setIsKnowledgeUploading] = useState(false);
+  const [knowledgeUploadProgress, setKnowledgeUploadProgress] = useState(0);
   
   // Photo filter states
   const [photoSearchKeyword, setPhotoSearchKeyword] = useState("");
@@ -507,7 +527,7 @@ export function ProjectDetailPage({
           fileType: file.name.split('.').pop()?.toUpperCase() || 'FILE'
         };
         setKnowledgeDocuments([newDoc, ...knowledgeDocuments]);
-        alert(`Job sheet "${file.name}" uploaded successfully!`);
+
       }
     };
     input.click();
@@ -589,27 +609,129 @@ export function ProjectDetailPage({
     };
   };
 
-  const handleUploadKnowledge = (doc: Omit<KnowledgeDocument, "id" | "uploadDate">) => {
-    const newDoc: KnowledgeDocument = {
-      ...doc,
-      id: Math.max(...knowledgeDocuments.map(d => d.id), 0) + 1,
-      uploadDate: new Date().toISOString().split('T')[0]
-    };
-    setKnowledgeDocuments([...knowledgeDocuments, newDoc]);
-  };
+  const handleUploadKnowledge = async (doc: Omit<KnowledgeDocument, "id" | "uploadDate">, files: File[]) => {
+    if (!user) return alert("Please log in.");
+    if (files.length === 0) return;
 
-  const handleDeleteKnowledge = (id: number) => {
+    // 1. Setup Tracking
+    setIsKnowledgeUploading(true);
+    setKnowledgeUploadProgress(0);
+    
+    const CONCURRENCY_LIMIT = 6;
+    const totalFiles = files.length;
+    let completedCount = 0;
+    
+    // Track failures to report at the end
+    const failedFiles: { name: string; reason: string }[] = [];
+
+    // 2. The Worker Function
+    // This function recursively calls itself until the queue is empty
+    const fileQueue = [...files]; // Clone array to consume
+    
+    const processNext = async (): Promise<void> => {
+        if (fileQueue.length === 0) return; // Stop if empty
+
+        const file = fileQueue.shift(); // Get next file
+        if (!file) return;
+
+        try {
+            const formData = new FormData();
+            formData.append('file', file);
+            formData.append('projectId', project.id.toString());
+            formData.append('type', doc.type);
+            formData.append('description', doc.description);
+
+            const response = await fetch('/api/knowledge/store', {
+                method: 'POST',
+                body: formData
+            });
+
+            if (!response.ok) {
+                const errorData = await response.json();
+                throw new Error(errorData.error || response.statusText);
+            }
+
+            const data = await response.json();
+
+            // Success Update
+            if (data.document) {
+                const newDoc: KnowledgeDocument = {
+                    id: data.document.id,
+                    name: data.document.name,
+                    type: (data.document.type || 'other').toLowerCase(),
+                    description: doc.description,
+                    uploadDate: new Date(data.document.uploadDate).toISOString().split('T')[0],
+                    fileSize: `${(file.size / 1024).toFixed(2)} KB`,
+                    fileType: data.document.fileType
+                };
+                // ⚡ Functional update avoids stale state issues during fast uploads
+                setKnowledgeDocuments(prev => [newDoc, ...prev]);
+            }
+
+        } catch (error: any) {
+            console.error(`Failed to upload ${file.name}:`, error);
+            failedFiles.push({ name: file.name, reason: error.message });
+        } finally {
+            completedCount++;
+            setKnowledgeUploadProgress(Math.round((completedCount / totalFiles) * 100));
+            
+            // 🔄 RECURSION: As soon as this finishes, grab the next one
+            await processNext();
+        }
+    };
+
+    // 3. Kickstart the Pool
+    // Create 'limit' number of workers that will start eating the queue
+    const activeWorkers = Array(Math.min(CONCURRENCY_LIMIT, files.length))
+        .fill(null)
+        .map(() => processNext());
+
+    await Promise.all(activeWorkers);
+
+    // 4. Cleanup & Reporting
+    setTimeout(() => {
+        setIsKnowledgeUploading(false);
+        setKnowledgeUploadProgress(0);
+
+        // 🚨 Report Failures to User
+        if (failedFiles.length > 0) {
+            const msg = `Upload complete, but ${failedFiles.length} files failed:\n` + 
+                        failedFiles.map(f => `• ${f.name}`).join('\n');
+            alert(msg);
+        } else {
+            // Optional: Success Toast
+            // toast.success("All files uploaded successfully!");
+        }
+    }, 500);
+};
+
+  const handleDeleteKnowledge = async (id: number | string) => {
+    if (!confirm("Are you sure you want to delete this document? This will remove it from the knowledge base and all associated search indices.")) return;
+
+    // 1. Optimistic Update
+    const previousDocs = [...knowledgeDocuments];
     setKnowledgeDocuments(knowledgeDocuments.filter(doc => doc.id !== id));
+
+    // 2. Call API
+    // Only call API if it's a real document (string ID usually means UUID from DB)
+    // If it's a number, it might be a mock document, but we should try to delete anyway if it's not in the mock list
+    // For simplicity, we assume string IDs are real DB items.
+    
+      await deleteItem(`/api/knowledge/${id}`, {
+          onError: (err) => {
+              alert(`Failed to delete document: ${err}`);
+              setKnowledgeDocuments(previousDocs); // Revert
+          }
+      });
+ 
   };
 
   const getDocumentTypeIcon = (type: KnowledgeDocument["type"]) => {
     switch (type) {
       case "specification": return "📋";
-      case "standard": return "⚖️";
+
       case "previous_report": return "📊";
-      case "guideline": return "📖";
-      case "reference": return "📚";
-      case "job_sheet": return "💼";
+
       default: return "📄";
     }
   };
@@ -784,7 +906,6 @@ export function ProjectDetailPage({
     // Update state with successfully uploaded photos
     if (successfulUploads.length > 0) {
         setPhotos([...successfulUploads, ...photos]); // Add new photos to the TOP
-        alert(`Successfully uploaded ${successfulUploads.length} photos.`);
     }
   };
 
@@ -793,8 +914,9 @@ export function ProjectDetailPage({
     const previousPhotos = [...photos];
     setPhotos(photos.filter(p => p.id !== photoId));
 
-    // 2. Call API (Consolidated Endpoint)
-    await deleteItem(`/api/project/${project.id}/images?imageId=${photoId}`, {
+    // 2. Call API
+    // Adjusted endpoint to match standard REST pattern (DELETE /api/resource/:id)
+    await deleteItem(`/api/project/${project.id}/images/${photoId}`, {
         onError: (err) => {
             alert(`Failed to delete photo: ${err}`);
             setPhotos(previousPhotos); // Revert on error
@@ -817,8 +939,11 @@ export function ProjectDetailPage({
     // Remove the folder itself
     setPhotoFolders(photoFolders.filter(f => f.id !== folderId));
 
-    // 2. Call API (Consolidated Endpoint)
-    await deleteItem(`/api/project/${project.id}/images?folderName=${encodeURIComponent(folder.name)}`, {
+    // 2. Call API
+    // Since folders are virtual (based on 'folder_name' in images), we delete all images with that folder name
+    // If the folder is empty/local-only, the API call will just return success with 0 deletions, which is fine.
+    
+    await deleteItem(`/api/project/${project.id}/folders?name=${encodeURIComponent(folder.name)}`, {
         onError: (err) => {
             alert(`Failed to delete folder: ${err}`);
             // Revert state
@@ -930,8 +1055,9 @@ export function ProjectDetailPage({
       window.scrollTo(0, 0);
     }
 
-    // Fetch existing images from backend
-    const fetchImages = async () => {
+    // Fetch existing images and knowledge documents from backend
+    const fetchProjectData = async () => {
+        // 1. Fetch Images
         try {
             const response = await fetch(`/api/project/${project.id}/images`);
             if (response.ok) {
@@ -944,8 +1070,8 @@ export function ProjectDetailPage({
                     const uniqueFolderNames = Array.from(new Set(fetchedImages.map((img: any) => img.folder_name).filter(Boolean))) as string[];
                     
                     // Sync folders locally first to determine IDs
-                    // Start with mockPhotoFolders as base
-                    const existingFolders = [...mockPhotoFolders]; 
+                    // Start with mockPhotoFolders as base if in test org
+                    const existingFolders = shouldShowMocks ? [...mockPhotoFolders] : [];
                     const newFolders: PhotoFolder[] = [];
                     
                     uniqueFolderNames.forEach(name => {
@@ -979,16 +1105,41 @@ export function ProjectDetailPage({
                     });
                     
                     // Prepend DB photos to mock photos (showing newest first)
-                    setPhotos([...dbPhotos, ...mockPhotos]);
+                    setPhotos([...dbPhotos, ...(shouldShowMocks ? mockPhotos : [])]);
                 }
             }
         } catch (e) {
             console.error("Failed to fetch images", e);
         }
+
+        // 2. Fetch Knowledge Documents
+        try {
+            const response = await fetch(`/api/knowledge/store?projectId=${project.id}`);
+            if (response.ok) {
+                const data = await response.json();
+                if (data.documents && Array.isArray(data.documents)) {
+                    console.log("Fetched knowledge documents from DB:", data.documents);
+                    
+                    const dbDocs: KnowledgeDocument[] = data.documents.map((doc: any) => ({
+                        id: doc.kId,
+                        name: doc.originalFileName,
+                        type: (doc.documentType || 'other').toLowerCase() as KnowledgeDocument['type'],
+                        description: "", // Description not currently stored in backend
+                        uploadDate: new Date(doc.uploadedAt).toISOString().split('T')[0],
+                        fileSize: "Unknown", // Size not currently stored in backend
+                        fileType: doc.originalFileName.split('.').pop()?.toUpperCase() || 'DOCX'
+                    }));
+
+                    setKnowledgeDocuments([...dbDocs, ...(shouldShowMocks ? mockKnowledgeDocuments : [])]);
+                }
+            }
+        } catch (e) {
+            console.error("Failed to fetch knowledge documents", e);
+        }
     };
 
-    fetchImages();
-  }, [project.id]);
+    fetchProjectData();
+  }, [project.id, shouldShowMocks]);
 
   // Computed values
   const totalPhotos = photos.length;
@@ -1352,23 +1503,11 @@ export function ProjectDetailPage({
                 )}
 
                 {/* Upload Progress Indicator */}
-                {isUploading && (
-                  <div className="mb-6 p-4 bg-blue-50 border border-blue-100 rounded-lg flex items-center gap-4">
-                    <Loader2 className="w-8 h-8 text-blue-500 animate-spin" />
-                    <div className="flex-1">
-                      <div className="flex justify-between mb-1">
-                        <span className="text-sm font-medium text-blue-700">Uploading photos...</span>
-                        <span className="text-sm font-medium text-blue-700">{uploadProgress}%</span>
-                      </div>
-                      <div className="w-full bg-blue-200 rounded-full h-2.5">
-                        <div 
-                          className="bg-blue-600 h-2.5 rounded-full transition-all duration-300" 
-                          style={{ width: `${uploadProgress}%` }}
-                        ></div>
-                      </div>
-                    </div>
-                  </div>
-                )}
+                <UploadProgress 
+                    progress={uploadProgress} 
+                    label="Uploading photos..." 
+                    isUploading={isUploading} 
+                />
                 
                 {photoFolders.length > 0 ? (
                   <PhotoFolderView
@@ -1421,6 +1560,12 @@ export function ProjectDetailPage({
                 </Button>
               </CardHeader>
               <CardContent>
+                <UploadProgress 
+                    progress={knowledgeUploadProgress} 
+                    label="Processing document (chunking & embedding)..." 
+                    isUploading={isKnowledgeUploading} 
+                />
+                
                 {knowledgeDocuments.length > 0 ? (
                   <div className="space-y-3">
                     {knowledgeDocuments.map((doc) => (

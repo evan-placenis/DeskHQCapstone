@@ -72,6 +72,21 @@ export class SupabaseProjectRepository implements ProjectRepository {
     }
 
     /**
+     * DELETE a Project
+     */
+    async delete(projectId: string, client: SupabaseClient): Promise<void> {
+        const supabase = client;
+        const { error } = await supabase
+            .from('projects')
+            .delete()
+            .eq('id', projectId);
+
+        if (error) {
+            throw new Error(`Failed to delete project: ${error.message}`);
+        }
+    }
+
+    /**
      * HELPER: Map SQL Row -> Domain Object
      */
     private mapToDomain(row: any): Project {

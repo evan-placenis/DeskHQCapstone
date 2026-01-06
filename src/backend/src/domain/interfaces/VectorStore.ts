@@ -6,17 +6,24 @@ export interface VectorStore {
     /**
      * Save chopped up text into the vector DB
      */
-    upsertChunks(chunks: DocumentChunk[]): Promise<void>;
+    upsertChunks(chunks: DocumentChunk[], namespace?: string): Promise<void>;
 
     /**
      * The Magic: Find text relevant to the user's query.
-     * @param vector - The query converted into numbers
+     * @param query - The user's question
      * @param limit - How many results to return (e.g., top 3)
+     * @param namespace - The organization ID to isolate data
+     * @param filter - Metadata filters
      */
-    similaritySearch(query: string, limit: number, filter?: any): Promise<DocumentChunk[]>;
+    similaritySearch(query: string, limit: number, namespace?: string, filter?: any): Promise<DocumentChunk[]>;
     
     /**
-     * Delete all chunks for a specific document (e.g., if user deletes a file)
+     * Delete all chunks for a specific document
      */
-    deleteChunks(kId: string): Promise<void>;
+    deleteDocumentChunks(K_id: string, namespace?: string): Promise<void>;
+
+    /**
+     * Delete all chunks for a specific project
+     */
+    deleteProjectChunks(projectId: string, namespace?: string): Promise<void>;
 }

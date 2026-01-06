@@ -9,7 +9,7 @@ export class SupabaseKnowledgeRepository implements KnowledgeRepository {
     // --- SAVE ---
     async save(item: KnowledgeItem, client: SupabaseClient): Promise<void> {
         // 1. Fetch Organization ID (Required by Database RLS)
-        const orgId = await this.getOrgIdFromProject(item.projectId, client);
+        const orgId = await this.getOrgId(item.projectId, client);
 
         // 2. Insert into Supabase
         const { error } = await client
@@ -72,6 +72,16 @@ export class SupabaseKnowledgeRepository implements KnowledgeRepository {
         */
     }
 
+    // --- DELETE ---
+    async delete(kId: string, client: SupabaseClient): Promise<void> {
+        const { error } = await client
+            .from('knowledge_items')
+            .delete()
+            .eq('k_id', kId);
+
+        if (error) throw new Error(`Supabase Delete Error: ${error.message}`);
+    }
+
     // --- HELPER: MAP ROW ---
     private mapRow(row: any): KnowledgeItem {
         return {
@@ -89,7 +99,7 @@ export class SupabaseKnowledgeRepository implements KnowledgeRepository {
     }
 
     // --- HELPER: GET ORG ID ---
-    private async getOrgIdFromProject(projectId: string, client: SupabaseClient): Promise<string> {
+    async getOrgId(projectId: string, client: SupabaseClient): Promise<string> {
         const { data } = await client
             .from('projects')
             .select('organization_id')
@@ -97,5 +107,27 @@ export class SupabaseKnowledgeRepository implements KnowledgeRepository {
             .single();
         
         return data?.organization_id || '';
+    }
+
+    // --- HELPER: GET ORG NAMESPACE (Name instead of ID) ---
+    async getOrgNamespace(projectId: string, client: SupabaseClient): Promise<string> {
+        // 1. Get Org ID from Project
+        const { data: project } = await client
+            .from('projects')
+            .select('organization_id')
+            .eq('id', projectId)
+            .single();
+        
+        if (!project?.organization_id) return '';
+
+        // 2. Get Org Name from Organization
+        const { data: org } = await client
+            .from('organizations')
+            .select('name')
+            .eq('id', project.organization_id)
+            .single();
+
+        // 3. Return sanitized name (e.g. "My_Organization")
+        return org?.name ? org.name.trim().replace(/\s+/g, '_') : '';
     }
 }

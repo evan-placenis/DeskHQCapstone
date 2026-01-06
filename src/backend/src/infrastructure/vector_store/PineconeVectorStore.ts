@@ -3,8 +3,6 @@
 //hen we save the vector, we also save the Text Segment inside Pinecone's metadata. This makes retrieval super fast—we get the "numbers" and the "text" back in a single call, so we don't have to look up the text in Postgres again
 
 import { Pinecone } from '@pinecone-database/pinecone';
-import { ScoredPineconeRecord } from '@pinecone-database/pinecone';
-import { v4 as uuidv4 } from 'uuid';
 import dotenv from 'dotenv'
 dotenv.config();
 import { VectorStore } from '../../domain/interfaces/VectorStore';
@@ -31,40 +29,43 @@ export class PineconeVectorStore implements VectorStore {
      * Takes raw text, asks Pinecone to embed it, then saves it.
      */
     // --- 1. UPSERT (Save Text -> Pinecone Embeds It -> Save Vectors) ---
-    async upsertChunks(chunks: DocumentChunk[]): Promise<void> {
+    async upsertChunks(chunks: DocumentChunk[], namespace?: string): Promise<void> {
         const index = this.client.index(this.indexName);
         
         // Extract just the text strings to send to the AI
         const textToEmbed = chunks.map(c => c.textSegment);
 
         // 1. Ask Pinecone to calculate the vectors for us
-        // (This replaces your old "missing embedding vector" error check)
         const embeddings = await this.client.inference.embed(
             this.modelName,
             textToEmbed,
             { inputType: 'passage', truncate: 'END' }
         );
 
+        // Target specific namespace if provided (Organization ID)
+        const targetIndex = namespace ? index.namespace(namespace) : index;
+
         // 2. Merge the new vectors back with your existing chunk data
         const records = chunks.map((chunk, i) => ({
             id: chunk.chunkId,
-            values: (embeddings.data[i] as any).values, // The AI just gave us this!
+            values: (embeddings.data[i] as any).values, 
             metadata: {
                 kId: chunk.kId,
                 text: chunk.textSegment,
                 page: chunk.metadata.pageNumber,
-                section: chunk.metadata.sectionTitle || ''
+                section: chunk.metadata.sectionTitle || '',
+                documentName: chunk.metadata.documentName || '',
+                projectId: chunk.metadata.projectId || '',
             }
         }));
 
         // 3. Save to Database
-        await index.upsert(records);
-        console.log(`✅ Pinecone: Upserted ${chunks.length} chunks via Inference API.`);
+        await targetIndex.upsert(records);
+        console.log(`✅ Pinecone: Upserted ${chunks.length} chunks via Inference API (Namespace: ${namespace || 'default'}).`);
     }
 
     // --- 2. SEARCH (Query Text -> Pinecone Embeds It -> Retrieve Context) ---
-    // Note: Input changed from "vector: number[]" to "query: string"
-    async similaritySearch(query: string, limit: number): Promise<DocumentChunk[]> {
+    async similaritySearch(query: string, limit: number, namespace?: string, filter?: any): Promise<DocumentChunk[]> {
         const index = this.client.index(this.indexName);
 
         // 1. Convert the user's question into a vector
@@ -74,11 +75,15 @@ export class PineconeVectorStore implements VectorStore {
             { inputType: 'query', truncate: 'END' }
         );
 
+        // Target specific namespace if provided
+        const targetIndex = namespace ? index.namespace(namespace) : index;
+
         // 2. Search Pinecone
-        const result = await index.query({
+        const result = await targetIndex.query({
             vector: (queryEmbedding.data[0] as any).values,
             topK: limit,
-            includeMetadata: true
+            includeMetadata: true,
+            filter: filter // Apply metadata filters (e.g. { projectId: "..." })
         });
 
         // 3. Convert back to your App's format
@@ -88,21 +93,38 @@ export class PineconeVectorStore implements VectorStore {
             textSegment: match.metadata?.text as string,
             metadata: {
                 pageNumber: Number(match.metadata?.page),
-                sectionTitle: match.metadata?.section as string
+                sectionTitle: match.metadata?.section as string,
+                documentName: match.metadata?.documentName as string,
+                projectId: match.metadata?.projectId as string
             },
             score: match.score // Confidence score
         }));
     }
 
-    // --- 3. DELETE (Cleanup) ---
-    async deleteChunks(kId: string): Promise<void> {
+    // --- 3. DELETE document (Cleanup) ---
+    async deleteDocumentChunks(kId: string, namespace?: string): Promise<void> {
         const index = this.client.index(this.indexName);
+        const targetIndex = namespace ? index.namespace(namespace) : index;
         
-        // This syntax deletes everything with this specific kId
-        await index.deleteMany({
+        // Delete everything with this specific kId
+        await targetIndex.deleteMany({
             kId: { $eq: kId } 
         });
         
-        console.log(`🗑️ Deleted chunks for Document ${kId}`);
+        console.log(`🗑️ Deleted chunks for Document ${kId} (Namespace: ${namespace || 'default'})`);
+    }
+
+    /**
+     * Delete an entire project's worth of memory
+     */
+    async deleteProjectChunks(projectId: string, namespace?: string): Promise<void> {
+        const index = this.client.index(this.indexName);
+        const targetIndex = namespace ? index.namespace(namespace) : index;
+
+        await targetIndex.deleteMany({
+            projectId: { $eq: projectId }
+        });
+        
+        console.log(`🗑️ Deleted chunks for Project ${projectId} (Namespace: ${namespace || 'default'})`);
     }
 }

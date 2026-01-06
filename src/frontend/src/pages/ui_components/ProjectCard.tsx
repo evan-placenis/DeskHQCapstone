@@ -1,5 +1,5 @@
-import { Project } from "../../App";
-import { FolderOpen, Camera, FileText, ArrowRight, Clock, CheckCircle2 } from "lucide-react";
+import { Project } from "@/frontend/types";
+import { FolderOpen, Camera, FileText, ArrowRight, Clock, CheckCircle2, Trash2 } from "lucide-react";
 import {
   Select,
   SelectContent,
@@ -7,16 +7,25 @@ import {
   SelectTrigger,
   SelectValue,
 } from "./select";
+import { Button } from "./button";
 
 interface ProjectCardProps {
   project: Project;
   onClick: () => void;
   onStatusChange: (projectId: number, newStatus: string) => void;
+  onDelete?: (projectId: number | string) => void;
 }
 
-export function ProjectCard({ project, onClick, onStatusChange }: ProjectCardProps) {
+export function ProjectCard({ project, onClick, onStatusChange, onDelete }: ProjectCardProps) {
   const isCompleted = project.status === "Completed";
   
+  const handleDelete = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (onDelete) {
+      onDelete(project.id);
+    }
+  };
+
   return (
     <div
       className="group p-2 sm:p-4 border-2 border-slate-200 rounded-lg sm:rounded-xl hover:border-theme-primary hover:bg-theme-primary-5 transition-all cursor-pointer"
@@ -52,7 +61,7 @@ export function ProjectCard({ project, onClick, onStatusChange }: ProjectCardPro
         <div className="flex items-center gap-1 sm:gap-2 flex-shrink-0" onClick={(e) => e.stopPropagation()}>
           <Select
             value={project.status}
-            onValueChange={(value) => onStatusChange(project.id, value)}
+            onValueChange={(value) => onStatusChange(project.id as number, value)}
           >
             <SelectTrigger className="w-[90px] sm:w-[120px] rounded-md sm:rounded-lg h-7 sm:h-8 text-[12px] sm:text-sm">
               <SelectValue />
@@ -72,6 +81,18 @@ export function ProjectCard({ project, onClick, onStatusChange }: ProjectCardPro
               </SelectItem>
             </SelectContent>
           </Select>
+          
+          {onDelete && (
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8 text-slate-400 hover:text-red-500 hover:bg-red-50"
+              onClick={handleDelete}
+            >
+              <Trash2 className="w-4 h-4" />
+            </Button>
+          )}
+
           <ArrowRight className="w-4 h-4 sm:w-5 sm:h-5 text-slate-400 group-hover:text-theme-primary group-hover:translate-x-1 transition-all flex-shrink-0" />
         </div>
       </div>

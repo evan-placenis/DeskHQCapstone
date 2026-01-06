@@ -67,12 +67,13 @@ export interface ChatMessage {
 }
 
 export interface User {
-  id: number;
+  id: number | string;
   name: string;
   role: "manager" | "technician" | "admin" | "employee";
   team?: string;
   reportsTo?: number;
   email?: string;
+  organizationId?: string;
 }
 
 export interface Photo {
@@ -96,7 +97,7 @@ export interface PhotoFolder {
 }
 
 export interface KnowledgeDocument {
-  id: number;
+  id: number | string;
   name: string;
   type: "specification" | "standard" | "previous_report" | "guideline" | "reference" | "job_sheet" | "other";
   description: string;
