@@ -2,7 +2,7 @@ import { ReportRepository } from "../domain/interfaces/ReportRepository";
 import { ProjectRepository } from "../domain/interfaces/ProjectRepository";
 import { AgentFactory } from "../AI_Strategies/factory/AgentFactory";
 import { Report } from "../domain/reports/report.types";
-import { v4 as uuidv4 } from 'uuid';
+import { ReportSerializer } from "../AI_Strategies/Data_Serializer/serializer";
 
 import { SupabaseClient } from "@supabase/supabase-js";
 
@@ -26,10 +26,12 @@ export class ReportService {
         projectId: string,
         input: {
             reportType: string;    // 'OBSERVATION'
+            reportWorkflow:string; // 'DISPATCHER' or 'AUTHOR'
             modelName: string;     // 'GPT'
             modeName: string;      // 'IMAGE_AND_TEXT'
             selectedImageIds: string[];
             templateId: string;
+            sections?: any[];      // Custom sections from frontend
         },
         client: SupabaseClient
     ): Promise<Report> {
@@ -42,7 +44,7 @@ export class ReportService {
 
         // 2. Build the Workflow using our Factory INSTANCE
         const workflow = this.agentFactory.createWorkflow(
-            input.reportType,
+            input.reportWorkflow,
             input.modelName,
             input.modeName
         );
@@ -51,7 +53,10 @@ export class ReportService {
         // (This runs: Collect -> RAG -> Agent -> Builder)
         const newReport = await workflow.generateReport(project, {
             selectedImageIds: input.selectedImageIds,
-            template: { templateId: input.templateId } // Mock template
+            templateId: input.templateId,
+            userDefinedGroups: input.sections, // Pass custom sections here
+            writingMode: input.sections && input.sections.length > 0 ? 'USER_DEFINED' : 'AI_DESIGNED',
+            userId: (await client.auth.getUser()).data.user?.id
         });
 
         // 4. Save the result to the Database
@@ -83,13 +88,40 @@ export class ReportService {
         const section = report.sections.find(s => s.id === sectionId);
         if (!section) throw new Error("Section not found");
 
-        section.content = newContent;
+        // 🟢 HYBRID MAGIC: Deserialize Markdown -> JSON
+        // Instead of just doing "section.content = newContent", we parse it.
+        // This checks if the AI swapped an image, changed a list, or just wrote text.
+        const updatedFields = ReportSerializer.deserialize(section, newContent);
+
+        // 4. Merge the updates into the section object
+        // This updates content, and potentially metadata (like image src)
+        Object.assign(section, updatedFields);
         section.isReviewRequired = false;
 
         // 4. Save the new version
         await this.reportRepo.update(report, client);
         
         console.log(`📝 Saved Version ${report.versionNumber - 1} and updated report.`);
+    }
+
+    /**
+     * 🤖 AI READ: Helper for Chatbot to "See" the section
+     * Call this BEFORE sending the prompt to the LLM.
+     */ 
+    public async getSectionContextForAI( //Not in chat service because ReportService owns the Data (fetching, parsing, serializing).
+        reportId: string, 
+        sectionId: string, 
+        client: SupabaseClient
+    ): Promise<string> {
+        const report = await this.reportRepo.getById(reportId, client);
+        if (!report) throw new Error("Report not found");
+
+        const section = report.sections.find(s => s.id === sectionId);
+        if (!section) throw new Error("Section not found");
+
+        // 🟢 HYBRID MAGIC: Serialize JSON -> Markdown
+        // Turns the complex object into simple text the AI can read & edit
+        return ReportSerializer.serialize(section);
     }
     
 

@@ -12,6 +12,7 @@ export async function POST(
         const file = formData.get("file") as File;
         //const userId = formData.get("userId") as string;
         const folderName = formData.get("folderName") as string;
+        const description = formData.get("description") as string;
         
         const resolvedParams = await params;
         const projectId = resolvedParams.projectId;
@@ -51,6 +52,7 @@ export async function POST(
             file,
             file.name,
             folderName,
+            description,
             supabase // Pass user-scoped client
         );
 

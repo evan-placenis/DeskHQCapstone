@@ -37,6 +37,7 @@ export interface Image {
     projectId: string;
     blobUrl: string;         // URL to S3 / Azure Blob Storage
     thumbnailUrl?: string;   // Smaller version for UI
+    description?: string;           // User-provided name/description
     metadata: ImageMetadata;
 }
 

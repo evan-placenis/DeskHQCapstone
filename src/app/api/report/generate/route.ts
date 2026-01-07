@@ -5,7 +5,7 @@ import { createAuthenticatedClient } from "@/app/api/utils";
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { projectId, reportType, modelName, modeName, selectedImageIds, templateId } = body;
+    const { projectId, reportType, reportWorkflow, modelName, modeName, selectedImageIds, templateId, sections } = body;
     const reportService = Container.reportService
 
     // Authenticate
@@ -25,13 +25,35 @@ export async function POST(request: Request) {
     // 🚀 Call the Service
     const newReport = await reportService.generateNewReport(projectId, {
       reportType,
+      reportWorkflow: reportWorkflow || 'AUTHOR', // Default to AUTHOR if missing
       modelName,
       modeName,
       selectedImageIds: selectedImageIds || [],
-      templateId
+      templateId,
+      sections // Pass custom sections
     }, supabase);
 
-    return NextResponse.json(newReport, { status: 201 });
+        // // 🚀 Background Job (Trigger.dev)
+    // // Instead of waiting for the report to generate (which can timeout Vercel),
+    // // we queue it and return "Pending" immediately.
+    
+    // await Container.jobQueue.enqueueReportGeneration(
+    //     projectId, 
+    //     user.id, 
+    //     {
+    //       reportType,
+    //       modelName,
+    //       modeName,
+    //       selectedImageIds: selectedImageIds || [],
+    //       templateId
+    //     }
+    // );
+
+    // return NextResponse.json({ 
+    //     message: "Report generation started in background",
+    //     status: "QUEUED",
+    //     projectId 
+    // }, { status: 202 });
 
   } catch (error: any) {
     console.error("❌ Generate Route Error:", error);

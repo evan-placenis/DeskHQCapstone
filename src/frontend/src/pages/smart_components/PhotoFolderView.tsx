@@ -83,7 +83,7 @@ export function PhotoFolderView({
                         {folderPhotos.length} photo{folderPhotos.length !== 1 ? 's' : ''}
                         {mode === "select" && selectedPhotoIds.length > 0 && (
                           <span className="text-theme-action-primary ml-2">
-                            • {folderPhotos.filter(p => selectedPhotoIds.includes(p.id as number)).length} selected
+                            • {folderPhotos.filter(p => selectedPhotoIds.includes(p.id)).length} selected
                           </span>
                         )}
                       </p>
@@ -132,14 +132,14 @@ export function PhotoFolderView({
                         key={photo.id}
                         className={`group rounded-lg overflow-hidden border transition-all relative ${
                           mode === "select"
-                            ? selectedPhotoIds.includes(photo.id as number)
+                            ? selectedPhotoIds.includes(photo.id)
                               ? "border-2 border-theme-action-primary bg-theme-focus-ring-light"
                               : "border-slate-200 hover:border-theme-hover-border cursor-pointer"
                             : "border-slate-200 hover:border-theme-hover-border"
                         }`}
                         onClick={() => {
                           if (mode === "select" && onTogglePhoto) {
-                            onTogglePhoto(photo.id as number);
+                            onTogglePhoto(photo.id);
                           }
                         }}
                       >
@@ -159,11 +159,11 @@ export function PhotoFolderView({
                           {mode === "select" && (
                             <div className="absolute top-1.5 right-1.5">
                               <div className={`w-5 h-5 rounded-full flex items-center justify-center ${
-                                selectedPhotoIds.includes(photo.id as number)
+                                selectedPhotoIds.includes(photo.id)
                                   ? "bg-theme-action-primary"
                                   : "bg-white border-2 border-slate-300"
                               }`}>
-                                {selectedPhotoIds.includes(photo.id as number) && (
+                                {selectedPhotoIds.includes(photo.id) && (
                                   <Check className="w-3.5 h-3.5 text-white" />
                                 )}
                               </div>
@@ -187,7 +187,7 @@ export function PhotoFolderView({
                                   onClick={(e) => {
                                     e.stopPropagation();
                                     if (confirm(`Delete photo "${photo.name}"?`)) {
-                                      onDeletePhoto(photo.id as number);
+                                      onDeletePhoto(photo.id);
                                     }
                                   }}
                                 >

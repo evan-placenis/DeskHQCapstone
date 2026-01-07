@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Button } from "../ui_components/button";
 import { Input } from "../ui_components/input";
 import { Badge } from "../ui_components/badge";
+import { Checkbox } from "../ui_components/checkbox";
 import {
   Dialog,
   DialogContent,
@@ -23,7 +24,7 @@ interface PhotoUploadModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   existingFolders: PhotoFolder[];
-  onUpload: (files: File[], folderId: number, folderName?: string) => void;
+  onUpload: (files: File[], folderId: number, folderName?: string, useFileNameAsDescription?: boolean) => void;
 }
 
 export function PhotoUploadModal({ 
@@ -39,6 +40,7 @@ export function PhotoUploadModal({
   const [newFolderName, setNewFolderName] = useState("");
   const [isDragging, setIsDragging] = useState(false);
   const [isAudioDragging, setIsAudioDragging] = useState(false);
+  const [useFileNameAsDescription, setUseFileNameAsDescription] = useState(false);
 
   // Auto-generate folder name with today's date
   const generateFolderName = () => {
@@ -128,7 +130,7 @@ export function PhotoUploadModal({
     // TODO: In production, handle audio files upload separately
     console.log("Audio files to upload:", selectedAudioFiles);
 
-    onUpload(selectedFiles, folderId, folderName);
+    onUpload(selectedFiles, folderId, folderName, useFileNameAsDescription);
 
     // Reset form
     setSelectedFiles([]);
@@ -220,7 +222,19 @@ export function PhotoUploadModal({
 
           {/* File Upload Area */}
           <div>
-            <label className="text-sm text-slate-700 mb-2 block">Photos</label>
+            <div className="flex items-center justify-between mb-2">
+              <label className="text-sm text-slate-700 block">Photos</label>
+              <div className="flex items-center space-x-2">
+                <Checkbox 
+                  id="useFileName" 
+                  checked={useFileNameAsDescription} 
+                  onCheckedChange={(checked) => setUseFileNameAsDescription(checked as boolean)} 
+                />
+                <label htmlFor="useFileName" className="text-sm text-slate-600 cursor-pointer select-none">
+                  Fill description with filename
+                </label>
+              </div>
+            </div>
             <div
               className={`border-2 border-dashed rounded-xl p-8 text-center transition-all ${
                 isDragging

@@ -11,15 +11,42 @@ export class SupabaseProjectRepository implements ProjectRepository {
      */
     async getById(projectId: string, client: SupabaseClient): Promise<Project | null> {
         const supabase = client;
-        const { data, error } = await supabase
+        
+        // 1. Fetch Project
+        const { data: projectData, error: projectError } = await supabase
             .from('projects')
             .select('*')
             .eq('id', projectId)
             .single();
 
-        if (error || !data) return null;
+        if (projectError || !projectData) return null;
 
-        return this.mapToDomain(data);
+        // 2. Fetch Images
+        const { data: imageData, error: imageError } = await supabase
+            .from('project_images')
+            .select('*')
+            .eq('project_id', projectId);
+            
+        // Map project first
+        const project = this.mapToDomain(projectData);
+        
+        // 3. Attach Images if found
+        if (imageData && !imageError) {
+            project.images = imageData.map(img => ({
+                imageId: img.id,
+                projectId: img.project_id,
+                blobUrl: img.public_url,
+                // storagePath: img.storage_path, // Not in Image interface yet?
+                description: img.description || "", // Use description from DB
+                metadata: {
+                    uploadedBy: img.uploaded_by,
+                    capturedAt: new Date(img.created_at), // Fallback to upload time
+                    tags: [] // Default empty tags
+                }
+            }));
+        }
+
+        return project;
     }
 
     /**

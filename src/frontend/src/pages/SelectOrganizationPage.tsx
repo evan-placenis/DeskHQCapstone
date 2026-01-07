@@ -1,11 +1,11 @@
 "use client";
 
-import { useState, Suspense } from "react";
+import { useState, useEffect, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@/frontend/pages/ui_components/button";
 import { Label } from "@/frontend/pages/ui_components//label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/frontend/pages/ui_components//card";
-import { Cpu, Building2, ArrowLeft } from "lucide-react";
+import { Cpu, Building2, ArrowLeft, Loader2 } from "lucide-react";
 import { ROUTES } from "@/app/pages/config/routes";
 import {
   Select,
@@ -15,20 +15,33 @@ import {
   SelectValue,
 } from "@/frontend/pages/ui_components//select";
 
-// Mock organization data
-const organizations = [
-  { id: "acme-eng", name: "ACME Engineering Corp" },
-  { id: "techbuild", name: "TechBuild Solutions" },
-  { id: "infrastructure-pro", name: "Infrastructure Pro Ltd" },
-  { id: "global-construct", name: "Global Construction Inc" },
-  { id: "civil-works", name: "Civil Works & Associates" },
-];
-
 function SelectOrganizationForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const email = searchParams.get("email") || "";
   const [selectedOrg, setSelectedOrg] = useState("");
+  const [organizations, setOrganizations] = useState<{ id: string; name: string }[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    async function fetchOrganizations() {
+      try {
+        const response = await fetch("/api/organizations");
+        if (response.ok) {
+          const data = await response.json();
+          setOrganizations(data);
+        } else {
+          console.error("Failed to fetch organizations");
+        }
+      } catch (error) {
+        console.error("Error fetching organizations:", error);
+      } finally {
+        setIsLoading(false);
+      }
+    }
+
+    fetchOrganizations();
+  }, []);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -66,9 +79,9 @@ function SelectOrganizationForm() {
 
             <div className="space-y-2">
               <Label htmlFor="organization">Organization</Label>
-              <Select value={selectedOrg} onValueChange={setSelectedOrg}>
+              <Select value={selectedOrg} onValueChange={setSelectedOrg} disabled={isLoading}>
                 <SelectTrigger className="rounded-lg focus:ring-theme-focus-ring">
-                  <SelectValue placeholder="Select your organization" />
+                  <SelectValue placeholder={isLoading ? "Loading organizations..." : "Select your organization"} />
                 </SelectTrigger>
                 <SelectContent>
                   {organizations.map((org) => (

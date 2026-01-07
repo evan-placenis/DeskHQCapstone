@@ -12,6 +12,7 @@ export class StorageService {
         file: File | Blob, 
         fileName: string,
         folderName: string,
+        description: string | undefined,
         client: SupabaseClient
     ): Promise<any> {
 
@@ -57,6 +58,7 @@ export class StorageService {
                 mime_type: 'image/jpeg',
                 size_bytes: arrayBuffer.byteLength,
                 folder_name: folderName || null, // Store folder name
+                description: description || null, // Store description
                 uploaded_by: userId
             })
             .select()
