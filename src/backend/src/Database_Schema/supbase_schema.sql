@@ -109,6 +109,7 @@ CREATE TABLE public.project_images (
     size_bytes BIGINT,           
     
     folder_name TEXT,            -- Folder/Category name (e.g., "Kitchen", "Living Room")
+    description TEXT,            -- User provided description or AI generated
 
     -- CONTEXT
     uploaded_by UUID REFERENCES public.profiles(id),

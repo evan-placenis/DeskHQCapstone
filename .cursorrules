@@ -117,3 +117,30 @@ The `src/app` directory acts as the **Gateway** for the entire application. It h
 
 1.  **Frontend (`/components`)** never imports from **Backend (`/services`, `/domain`)**.
 2.  **App (`/app`)** is the _only_ place that is allowed to touch both sides (rendering components and calling services).
+
+# ARCHITECTURE RULES: Report Generation & Chatbot
+
+## 1. Report Editing Strategy: "Hybrid Serialization" (Option C)
+
+**Goal:** Combine the structural integrity of JSON with the editing fluidity of LLMs.
+
+- **Data Storage (Database):**
+  - Keep the report stored as **Strict JSON** (`{ id, type, content, metadata }`).
+  - Allows efficient loading, schema enforcement, and partial fetching of sections.
+- **AI Context (The View):**
+  - **Serialization (`toMarkdown`):** Dynamically convert the target JSON section into clean Markdown/XML before sending to the LLM.
+  - **Example:** Convert `{ "type": "image", "src": "url" }` → `![alt](url)`.
+- **Editing Process:**
+  - The LLM edits the **Markdown** representation (Cursor-style streaming text).
+  - **Deserialization (`fromMarkdown`):** The backend parses the LLM's Markdown output back into JSON fields to update the database.
+- **Why:** Prevents "JSON syntax errors" (missing commas/brackets) while allowing the AI to naturally "rewrite" content and swap images using standard text links.
+
+## 2. Chatbot Logic: "Hybrid Tools"
+
+**Goal:** Robustness for different types of user intent.
+
+- **For Text/Content Editing:**
+  - **Use Diff/Patch Streaming.** Do not use function calls for rewriting paragraphs. Pass the text context and let the LLM output the new version directly. Apply changes via diff algorithm.
+- **For RAG & Data Retrieval:**
+  - **Use Strict Tooling (Structured Output).** Use explicit JSON schemas/function calling for "Search Vector Store," "Get Cement Prices," or "Query Metadata."
+  - _Reasoning:_ Separates the "Creative Writer" (fluid text) from the "Database Admin" (strict logic).

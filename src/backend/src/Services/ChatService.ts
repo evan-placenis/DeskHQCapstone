@@ -25,14 +25,15 @@ export class ChatService {
     public async handleUserMessage(
         sessionId: string, 
         userText: string,
-        client: SupabaseClient
+        client: SupabaseClient,
+        activeSectionId?: string // 👈 New Optional Param: Is the user looking at a specific section?
     ): Promise<ChatMessage> {
         
-        // 1. Fetch Context (Load the session history)
+        // 1. Fetch Session
         const session = await this.repo.getSessionById(sessionId, client);
         if (!session) throw new Error("Session not found");
 
-        // 2. Save USER Message to DB
+        // 2. Save USER Message
         const userMsg: ChatMessage = {
             messageId: uuidv4(),
             sessionId: sessionId,
@@ -41,19 +42,35 @@ export class ChatService {
             timestamp: new Date()
         };
         await this.repo.addMessage(sessionId, userMsg, client);
-
         await this.repo.updateSessionTimestamp(sessionId, new Date(), client);
 
-        // 3. Ask the AI (The Brain) 🧠
-        // We pass the session so the AI knows the project context
-        const aiMsg = await this.chatAgent.processUserMessage(session, userText);
+        // 3. 🔍 FETCH CONTEXT (The "Glue")
+        // If the user is currently editing a specific section, the AI needs to "see" it.
+        let reportContext = "";
+        if (session.reportId && activeSectionId) {
+             // 👇 This calls the function inside ReportService
+             reportContext = await this.reportService.getSectionContextForAI(
+                 session.reportId, 
+                 activeSectionId, 
+                 client
+             );
+        }
 
-        // 4. Save AI Message to DB
+        // 4. Ask the AI 🧠
+        // We pass the new 'reportContext' string to the Agent
+        const aiMsg = await this.chatAgent.processUserMessage(
+            session, 
+            userText, 
+            reportContext 
+        );
+
+        // 5. Save AI Message
         await this.repo.addMessage(sessionId, aiMsg, client);
 
-        // 5. Return the AI response so the UI can show it immediately
         return aiMsg;
     }
+
+    
 
     /**
      * LOGIC: User clicked "Accept" on the UI. 

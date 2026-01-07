@@ -76,5 +76,21 @@ export class UserService {
         if (error) return null;
         return data;
     }
+
+    /**
+     * Get all organizations
+     */
+    async getAllOrganizations(): Promise<{ id: string; name: string }[]> {
+        const { data, error } = await this.supabaseAdmin
+            .from('organizations')
+            .select('id, name')
+            .order('name');
+
+        if (error) {
+            console.error("Error fetching organizations:", error);
+            return [];
+        }
+        return data || [];
+    }
 }
 

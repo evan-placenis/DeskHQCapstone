@@ -9,7 +9,9 @@ import { grokClient } from '../../infrastructure/llm/grokClient'; // Import from
 
 
 import { ReportGenerationWorkflow } from "../ReportWorkflows/ReportGenerationWorkflow"
-import { ObservationReportWorkflow } from "../ReportWorkflows/ObservationReportWorkflow";
+import { ParallelDispatcher } from "../ReportWorkflows/workflow/ParallelDispatcher";
+import { SequentialAuthor } from "../ReportWorkflows/workflow/SequentialAuthor";
+import { ReportBlueprint } from "../../domain/reports/templates/report_temples";
 
 
 // The Chat System
@@ -45,25 +47,25 @@ export class AgentFactory {
   
  // 3. Create Workflow (Now Public)
   public createWorkflow(
-      reportType: string, 
+      reportWorkflow: string, 
       modelName: string, 
       modeName: string
-  ): ReportGenerationWorkflow {
+  ): ReportGenerationWorkflow<ReportBlueprint> {
       
     // 1. Create the dependencies first
     const agent: AgentStrategy = this.createStrategy(modelName);
     const mode: ExecutionModeStrategy = this.createMode(modeName);
 
     // 2. Inject them into the correct Workflow
-    switch (reportType.toUpperCase()) {
-        case 'OBSERVATION':
-            return new ObservationReportWorkflow(agent, mode);
+    switch (reportWorkflow.toUpperCase()) {
+        case 'DISPATCHER':
+            return new ParallelDispatcher(agent, mode);
         
-        case 'INSPECTION':
-            throw new Error("Inspection Report not implemented yet.");
+        case 'AUTHOR':
+            return new SequentialAuthor(agent, mode);
 
         default:
-            throw new Error(`Unknown report type: ${reportType}`);
+            throw new Error(`Unknown report type: ${reportWorkflow}`);
     }
   }
 

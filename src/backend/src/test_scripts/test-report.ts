@@ -1,6 +1,6 @@
 // src/test_scripts/test-report.ts
 
-import { ObservationReportWorkflow } from '../AI_Strategies/ReportWorkflows/ObservationReportWorkflow';
+import { ObservationReportWorkflow } from '../AI_Strategies/ReportWorkflows/Parallel/Dispatcher';
 import { grokClient } from '../infrastructure/llm/grokClient'; // Your real AI
 import { GrokAgent } from '../AI_Strategies/strategies/LLM/Grok';
 import { Project } from '../domain/core/project.types';

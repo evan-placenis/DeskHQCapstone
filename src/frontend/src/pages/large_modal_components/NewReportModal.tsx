@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "../ui_components/button";
 import { Input } from "../ui_components/input";
 import { Label } from "../ui_components/label";
@@ -23,7 +23,7 @@ import {
   SelectValue,
 } from "../ui_components/select";
 import { Separator } from "../ui_components/separator";
-import { ImageWithFallback } from "../figma/ImageWithFallback";
+import { SecureImage } from "../smart_components/SecureImage";
 import { PhotoFolderView } from "../smart_components/PhotoFolderView";
 import { Photo, PhotoFolder, ReportTemplate } from "@/frontend/types";
 import { 
@@ -53,7 +53,8 @@ import {
 interface Section {
   id: number;
   title: string;
-  photoIds: number[];
+  photoIds: string[];
+  isCustom?: boolean; // Flag to identify user-added sections
 }
 
 interface NewReportModalProps {
@@ -61,207 +62,71 @@ interface NewReportModalProps {
   onOpenChange: (open: boolean) => void;
   projectName: string;
   onCreateReport: (reportData: any) => void;
+  photos: Photo[];
+  folders: PhotoFolder[];
 }
 
 // ============================================================================
-// REPORT TEMPLATES - Easy to extend with new templates
+// REPORT TEMPLATES - Fetched from Backend
 // ============================================================================
-const REPORT_TEMPLATES: ReportTemplate[] = [
-  {
-    id: "observation",
-    name: "Observation Report",
-    description: "General site observations with photos and field notes",
-    icon: ClipboardList,
-    sections: [
-      { title: "Executive Summary" },
-      { title: "Site Conditions" },
-      { title: "Observations" },
-      { title: "Recommendations" },
-    ]
-  },
-  {
-    id: "bca",
-    name: "BCA Report",
-    description: "Building Code Assessment with compliance analysis",
-    icon: Building,
-    sections: [
-      { title: "Executive Summary" },
-      { title: "Building Information" },
-      { title: "Code Compliance Review" },
-      { title: "Non-Compliance Issues" },
-      { title: "Recommendations" },
-      { title: "Appendix" },
-    ]
-  },
-  {
-    id: "structural",
-    name: "Structural Assessment",
-    description: "Structural integrity and load-bearing analysis",
-    icon: HardHat,
-    sections: [
-      { title: "Executive Summary" },
-      { title: "Structural Overview" },
-      { title: "Load Analysis" },
-      { title: "Material Conditions" },
-      { title: "Deficiencies" },
-      { title: "Recommendations" },
-    ]
-  },
-  {
-    id: "safety",
-    name: "Safety Inspection",
-    description: "Safety compliance and hazard identification",
-    icon: AlertTriangle,
-    sections: [
-      { title: "Executive Summary" },
-      { title: "Site Safety Overview" },
-      { title: "Hazards Identified" },
-      { title: "Safety Compliance" },
-      { title: "Corrective Actions" },
-    ]
-  },
-  {
-    id: "material",
-    name: "Material Testing Report",
-    description: "Laboratory and field testing results for materials",
-    icon: FlaskConical,
-    sections: [
-      { title: "Executive Summary" },
-      { title: "Test Methodology" },
-      { title: "Test Results" },
-      { title: "Analysis" },
-      { title: "Conclusions" },
-    ]
-  },
-  {
-    id: "progress",
-    name: "Progress Report",
-    description: "Project timeline and milestone tracking",
-    icon: TrendingUp,
-    sections: [
-      { title: "Executive Summary" },
-      { title: "Progress Overview" },
-      { title: "Completed Work" },
-      { title: "Ongoing Activities" },
-      { title: "Upcoming Milestones" },
-      { title: "Issues & Risks" },
-    ]
-  },
-  {
-    id: "custom",
-    name: "Custom Report",
-    description: "Start from scratch with your own structure",
-    icon: FileText,
-    sections: [
-      { title: "Introduction" },
-      { title: "Main Content" },
-      { title: "Conclusion" },
-    ]
-  },
-];
 
-// Mock photos from project
-const mockProjectPhotos: Photo[] = [
-  {
-    id: 1,
-    url: "https://images.unsplash.com/photo-1599995903128-531fc7fb694b?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxjb25zdHJ1Y3Rpb24lMjBzaXRlfGVufDF8fHx8MTc2Mjg2NTEwNnww&ixlib=rb-4.1.0&q=80&w=1080",
-    name: "Foundation Overview",
-    date: "2025-11-10",
-    location: "Section A",
-    folderId: 1
-  },
-  {
-    id: 2,
-    url: "https://images.unsplash.com/photo-1691947563165-28011f40d786?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxidWlsZGluZyUyMGluZnJhc3RydWN0dXJlfGVufDF8fHx8MTc2Mjg5NTU4Mnww&ixlib=rb-4.1.0&q=80&w=1080",
-    name: "Structural Support",
-    date: "2025-11-10",
-    location: "Section A",
-    folderId: 1
-  },
-  {
-    id: 3,
-    url: "https://images.unsplash.com/photo-1645258044234-f4ba2655baf1?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxlbmdpbmVlcmluZyUyMGVxdWlwbWVudHxlbnwxfHx8fDE3NjI4OTU1ODJ8MA&ixlib=rb-4.1.0&q=80&w=1080",
-    name: "Equipment Setup",
-    date: "2025-11-09",
-    location: "Section B",
-    folderId: 2
-  },
-  {
-    id: 4,
-    url: "https://images.unsplash.com/photo-1738528575208-b9ccdca8acaf?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxpbmR1c3RyaWFsJTIwc2l0ZXxlbnwxfHx8fDE3NjI4OTU1ODJ8MA&ixlib=rb-4.1.0&q=80&w=1080",
-    name: "Site Overview",
-    date: "2025-11-09",
-    location: "Main Area",
-    folderId: 2
-  },
-  {
-    id: 5,
-    url: "https://images.unsplash.com/photo-1599995903128-531fc7fb694b?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxjb25zdHJ1Y3Rpb24lMjBzaXRlfGVufDF8fHx8MTc2Mjg2NTEwNnww&ixlib=rb-4.1.0&q=80&w=1080",
-    name: "Concrete Detail",
-    date: "2025-11-07",
-    location: "Section C",
-    folderId: 3
-  },
-  {
-    id: 6,
-    url: "https://images.unsplash.com/photo-1691947563165-28011f40d786?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxidWlsZGluZyUyMGluZnJhc3RydWN0dXJlfGVufDF8fHx8MTc2Mjg5NTU4Mnww&ixlib=rb-4.1.0&q=80&w=1080",
-    name: "Load Test Setup",
-    date: "2025-11-07",
-    location: "Section A",
-    folderId: 3
-  },
-];
-
-const mockPhotoFolders: PhotoFolder[] = [
-  {
-    id: 1,
-    name: "Site Visit 1 - 2025-11-10 - JD",
-    createdDate: "2025-11-10"
-  },
-  {
-    id: 2,
-    name: "Site Visit 2 - 2025-11-09 - SS",
-    createdDate: "2025-11-09"
-  },
-  {
-    id: 3,
-    name: "Site Visit 3 - 2025-11-07 - JD",
-    createdDate: "2025-11-07"
-  },
-];
-
-export function NewReportModal({ open, onOpenChange, projectName, onCreateReport }: NewReportModalProps) {
+export function NewReportModal({ open, onOpenChange, projectName, onCreateReport, photos, folders }: NewReportModalProps) {
   const [step, setStep] = useState(1);
+  const [templates, setTemplates] = useState<ReportTemplate[]>([]);
   const [selectedTemplate, setSelectedTemplate] = useState<string | null>(null);
   const [title, setTitle] = useState("");
-  const [selectedPhotoIds, setSelectedPhotoIds] = useState<number[]>([]);
+  const [selectedPhotoIds, setSelectedPhotoIds] = useState<string[]>([]);
   const [reportMode, setReportMode] = useState<"auto" | "manual">("auto");
   const [sections, setSections] = useState<Section[]>([]);
   const [reportStyle, setReportStyle] = useState("comprehensive");
-  const [reportTone, setReportTone] = useState("professional");
-  const [draggedPhoto, setDraggedPhoto] = useState<number | null>(null);
+  const [reportWorkflow, setReportWorkflow] = useState("AUTHOR");
+  const [processingMode, setProcessingMode] = useState<"TEXT_ONLY" | "IMAGE_AND_TEXT">("IMAGE_AND_TEXT");
+  const [draggedPhoto, setDraggedPhoto] = useState<string | null>(null);
+
+  // Fetch templates on mount
+  useEffect(() => {
+    async function fetchTemplates() {
+      try {
+        const response = await fetch("/api/report/templates");
+        if (response.ok) {
+          const data = await response.json();
+          // Map string icons back to components if needed, or update Type
+          const mappedTemplates = data.map((t: any) => ({
+            ...t,
+            icon: t.icon === "ClipboardList" ? ClipboardList : FileText // Simple mapper for now
+          }));
+          setTemplates(mappedTemplates);
+        }
+      } catch (error) {
+        console.error("Failed to fetch templates:", error);
+      }
+    }
+    fetchTemplates();
+  }, []);
 
   // Get the selected template object
-  const template = REPORT_TEMPLATES.find(t => t.id === selectedTemplate);
+  const template = templates.find(t => t.id === selectedTemplate);
 
   // Helper: Convert template sections to Section objects with IDs
   const initializeSectionsFromTemplate = (templateId: string): Section[] => {
-    const template = REPORT_TEMPLATES.find(t => t.id === templateId);
+    const template = templates.find(t => t.id === templateId);
     if (!template) return [];
     
     return template.sections.map((section, index) => ({
       id: Date.now() + index,
       title: section.title,
-      photoIds: []
+      photoIds: [],
+      isCustom: false // Standard sections are not custom
     }));
   };
 
   // Helper: Toggle photo selection
-  const togglePhotoSelection = (photoId: number) => {
+  const togglePhotoSelection = (photoId: string | number) => {
+    const id = String(photoId);
     setSelectedPhotoIds(prev =>
-      prev.includes(photoId)
-        ? prev.filter(id => id !== photoId)
-        : [...prev, photoId]
+      prev.includes(id)
+        ? prev.filter(pId => pId !== id)
+        : [...prev, id]
     );
   };
 
@@ -270,7 +135,8 @@ export function NewReportModal({ open, onOpenChange, projectName, onCreateReport
     const newSection: Section = {
       id: Date.now(),
       title: "New Section",
-      photoIds: []
+      photoIds: [],
+      isCustom: true // User added sections are custom
     };
     setSections([...sections, newSection]);
   };
@@ -283,13 +149,13 @@ export function NewReportModal({ open, onOpenChange, projectName, onCreateReport
   // Helper: Update section title
   const updateSectionTitle = (sectionId: number, title: string) => {
     setSections(sections.map(s =>
-      s.id === sectionId ? { ...s, title } : s
+      s.id === sectionId ? { ...s, title, isCustom: true } : s // Renaming a standard section makes it custom
     ));
   };
 
   // Helper: Handle drag start
-  const handleDragStart = (photoId: number) => {
-    setDraggedPhoto(photoId);
+  const handleDragStart = (photoId: string | number) => {
+    setDraggedPhoto(String(photoId));
   };
 
   // Helper: Handle drop at end of section
@@ -328,7 +194,7 @@ export function NewReportModal({ open, onOpenChange, projectName, onCreateReport
   };
 
   // Helper: Remove photo from section
-  const removePhotoFromSection = (sectionId: number, photoId: number) => {
+  const removePhotoFromSection = (sectionId: number, photoId: string) => {
     setSections(sections.map(section =>
       section.id === sectionId
         ? { ...section, photoIds: section.photoIds.filter(id => id !== photoId) }
@@ -337,7 +203,7 @@ export function NewReportModal({ open, onOpenChange, projectName, onCreateReport
   };
 
   // Helper: Duplicate photo in section
-  const duplicatePhotoInSection = (sectionId: number, photoId: number) => {
+  const duplicatePhotoInSection = (sectionId: number, photoId: string) => {
     setSections(sections.map(section => {
       if (section.id === sectionId) {
         const index = section.photoIds.indexOf(photoId);
@@ -374,7 +240,9 @@ export function NewReportModal({ open, onOpenChange, projectName, onCreateReport
       mode: reportMode,
       sections: reportMode === "manual" ? sections : undefined,
       style: reportStyle,
-      tone: reportTone
+      reportWorkflow, // Replaces tone
+      processingMode: processingMode,
+      reportType: selectedTemplate ? selectedTemplate.toUpperCase() : "OBSERVATION" 
     };
     
     onCreateReport(reportData);
@@ -387,10 +255,11 @@ export function NewReportModal({ open, onOpenChange, projectName, onCreateReport
     setReportMode("auto");
     setSections([]);
     setReportStyle("comprehensive");
-    setReportTone("professional");
+    setReportWorkflow("AUTHOR");
+    setProcessingMode("IMAGE_AND_TEXT");
   };
 
-  const selectedPhotos = mockProjectPhotos.filter(p => selectedPhotoIds.includes(p.id));
+  const selectedPhotos = photos.filter(p => selectedPhotoIds.includes(String(p.id)));
 
   // Helper: Check if current step is valid
   const isStepValid = () => {
@@ -428,7 +297,7 @@ export function NewReportModal({ open, onOpenChange, projectName, onCreateReport
           {/* Step 1: Template Selection */}
           {step === 1 && (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-4">
-              {REPORT_TEMPLATES.map((template) => {
+              {templates.map((template) => {
                 const Icon = template.icon;
                 return (
                   <div
@@ -527,19 +396,19 @@ export function NewReportModal({ open, onOpenChange, projectName, onCreateReport
                     size="sm"
                     onClick={() => 
                       setSelectedPhotoIds(
-                        selectedPhotoIds.length === mockProjectPhotos.length 
+                        selectedPhotoIds.length === photos.length 
                           ? [] 
-                          : mockProjectPhotos.map(p => p.id)
+                          : photos.map(p => String(p.id))
                       )
                     }
                     className="rounded-lg"
                   >
-                    {selectedPhotoIds.length === mockProjectPhotos.length ? "Deselect All" : "Select All"}
+                    {selectedPhotoIds.length === photos.length ? "Deselect All" : "Select All"}
                   </Button>
                 </div>
                 <PhotoFolderView
-                  folders={mockPhotoFolders}
-                  photos={mockProjectPhotos}
+                  folders={folders}
+                  photos={photos}
                   mode="select"
                   selectedPhotoIds={selectedPhotoIds}
                   onTogglePhoto={togglePhotoSelection}
@@ -626,8 +495,9 @@ export function NewReportModal({ open, onOpenChange, projectName, onCreateReport
                         }`}
                         title={photo.name}
                       >
-                        <ImageWithFallback
+                        <SecureImage
                           src={photo.url}
+                          storagePath={photo.storagePath}
                           alt={photo.name}
                           className="w-full h-full object-cover"
                         />
@@ -689,7 +559,7 @@ export function NewReportModal({ open, onOpenChange, projectName, onCreateReport
                           ) : (
                             <div className="flex flex-wrap gap-1">
                               {section.photoIds.map((photoId, photoIndex) => {
-                                const photo = mockProjectPhotos.find(p => p.id === photoId);
+                                const photo = photos.find(p => String(p.id) === photoId);
                                 if (!photo) return null;
                                 return (
                                   <div key={`${section.id}-${photoId}-${photoIndex}`} className="inline-flex items-center">
@@ -709,8 +579,9 @@ export function NewReportModal({ open, onOpenChange, projectName, onCreateReport
                                     
                                     {/* Photo thumbnail */}
                                     <div className="relative w-16 h-16 rounded-lg overflow-hidden border-2 border-slate-200 group mx-1">
-                                      <ImageWithFallback
+                                      <SecureImage
                                         src={photo.url}
+                                        storagePath={photo.storagePath}
                                         alt={photo.name}
                                         className="w-full h-full object-cover"
                                       />
@@ -834,20 +705,46 @@ export function NewReportModal({ open, onOpenChange, projectName, onCreateReport
               </div>
 
               <div className="space-y-3">
-                <Label>Report Tone</Label>
-                <Select value={reportTone} onValueChange={setReportTone}>
+                <Label>AI Processing Mode</Label>
+                <Select value={processingMode} onValueChange={(val) => setProcessingMode(val as any)}>
                   <SelectTrigger className="rounded-lg">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent className="rounded-lg">
-                    <SelectItem value="professional" className="rounded-md">
-                      Professional
+                    <SelectItem value="IMAGE_AND_TEXT" className="rounded-md">
+                      <div>
+                        <p>Image & Text Analysis</p>
+                        <p className="text-xs text-slate-500">Analyze photos and generate detailed descriptions</p>
+                      </div>
                     </SelectItem>
-                    <SelectItem value="formal" className="rounded-md">
-                      Formal
+                    <SelectItem value="TEXT_ONLY" className="rounded-md">
+                      <div>
+                        <p>Text Only (Faster)</p>
+                        <p className="text-xs text-slate-500">Skip deep image analysis, focus on structure</p>
+                      </div>
                     </SelectItem>
-                    <SelectItem value="conversational" className="rounded-md">
-                      Conversational
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-3">
+                <Label>Generation Strategy</Label>
+                <Select value={reportWorkflow} onValueChange={setReportWorkflow}>
+                  <SelectTrigger className="rounded-lg">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent className="rounded-lg">
+                    <SelectItem value="AUTHOR" className="rounded-md">
+                      <div>
+                        <p>Sequential Author</p>
+                        <p className="text-xs text-slate-500">Writes one section at a time (Higher Quality)</p>
+                      </div>
+                    </SelectItem>
+                    <SelectItem value="DISPATCHER" className="rounded-md">
+                      <div>
+                        <p>Parallel Dispatcher</p>
+                        <p className="text-xs text-slate-500">Generates all sections at once (Faster)</p>
+                      </div>
                     </SelectItem>
                   </SelectContent>
                 </Select>
@@ -881,8 +778,12 @@ export function NewReportModal({ open, onOpenChange, projectName, onCreateReport
                     <span className="text-slate-900 capitalize">{reportStyle}</span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-slate-600">Tone:</span>
-                    <span className="text-slate-900 capitalize">{reportTone}</span>
+                    <span className="text-slate-600">Workflow:</span>
+                    <span className="text-slate-900 capitalize">{reportWorkflow === "AUTHOR" ? "Sequential" : "Parallel"}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-slate-600">Processing:</span>
+                    <span className="text-slate-900">{processingMode === "IMAGE_AND_TEXT" ? "Image & Text" : "Text Only"}</span>
                   </div>
                 </div>
               </div>

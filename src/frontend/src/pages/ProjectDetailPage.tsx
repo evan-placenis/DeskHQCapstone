@@ -541,13 +541,13 @@ export function ProjectDetailPage({
         projectId: project.id,
         title: reportData.title,
         templateId: reportData.templateId,
-        modeName: reportData.mode,
+        modeName: reportData.processingMode,
         selectedImageIds: reportData.photoIds,
         sections: reportData.sections,
         style: reportData.style,
-        tone: reportData.tone,
+        reportWorkflow: reportData.reportWorkflow,
         // Additional fields that might be needed
-        reportType: "generation" 
+        reportType: reportData.reportType 
       };
 
       const response = await fetch("/api/report/generate", {
@@ -562,9 +562,9 @@ export function ProjectDetailPage({
       console.log("Backend response:", data);
 
       if (response.ok) {
-        alert(`Report generation started! Backend received: ${JSON.stringify(data.receivedData, null, 2)}`);
-        // Navigate to the (mock) new report
-        onSelectReport(999); 
+        alert(`Report generation started! ID: ${data.reportId}`);
+        // Navigate to the new report
+        onSelectReport(data.reportId); 
       } else {
         alert(`Error: ${data.error}`);
       }
@@ -807,7 +807,7 @@ export function ProjectDetailPage({
     });
   };
 
-  const handleUploadPhotos = async (files: File[], folderId: number, folderName?: string) => {
+  const handleUploadPhotos = async (files: File[], folderId: number, folderName?: string, useFileNameAsDescription?: boolean) => {
     if (!user) {
       alert("Please log in to upload photos.");
       return;
@@ -857,6 +857,11 @@ export function ProjectDetailPage({
             if (targetFolderName) {
                 formData.append('folderName', targetFolderName);
             }
+            if (useFileNameAsDescription) {
+                // Remove extension for cleaner description
+                const nameWithoutExt = file.name.replace(/\.[^/.]+$/, "");
+                formData.append('description', nameWithoutExt);
+            }
             
             const response = await fetch(`/api/project/${project.id}/images`, {
                 method: 'POST',
@@ -879,7 +884,7 @@ export function ProjectDetailPage({
                 date: new Date(dbImage.created_at).toISOString().split('T')[0],
                 location: "Project Site",
                 linkedReport: null,
-                description: "",
+                description: dbImage.description || (useFileNameAsDescription ? file.name.replace(/\.[^/.]+$/, "") : ""),
                 folderId: targetFolderId
             } as Photo;
 
@@ -1099,7 +1104,7 @@ export function ProjectDetailPage({
                             date: new Date(img.created_at).toISOString().split('T')[0],
                             location: "Uploaded",
                             linkedReport: null,
-                            description: "",
+                            description: img.description || "",
                             folderId: folder ? folder.id : 1 // Use found folder ID or default
                         };
                     });
@@ -1639,6 +1644,8 @@ export function ProjectDetailPage({
         onOpenChange={setIsNewReportModalOpen}
         projectName={project.name}
         onCreateReport={handleCreateReport}
+        photos={photos}
+        folders={photoFolders}
       />
 
       <PhotoDetailModal

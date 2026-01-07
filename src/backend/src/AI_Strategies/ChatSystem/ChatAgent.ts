@@ -14,44 +14,64 @@ export class ChatAgent {
     }
 
     /**
-     * The main entry point. User sends text -> AI returns a Message.
+     * The Brain 🧠
+     * Now accepts 'reportContext' (the Markdown string of the section being viewed)
      */
     public async processUserMessage(
         session: ChatSession, 
-        userQuery: string
+        userQuery: string,
+        reportContext?: string // 👈 NEW: The "View" from the ReportService
     ): Promise<ChatMessage> {
         
-        console.log(`💬 ChatAgent: Processing "${userQuery}" for Project ${session.projectId}`);
+        console.log(`💬 ChatAgent: Processing "${userQuery}"`);
 
-        // 1. Check intent: Is this a question or an edit request?
-        // (In a real app, you'd ask the LLM to classify the intent first)
-        const isEditRequest = userQuery.toLowerCase().includes("change") || userQuery.toLowerCase().includes("rewrite");
+        // 1. DETERMINE INTENT (Simulated)
+        // If we have reportContext, the user is likely looking at a section, so we prioritize editing.
+        const isEditRequest = (userQuery.toLowerCase().includes("change") || userQuery.toLowerCase().includes("rewrite")) && !!reportContext;
 
         let responseContent = "";
         let suggestion: EditSuggestion | undefined = undefined;
 
-        if (isEditRequest && session.reportId) {
-            // --- EDIT MODE ---
-            // Logic: "Change the observation section to mention water damage"
-            responseContent = "I've drafted a change for the Observation section.";
+        if (isEditRequest && reportContext) {
+            // --- ✏️ HYBRID EDIT MODE ---
+            
+            // 🛑 REAL LLM CALL WOULD LOOK LIKE THIS:
+            /* const prompt = `
+                You are a technical editor. 
+                Task: Rewrite the following Markdown content based on the User Instruction.
+                
+                USER INSTRUCTION: "${userQuery}"
+                
+                CURRENT CONTENT (Markdown):
+                ${reportContext}
+                
+                Output only the new Markdown.
+            `;
+            const newMarkdown = await llm.generate(prompt); 
+            */
+
+            // ⚡ MOCK RESPONSE (Simulating the LLM's output)
+            // Pretend the LLM rewrote the markdown
+            const mockNewMarkdown = `${reportContext}\n\n(Updated: ${userQuery})`; 
+
+            responseContent = "I've drafted a change for this section based on your request.";
             
             suggestion = {
-                targetSectionId: "section_obs_1", // In reality, AI finds this ID
-                originalText: "The concrete is dry.",
-                suggestedText: "The concrete shows significant signs of water damage.",
-                reason: "User requested update based on new findings.",
+                targetSectionId: "active_section_id", // In reality, you pass this ID in or infer it
+                originalText: reportContext,          // The "Before" state
+                suggestedText: mockNewMarkdown,       // The "After" state (Markdown)
+                reason: "User requested update via chat.",
                 status: 'PENDING'
             };
 
         } else {
-            // --- RAG Q&A MODE ---
-            // Logic: "What is the concrete strength requirement?"
+            // --- 🔍 RAG Q&A MODE ---
+            // If no context was provided, or user asked a general question
+            
             // 1. Retrieve RAG context (Placeholder)
-            const context = ["Spec 4.2: Concrete must be 4000psi"];
+            const retrievedDocs = ["Spec 4.2: Concrete must be 4000psi"];
             
             // 2. Ask LLM
-            // We create a dummy context object here to satisfy the interface
-            // In reality, you'd make a specific ChatContext type
             responseContent = `Based on the specs, the requirement is 4000psi.`;
         }
 
@@ -61,7 +81,7 @@ export class ChatAgent {
             sessionId: session.sessionId,
             sender: 'AI',
             content: responseContent,
-            suggestion: suggestion, // Attach the diff if it exists
+            suggestion: suggestion, // Attach the 'diff' object
             timestamp: new Date()
         };
 
