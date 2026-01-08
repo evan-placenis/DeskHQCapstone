@@ -18,6 +18,7 @@ import { HighlightableText } from "../smart_components/HighlightableText";
 import { AIChatInput } from "./AIChatInput";
 import { PeerReviewPanel } from "../smart_components/PeerReviewPanel";
 import { ImageWithFallback } from "../figma/ImageWithFallback";
+import { SecureImage } from "../smart_components/SecureImage";
 import { PeerReview, ReportContent, ChatMessage } from "@/frontend/types";
 import {
   ArrowLeft,
@@ -44,14 +45,14 @@ import {
 interface SelectedContext {
   type: "photo" | "section" | "summary" | "text";
   content: string;
-  id?: number;
+  id?: number | string;
   label: string;
   highlightedText?: string;
 }
 
 interface PendingChange {
   messageId: number;
-  sectionId?: number;
+  sectionId?: number | string;
   field?: string;
   oldValue: string;
   newValue: string;
@@ -62,14 +63,14 @@ interface ReportLayoutProps {
   mode: "edit" | "peer-review";
   reportContent: ReportContent;
   onContentChange: (updates: Partial<ReportContent>) => void;
-  onSectionChange: (sectionId: number, newContent: string) => void;
+  onSectionChange: (sectionId: number | string, newContent: string) => void;
   
   // Header props
   onBack: () => void;
   backLabel?: string;
   
   // Photos
-  photos?: Array<{ id: number; url: string; caption?: string; section?: string }>;
+  photos?: Array<{ id: number | string; url: string; caption?: string; section?: string }>;
   
   // Status
   reportStatus: string;
@@ -84,7 +85,7 @@ interface ReportLayoutProps {
   // Peer Review (only for peer-review mode)
   peerReview?: PeerReview;
   onAddReviewComment?: (comment: string, type: "issue" | "suggestion" | "comment") => void;
-  onAddHighlightComment?: (highlightedText: string, sectionId: number, comment: string, type: "issue" | "suggestion" | "comment") => void;
+  onAddHighlightComment?: (highlightedText: string, sectionId: number | string, comment: string, type: "issue" | "suggestion" | "comment") => void;
   onResolveComment?: (commentId: number) => void;
   onCompleteReview?: () => void;
   onOpenRatingModal?: () => void;
@@ -329,7 +330,7 @@ export function ReportLayout({
     };
   };
 
-  const handleHighlightEdit = (highlightedText: string, sectionId: number, newText: string) => {
+  const handleHighlightEdit = (highlightedText: string, sectionId: number | string, newText: string) => {
     // Find the section content
     if (sectionId === 0) {
       // Summary section
@@ -380,7 +381,7 @@ export function ReportLayout({
     }
   };
 
-  const isItemSelected = (type: string, id?: number) => {
+  const isItemSelected = (type: string, id?: number | string) => {
     return selectedContexts.some(
       (c) => c.type === type && 
       (id !== undefined ? c.id === id : c.type === "summary")
@@ -391,7 +392,7 @@ export function ReportLayout({
     setSelectedContexts(selectedContexts.filter((_, i) => i !== index));
   };
 
-  const handleTextSelection = (text: string, sectionId: number | undefined, sectionTitle: string) => {
+  const handleTextSelection = (text: string, sectionId: number | string | undefined, sectionTitle: string) => {
     if (!isSelectionMode) return;
 
     const selectedText = text.trim();
@@ -416,7 +417,7 @@ export function ReportLayout({
     }
   };
 
-  const handleRequestRewrite = (currentText: string, instructions: string, sectionId?: number, field?: string) => {
+  const handleRequestRewrite = (currentText: string, instructions: string, sectionId?: number | string, field?: string) => {
     // Create a user message with the rewrite request
     const userMessage: ChatMessage = {
       id: chatMessages.length + 1,
@@ -657,55 +658,6 @@ export function ReportLayout({
                     </div>
                   </div>
 
-                  {/* Photos Grid */}
-                  {photos.length > 0 && (
-                    <div>
-                      <h3 className="text-slate-900 mb-3">Photos</h3>
-                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                        {photos.map((photo) => {
-                          const contextData: SelectedContext = {
-                            type: "photo",
-                            id: photo.id,
-                            content: photo.url,
-                            label: photo.caption || `Photo ${photo.id}`
-                          };
-                          const selected = isItemSelected("photo", photo.id);
-
-                          return (
-                            <div 
-                              key={photo.id} 
-                              className={`relative group cursor-pointer transition-all ${
-                                selected
-                                  ? "ring-2 ring-theme-primary rounded-lg" 
-                                  : isSelectionMode
-                                    ? "hover:ring-2 hover:ring-theme-primary/50 rounded-lg"
-                                    : "hover:ring-2 hover:ring-slate-300 rounded-lg"
-                              }`}
-                              onClick={() => handleItemClick(contextData)}
-                            >
-                              <ImageWithFallback
-                                src={photo.url}
-                                alt={photo.caption || `Photo ${photo.id}`}
-                                className="w-full h-32 sm:h-40 object-cover rounded-lg"
-                              />
-                              {(photo.caption || photo.section) && (
-                                <div className="absolute bottom-2 left-2 right-2">
-                                  <Badge variant="secondary" className="text-xs rounded-md">
-                                    {photo.caption || photo.section}
-                                  </Badge>
-                                </div>
-                              )}
-                              {selected && (
-                                <div className="absolute top-2 right-2 bg-theme-primary text-white rounded-full p-1">
-                                  <CheckCircle2 className="w-3 h-3" />
-                                </div>
-                              )}
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  )}
 
                   {/* Summary with diff view */}
                   <div>
@@ -762,8 +714,11 @@ export function ReportLayout({
                   <Separator />
 
                   {/* Report Sections */}
-                  {reportContent.sections.map((section) => (
-                    <div key={section.id}>
+                  {reportContent.sections.map((section) => {
+                    const hasImages = section.images && section.images.length > 0;
+                    
+                    return (
+                    <div key={section.id} className="mb-8">
                       <h3 
                         className={`text-slate-900 mb-3 cursor-pointer transition-all ${
                           isItemSelected("section", section.id) 
@@ -781,40 +736,77 @@ export function ReportLayout({
                       >
                         {section.title} {isItemSelected("section", section.id) && <CheckCircle2 className="w-4 h-4 inline ml-1" />}
                       </h3>
-                      {pendingChange && pendingChange.sectionId === section.id ? (
-                        <DiffView
-                          oldText={pendingChange.oldValue}
-                          newText={pendingChange.newValue}
-                          onAccept={handleAcceptChange}
-                          onReject={handleRejectChange}
-                          source={pendingChange.source}
-                        />
-                      ) : mode === "peer-review" && peerReview && peerReview.comments ? (
-                        <HighlightableText
-                          content={section.content}
-                          sectionId={section.id}
-                          comments={peerReview.comments}
-                          onAddHighlightComment={onAddHighlightComment}
-                          onAddHighlightEdit={handleHighlightEdit}
-                          onHighlightClick={(commentId) => setActiveHighlightCommentId(commentId)}
-                          activeCommentId={activeHighlightCommentId}
-                          disabled={isSelectionMode}
-                          onTextSelection={(text) => handleTextSelection(text, section.id, section.title)}
-                        />
-                      ) : (
-                        <RewritableText
-                          value={section.content}
-                          onChange={(value) => onSectionChange(section.id, value)}
-                          onRequestRewrite={(currentText, instructions) => 
-                            handleRequestRewrite(currentText, instructions, section.id, undefined)
-                          }
-                          multiline
-                          disabled={isSelectionMode}
-                          onTextSelection={(text) => handleTextSelection(text, section.id, section.title)}
-                        />
-                      )}
+
+                      <div className={`grid grid-cols-1 gap-6 ${hasImages ? 'sm:grid-cols-2' : ''}`}>
+                        {/* Text Content */}
+                        <div className={`min-w-0 ${hasImages ? 'md:col-span-2' : ''}`}>
+                          {pendingChange && pendingChange.sectionId === section.id ? (
+                            <DiffView
+                              oldText={pendingChange.oldValue}
+                              newText={pendingChange.newValue}
+                              onAccept={handleAcceptChange}
+                              onReject={handleRejectChange}
+                              source={pendingChange.source}
+                            />
+                          ) : mode === "peer-review" && peerReview && peerReview.comments ? (
+                            <HighlightableText
+                              content={section.content}
+                              sectionId={section.id}
+                              comments={peerReview.comments}
+                              onAddHighlightComment={onAddHighlightComment}
+                              onAddHighlightEdit={handleHighlightEdit}
+                              onHighlightClick={(commentId) => setActiveHighlightCommentId(commentId)}
+                              activeCommentId={activeHighlightCommentId}
+                              disabled={isSelectionMode}
+                              onTextSelection={(text) => handleTextSelection(text, section.id, section.title)}
+                            />
+                          ) : (
+                            <RewritableText
+                              value={section.content}
+                              onChange={(value) => onSectionChange(section.id, value)}
+                              onRequestRewrite={(currentText, instructions) => 
+                                handleRequestRewrite(currentText, instructions, section.id, undefined)
+                              }
+                              multiline
+                              disabled={isSelectionMode}
+                              onTextSelection={(text) => handleTextSelection(text, section.id, section.title)}
+                            />
+                          )}
+                        </div>
+
+                        {/* Images Column */}
+                        {hasImages && (
+                          <div className="space-y-4">
+                            {section.images!.map((img: any) => (
+                              <div key={img.imageId || img.id || Math.random()} className="rounded-lg overflow-hidden border border-slate-200 shadow-sm bg-white">
+                                {img.storagePath ? (
+                                  <SecureImage 
+                                    storagePath={img.storagePath}
+                                    alt={img.description || img.caption || "Report Image"}
+                                    className="w-full h-48 object-cover"
+                                  />
+                                ) : (
+                                  <ImageWithFallback
+                                    src={img.url}
+                                    alt={img.description || img.caption || "Report Image"}
+                                    className="w-full h-48 object-cover"
+                                  />
+                                )}
+                                {(img.description || img.caption) && (
+                                  <div className="p-2 border-t border-slate-200 bg-slate-50">
+                                    <p className="text-xs text-slate-600 line-clamp-2">
+                                      {img.description || img.caption}
+                                    </p>
+                                  </div>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
                     </div>
-                  ))}
+                  );
+                  })}
                 </div>
               </Card>
             </div>

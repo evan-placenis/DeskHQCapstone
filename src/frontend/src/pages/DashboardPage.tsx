@@ -140,7 +140,8 @@ export function DashboardPage({
   console.log("Current User Org:", currentUser?.organizationId);
   console.log("Target Org:", TEST_RUNNER_ORG_ID);
   
-  const showMockData = currentUser?.organizationId === TEST_RUNNER_ORG_ID;
+  // Force real data (disable mocks) as per user request
+  const showMockData = false; // currentUser?.organizationId === TEST_RUNNER_ORG_ID;
 
   const [isNewProjectModalOpen, setIsNewProjectModalOpen] = useState(false);
   const [filterStatus, setFilterStatus] = useState("all");

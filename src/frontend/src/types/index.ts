@@ -6,7 +6,7 @@ export interface PeerReviewComment {
   timestamp: string;
   type: "comment" | "suggestion" | "issue";
   highlightedText?: string; // The text that was highlighted
-  sectionId?: number; // Which section the highlight is in
+  sectionId?: number | string; // Which section the highlight is in
   resolved?: boolean; // Whether the comment has been resolved
 }
 
@@ -24,7 +24,7 @@ export interface Project {
 
 export interface PeerReview {
   id: number;
-  reportId: number;
+  reportId: number | string;
   reportTitle: string;
   projectName: string;
   requestedById: number;
@@ -39,9 +39,10 @@ export interface PeerReview {
 }
 
 export interface ReportSection {
-  id: number;
+  id: number | string;
   title: string;
   content: string;
+  images?: any[]; // Hydrated image objects
 }
 
 export interface ReportContent {
@@ -59,7 +60,7 @@ export interface ChatMessage {
   content: string;
   timestamp: string;
   suggestedChanges?: {
-    sectionId?: number;
+    sectionId?: number | string;
     field?: string;
     oldValue: string;
     newValue: string;
@@ -107,10 +108,10 @@ export interface KnowledgeDocument {
 }
 
 export interface Report {
-  id: number;
+  id: number | string;
   title: string;
   project: string;
-  projectId: number;
+  projectId: number | string;
   date: string;
   status: string;
   inspector: string;

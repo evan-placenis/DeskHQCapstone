@@ -17,11 +17,11 @@ interface Highlight {
 
 interface HighlightableTextProps {
   content: string;
-  sectionId: number;
+  sectionId: number | string;
   isEditing?: boolean;
   comments: PeerReviewComment[];
-  onAddHighlightComment?: (highlightedText: string, sectionId: number, comment: string, type: "comment" | "suggestion" | "issue") => void;
-  onAddHighlightEdit?: (highlightedText: string, sectionId: number, newText: string) => void;
+  onAddHighlightComment?: (highlightedText: string, sectionId: number | string, comment: string, type: "comment" | "suggestion" | "issue") => void;
+  onAddHighlightEdit?: (highlightedText: string, sectionId: number | string, newText: string) => void;
   onHighlightClick?: (commentId: number) => void;
   activeCommentId?: number | null;
   disabled?: boolean;

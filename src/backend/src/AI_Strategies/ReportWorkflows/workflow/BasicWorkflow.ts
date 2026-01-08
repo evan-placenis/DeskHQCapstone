@@ -21,7 +21,7 @@ import {
 } from '../../prompts/report/reportDispatcherPrompt';
 
 
-export class ParallelDispatcher extends ReportGenerationWorkflow<ReportBlueprint> {
+export class BasicWorkflow extends ReportGenerationWorkflow<ReportBlueprint> {
 
     constructor(
         private llmClient: any,    // Your AI Client Wrapper
@@ -71,7 +71,29 @@ export class ParallelDispatcher extends ReportGenerationWorkflow<ReportBlueprint
     protected async invokeAgent(context: AgentExecutionContext): Promise<ReportBlueprint> {
         
         const payload = context.payload as ReportPayLoad;
-        const rawPhotoNotes = payload.notes as any[]; // Assuming notes have {id, content}
+
+        // --- DEBUG & INPUT PREP ---
+        console.log("--- [BASIC WORKFLOW DEBUG] ---");
+        console.log("Selected Image IDs:", context.selectedImages);
+        console.log("Retrieved Specs:", context.retrievedContext);
+
+        // If no notes are provided but we have images, create "Visual Observation" notes
+        // This ensures the AI has something to write about based on the photos
+        let processedNotes = payload.notes || [];
+        if (processedNotes.length === 0 && context.selectedImages && context.selectedImages.length > 0) {
+            console.log("⚠️ No user notes found. Generating notes from selected images...");
+            processedNotes = context.selectedImages.map(id => {
+                // Resolve image description
+                const img = context.project.images?.find(i => i.imageId === id);
+                const desc = img?.description || img?.metadata?.tags?.join(", ") || "Project Site Photo";
+                return {
+                    content: `Visual Observation: ${desc}`,
+                    imageId: id
+                };
+            });
+        }
+        console.log("Final Notes passed to Writer:", processedNotes);
+        console.log("------------------------------");
 
         // 1. THE DISPATCHER (Sorts the chaos) -> TODO: Implement this once we want AI createing a report.
         // We assume 'organizeNotesBySection' is a helper that uses embeddings or a cheap LLM
@@ -124,8 +146,8 @@ export class ParallelDispatcher extends ReportGenerationWorkflow<ReportBlueprint
             //    This is cheaper/smarter than passing ALL notes to EVERY writer.
             // const query = `${sectionTemplate.title} ${sectionTemplate.description}`;
             
-            // Map payload notes to expected format for the prompt
-            const formattedNotes = (payload.notes || []).map((n: any) => ({
+            // Map processed notes to expected format for the prompt
+            const formattedNotes = processedNotes.map((n: any) => ({
                 text: n.content || JSON.stringify(n),
                 imageIds: n.imageId ? [n.imageId] : []
             }));
@@ -218,17 +240,3 @@ export class ParallelDispatcher extends ReportGenerationWorkflow<ReportBlueprint
         }
     }
 }
-
-// 🧠 Why did we do this?
-// Consistency: You can never create a report without RAG 
-// (retrieveContextWithRAG), because it is hard-coded into the parent's generateReport flow.
-
-// Safety: If you try to create an ObservationReport without images, 
-// the collectInputs step throws an error before you waste money calling the AI API.
-
-
-
-// If you ever need to change how a Report is created (e.g., automatically adding
-// a "Disclaimer" section to every report), you only have to update the ReportBuilder
-//  class, and every workflow in your system automatically gets the update.
-

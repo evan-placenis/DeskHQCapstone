@@ -746,6 +746,24 @@ export function NewReportModal({ open, onOpenChange, projectName, onCreateReport
                         <p className="text-xs text-slate-500">Generates all sections at once (Faster)</p>
                       </div>
                     </SelectItem>
+                    <SelectItem value="BLACKBOARD" className="rounded-md">
+                      <div>
+                        <p>Blackboard Architecture</p>
+                        <p className="text-xs text-slate-500">Collaborative agents refining sections</p>
+                      </div>
+                    </SelectItem>
+                    <SelectItem value="ASSEMBLY" className="rounded-md">
+                      <div>
+                        <p>Assembly Line</p>
+                        <p className="text-xs text-slate-500">Step-by-step processing pipeline</p>
+                      </div>
+                    </SelectItem>
+                    <SelectItem value="BASIC" className="rounded-md">
+                      <div>
+                        <p>Basic Generator</p>
+                        <p className="text-xs text-slate-500">Simple one-shot generation</p>
+                      </div>
+                    </SelectItem>
                   </SelectContent>
                 </Select>
               </div>
