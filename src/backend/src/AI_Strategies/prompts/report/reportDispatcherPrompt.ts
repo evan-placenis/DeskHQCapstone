@@ -23,6 +23,7 @@ export const WRITER_SYSTEM_PROMPT = `
    - Do not change 'title', 'order', or 'required' keys unless the notes explicitly demand a title change for clarity.
 4. **FORMAT:** Output strictly valid JSON.
 5. **ATOMICITY:** If the provided notes cover completely unrelated topics (e.g., "Roof Leak" and "Basement Crack"), separate them into distinct objects in the output array. Do not force them into one paragraph.
+6. **IMAGES:** If the input notes contain Image IDs (e.g. [Images: 123]), you MUST include the relevant IDs in the "images" array of the JSON object.
 `;
 export const writerUserPrompt = (
   rawPhotoNotes: { text: string; imageIds?: string[] }[],

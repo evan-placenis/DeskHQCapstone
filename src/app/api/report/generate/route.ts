@@ -25,15 +25,22 @@ export async function POST(request: Request) {
     // 🚀 Call the Service
     const newReport = await reportService.generateNewReport(projectId, {
       reportType,
-      reportWorkflow: reportWorkflow || 'AUTHOR', // Default to AUTHOR if missing
-      modelName,
+      reportWorkflow: reportWorkflow || 'ASSEMBLY', // Default to AUTHOR if missing
+      modelName: modelName || 'GROK',
       modeName,
       selectedImageIds: selectedImageIds || [],
       templateId,
       sections // Pass custom sections
     }, supabase);
 
-        // // 🚀 Background Job (Trigger.dev)
+    // Return the generated report ID so frontend can redirect
+    return NextResponse.json({ 
+        message: "Report generated successfully",
+        reportId: newReport.reportId,
+        projectId 
+    }, { status: 200 });
+
+        // // 🚀 Background Job (Trigger.dev)  WILL USE LATER ONCE DEPLOYED
     // // Instead of waiting for the report to generate (which can timeout Vercel),
     // // we queue it and return "Pending" immediately.
     

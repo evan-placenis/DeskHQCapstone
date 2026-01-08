@@ -11,7 +11,8 @@ export class KnowledgeService {
     constructor(
         private repo: KnowledgeRepository,
         private vectorStore: VectorStore,
-        private documentFactory: DocumentStrategyFactory // Injected dependency
+        private documentFactory: DocumentStrategyFactory, // Injected dependency
+        private adminClient: SupabaseClient // Injected Admin Client for RAG operations
     ) {}
 
     public async processDocument(
@@ -127,5 +128,38 @@ export class KnowledgeService {
         
         // 2. Postgres deletion handled by cascade if project is deleted, 
         // or we can explicitly list and delete if needed. 
+    }
+
+    // --- NEW: SEARCH ---
+    public async search(queries: string[], projectId: string): Promise<string[]> {
+        const uniqueSpecs = new Set<string>();
+        
+        // We need the orgNamespace to search the correct Pinecone index
+        // We use the ADMIN CLIENT here because this is a system-level RAG lookup
+        const orgNamespace = await this.repo.getOrgNamespace(projectId, this.adminClient);
+
+        if (!orgNamespace) {
+             console.warn(`No namespace found for project ${projectId}, skipping RAG search.`);
+             return [];
+        }
+
+        console.log(`🔍 Searching Knowledge Base for Project ${projectId} (Org: ${orgNamespace})`);
+
+        for (const query of queries) {
+            if (!query || query.trim() === "") continue;
+
+            // Basic logic: Search for each description
+            // Limit to top 2 results per image description to avoid context bloat
+            try {
+                const results = await this.vectorStore.similaritySearch(query, 2, orgNamespace);
+                results.forEach(doc => {
+                    uniqueSpecs.add(doc.textSegment);
+                });
+            } catch (err) {
+                console.error(`Error searching for query "${query}":`, err);
+            }
+        }
+        
+        return Array.from(uniqueSpecs);
     }
 }

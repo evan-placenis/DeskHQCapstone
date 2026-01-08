@@ -63,6 +63,10 @@ CREATE TABLE public.reports (
     organization_id UUID NOT NULL REFERENCES public.organizations(id),
     title TEXT,
     content JSONB, -- Storing structured content (sections, paragraphs)
+    template_id TEXT, -- Changed from UUID to TEXT to support string slugs like "observation"
+    status TEXT DEFAULT 'DRAFT', -- Added status column
+    version_number INTEGER DEFAULT 1,
+    sections JSONB, -- Adding sections column as per repository usage
     created_by UUID REFERENCES public.profiles(id),
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()

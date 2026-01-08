@@ -39,8 +39,15 @@ const knowledgeRepo = new SupabaseKnowledgeRepository();
 const vectorStore = new PineconeVectorStore();
 
 // 2. Create the Tools (AI & Queue)
-const agentFactory = new AgentFactory();
 const documentFactory = new DocumentStrategyFactory();
+
+// KnowledgeService needs Repo + Vector Store + DocumentFactory + Admin Client
+// Instantiated BEFORE AgentFactory because AgentFactory needs it
+const knowledgeService = new KnowledgeService(knowledgeRepo, vectorStore, documentFactory, supabaseAdminClient);
+
+// AgentFactory needs KnowledgeService
+const agentFactory = new AgentFactory(knowledgeService);
+
 //const grokStrategy = agentFactory.createStrategy("GROK")
 
 const chatAgent = new ChatAgent();
@@ -53,9 +60,6 @@ const reportService = new ReportService(reportRepo, projectRepo, agentFactory);
 
 // ChatService needs the ReportService to do its job
 const chatService = new ChatService(chatRepo, reportService, chatAgent);
-
-// KnowledgeService needs Repo + Vector Store + DocumentFactory
-const knowledgeService = new KnowledgeService(knowledgeRepo, vectorStore, documentFactory);
 
 // UserService needs Supabase Admin to register users
 const userService = new UserService(supabaseAdminClient);

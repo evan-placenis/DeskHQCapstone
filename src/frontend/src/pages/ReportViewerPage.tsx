@@ -1,44 +1,26 @@
 "use client";
 
-import { useState, Suspense } from "react";
+import { useState, Suspense, useEffect } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { AppHeader } from "@/frontend/pages/smart_components/AppHeader";
 import { Page } from "@/app/pages/config/routes";
-import { Project, PeerReview } from "@/frontend/types";
+import { Project, PeerReview, ReportContent, Photo } from "@/frontend/types";
 import { RequestPeerReviewModal } from "@/frontend/pages/large_modal_components/RequestPeerReviewModal";
 import { RatingModal } from "@/frontend/pages/large_modal_components/RatingModal";
-import { ReportLayout, ReportContent } from "@/frontend/pages/shared_ui_components/ReportLayout";
-
-const mockPhotos = [
-  {
-    id: 1,
-    url: "https://images.unsplash.com/photo-1599995903128-531fc7fb694b?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxjb25zdHJ1Y3Rpb24lMjBzaXRlfGVufDF8fHx8MTc2Mjg2NTEwNnww&ixlib=rb-4.1.0&q=80&w=1080",
-    caption: "Foundation overview - Section A"
-  },
-  {
-    id: 2,
-    url: "https://images.unsplash.com/photo-1691947563165-28011f40d786?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxidWlsZGluZyUyMGluZnJhc3RydWN0dXJlfGVufDF8fHx8MTc2Mjg5NTU4Mnww&ixlib=rb-4.1.0&q=80&w=1080",
-    caption: "Structural support elements"
-  },
-];
-
+import { ReportLayout } from "@/frontend/pages/shared_ui_components/ReportLayout";
 import { ROUTES, getRoute } from "@/app/pages/config/routes";
 
 function ReportViewerContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const reportId = parseInt(searchParams.get("id") || "0");
+  const reportId = searchParams.get("id"); // string
   const fromPeerReview = searchParams.get("fromPeerReview") === "true";
   
-  // Mock Project Data (Ideally fetch based on reportId or passed project)
-  const project: Project = {
-      id: 1,
-      name: "Bridge Inspection - Route 95",
-      reports: 12,
-      photos: 156,
-      status: "Active",
-      lastUpdated: "2025-11-18"
-  };
+  const [isLoading, setIsLoading] = useState(false);
+
+  // Project Context
+  const [projectId, setProjectId] = useState<string>("");
+  const [projectName, setProjectName] = useState<string>("");
 
   // Mock Peer Reviews State
   const [peerReviews, setPeerReviews] = useState<PeerReview[]>([
@@ -63,47 +45,54 @@ function ReportViewerContent() {
   const [isRatingModalOpen, setIsRatingModalOpen] = useState(false);
 
   const currentUserId = 2;
-  const assignedReview = peerReviews.find(r => r.reportId === reportId && r.assignedToId === currentUserId);
+  // Use String comparison for IDs
+  const assignedReview = peerReviews.find(r => String(r.reportId) === reportId && r.assignedToId === currentUserId);
 
   const [reportContent, setReportContent] = useState<ReportContent>({
-    title: "Foundation Assessment - Section A",
-    date: "November 10, 2025",
-    location: "Route 95, Section A",
-    engineer: "John Doe, P.E.",
-    summary: "Comprehensive foundation inspection conducted at Route 95, Section A. The assessment evaluates structural integrity, material quality, and compliance with design specifications.",
-    sections: [
-      {
-        id: 1,
-        title: "EIFS - West Elevation (Riser 01 and 03)",
-        content: "1.1 The installation of 4-inch EPS on the west side, covering balconies and areas between Risers 01 and 03, is now complete. The Contractor must verify that the EPS installation adheres to all relevant project specifications for adhesion, thickness, and integration with surrounding systems.\n\n1.2 0.25-inch x 5-inch Tapcons with plastic washers were observed installed at the top and bottom at 24 inches on center on the west elevation (Risers 01 and 03). At the top two floors, a minimum of two fasteners per board were installed.\n\n1.3 Installation should comply with specifications, including maintaining fastener clearance of 75mm (3 inches) minimum from the edge of the insulation board and using depth control devices as required (07 24 00 - Exterior Insulation and Finish Systems)."
-      },
-      {
-        id: 2,
-        title: "Site Conditions",
-        content: "Weather conditions during inspection were optimal with clear visibility and dry conditions. Ambient temperature measured at 72°F with minimal wind. Site access was unobstructed allowing thorough examination of all foundation elements."
-      },
-      {
-        id: 3,
-        title: "Structural Observations",
-        content: "Foundation piers are level and properly cured with no visible cracking or settlement issues. Steel reinforcement placement meets specifications with correct spacing and cover depth. Load-bearing capacity appears adequate for design requirements. Minor surface wear noted on eastern support columns consistent with normal weathering patterns."
-      },
-      {
-        id: 4,
-        title: "Material Assessment",
-        content: "Concrete samples show proper mix consistency and compressive strength within acceptable range. No segregation or honeycombing observed. Surface finish quality is satisfactory with minimal blemishes. Reinforcement bars show no signs of corrosion or deterioration."
-      },
-      {
-        id: 5,
-        title: "Recommendations",
-        content: "1. Continue monitoring foundation settlement over next 30 days\n2. Apply protective coating to eastern support columns to prevent further weathering\n3. Schedule follow-up inspection after next construction phase\n4. Verify load test results before proceeding with upper structural elements\n5. Document any observed changes in environmental conditions"
-      },
-      {
-        id: 6,
-        title: "Conclusion",
-        content: "Overall foundation conditions are satisfactory for project progression. No critical deficiencies identified during this inspection. Minor maintenance items can be addressed during normal construction activities. Recommend approval to proceed with next phase pending completion of protective measures on support columns."
-      }
-    ]
+    title: "Loading...",
+    date: "",
+    location: "",
+    engineer: "",
+    summary: "",
+    sections: []
   });
+
+  // Fetch Report
+  useEffect(() => {
+    if (reportId && reportId !== "0") {
+      setIsLoading(true);
+      fetch(`/api/report/${reportId}`)
+        .then(res => {
+            if (!res.ok) throw new Error("Failed to fetch");
+            return res.json();
+        })
+        .then(data => {
+            console.log("Fetched report:", data);
+            
+            if (data.projectId) {
+                setProjectId(data.projectId);
+                setProjectName("Project");
+            }
+
+            setReportContent({
+                title: data.title || "Untitled Report",
+                date: new Date(data.updatedAt).toLocaleDateString(),
+                location: "Project Site", 
+                engineer: "AI Assistant",
+                summary: "Executive Summary...",
+                sections: data.sections ? data.sections.map((s: any) => ({
+                    id: s.id || Math.random().toString(),
+                    title: s.sectionTitle || "Untitled Section",
+                    content: s.content || "",
+                    images: s.images || []
+                })) : []
+            });
+            setReportStatus(data.status || "Draft");
+        })
+        .catch(err => console.error("Error fetching report:", err))
+        .finally(() => setIsLoading(false));
+    }
+  }, [reportId]);
 
   const handleNavigate = (page: Page) => {
     router.push(getRoute(page));
@@ -116,8 +105,10 @@ function ReportViewerContent() {
   const handleBack = () => {
     if (fromPeerReview) {
       router.push(ROUTES.dashboard);
+    } else if (projectId) {
+      router.push(ROUTES.project(projectId));
     } else {
-      router.push(ROUTES.project(project.id));
+      router.push(ROUTES.dashboard);
     }
   };
 
@@ -126,7 +117,7 @@ function ReportViewerContent() {
     console.log("Auto-saving...", updates);
   };
 
-  const handleSectionChange = (sectionId: number, newContent: string) => {
+  const handleSectionChange = (sectionId: number | string, newContent: string) => {
     const updatedSections = reportContent.sections.map(s =>
       s.id === sectionId ? { ...s, content: newContent } : s
     );
@@ -148,9 +139,9 @@ function ReportViewerContent() {
     };
 
     handleRequestPeerReview(
-      reportId,
+      Number(reportId) || 0, // Mock needs number, but reportId is string
       reportContent.title,
-      project?.name || "Unknown Project",
+      projectName || "Unknown Project",
       userId,
       userNames[userId] || "Unknown User",
       notes
@@ -163,7 +154,7 @@ function ReportViewerContent() {
       console.log("Added comment:", { reviewId, comment, type });
   };
 
-  const handleAddHighlightComment = (reviewId: number, highlightedText: string, sectionId: number, comment: string, type: "comment" | "suggestion" | "issue" | "question") => {
+  const handleAddHighlightComment = (reviewId: number, highlightedText: string, sectionId: number | string, comment: string, type: "comment" | "suggestion" | "issue" | "question") => {
       // Mock implementation
       console.log("Added highlight comment:", { reviewId, highlightedText, sectionId, comment, type });
   };
@@ -187,6 +178,14 @@ function ReportViewerContent() {
     console.log("Exporting PDF for report:", reportContent.title);
   };
 
+  if (isLoading) {
+      return (
+        <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+            <div className="text-slate-500">Loading Report...</div>
+        </div>
+      );
+  }
+
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col">
       <AppHeader 
@@ -203,7 +202,6 @@ function ReportViewerContent() {
         onSectionChange={handleSectionChange}
         onBack={handleBack}
         backLabel={fromPeerReview ? "Back to Dashboard" : "Back to Project"}
-        photos={mockPhotos}
         reportStatus={reportStatus}
         onStatusChange={setReportStatus}
         onRequestPeerReview={!fromPeerReview ? () => setIsRequestPeerReviewModalOpen(true) : undefined}

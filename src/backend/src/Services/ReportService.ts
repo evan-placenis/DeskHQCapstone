@@ -2,7 +2,7 @@ import { ReportRepository } from "../domain/interfaces/ReportRepository";
 import { ProjectRepository } from "../domain/interfaces/ProjectRepository";
 import { AgentFactory } from "../AI_Strategies/factory/AgentFactory";
 import { Report } from "../domain/reports/report.types";
-import { ReportSerializer } from "../AI_Strategies/Data_Serializer/serializer";
+import { ReportSerializer } from "../AI_Strategies/data_serializer/serializer";
 
 import { SupabaseClient } from "@supabase/supabase-js";
 
@@ -26,7 +26,7 @@ export class ReportService {
         projectId: string,
         input: {
             reportType: string;    // 'OBSERVATION'
-            reportWorkflow:string; // 'DISPATCHER' or 'AUTHOR'
+            reportWorkflow:string; // 'DISPATCHER', "AUTHOR", "BLACKBOARD", "ASSEMBLY", "BASIC"
             modelName: string;     // 'GPT'
             modeName: string;      // 'IMAGE_AND_TEXT'
             selectedImageIds: string[];
@@ -64,6 +64,73 @@ export class ReportService {
 
         console.log(`✅ Service: Report ${newReport.reportId} saved.`);
         return newReport;
+    }
+
+    public async getReportById(reportId: string, client: SupabaseClient): Promise<Report | null> {
+        const report = await this.reportRepo.getById(reportId, client);
+        if (!report) return null;
+
+        // Hydrate images
+        const imageIds = new Set<string>();
+        report.sections.forEach(section => {
+            if (section.images) {
+                section.images.forEach((ref: any) => {
+                    const id = typeof ref === 'string' ? ref : ref.imageId;
+                    if (id) imageIds.add(id);
+                });
+            }
+        });
+
+        if (imageIds.size > 0) {
+            // 1. Fetch Referenced Project Images (Base Data for URLs)
+            const { data: projectImages, error: piError } = await client
+                .from('project_images')
+                .select('id, public_url, storage_path, description')
+                .in('id', Array.from(imageIds));
+            
+            // 2. Fetch Report Images (Metadata/Overrides)
+            const { data: reportImages, error: riError } = await client
+                .from('report_images')
+                .select('image_id, caption, sort_order')
+                .eq('report_id', reportId)
+                .in('image_id', Array.from(imageIds));
+
+            if (!piError && projectImages) {
+                const projectImageMap = new Map(projectImages.map(img => [img.id, img]));
+                const reportImageMap = new Map();
+                if (reportImages) {
+                    reportImages.forEach((row: any) => reportImageMap.set(row.image_id, row));
+                }
+                
+                report.sections.forEach(section => {
+                    if (section.images) {
+                        section.images = section.images.map((ref: any) => {
+                            const id = typeof ref === 'string' ? ref : ref.imageId;
+                            const pImg = projectImageMap.get(id);
+                            const rImg = reportImageMap.get(id);
+                            
+                            if (pImg) {
+                                return {
+                                    imageId: id,
+                                    caption: rImg?.caption || (typeof ref === 'object' ? ref.caption : "") || pImg.description,
+                                    orderIndex: rImg?.sort_order || (typeof ref === 'object' ? ref.orderIndex : 0),
+                                    url: pImg.public_url,
+                                    storagePath: pImg.storage_path,
+                                    description: pImg.description
+                                };
+                            }
+                            return ref;
+                        });
+                    }
+                });
+            }
+        }
+
+        return report;
+    }
+
+    public async getReportsByProject(projectId: string, client: SupabaseClient): Promise<Report[]> {
+        return await this.reportRepo.getByProject(projectId, client);
     }
 
     /**

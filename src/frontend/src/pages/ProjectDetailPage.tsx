@@ -4,7 +4,7 @@ import { useDelete } from "@/frontend/pages/hooks/useDelete"; // Import the hook
 import { AppHeader } from "@/frontend/pages/smart_components/AppHeader";
 import { NewReportModal } from "@/frontend/pages/large_modal_components/NewReportModal";
 import { PhotoDetailModal } from "@/frontend/pages/large_modal_components/PhotoDetailModal";
-import { Project, KnowledgeDocument, PhotoFolder, Photo } from "@/frontend/types";
+import { Project, KnowledgeDocument, PhotoFolder, Photo, Report } from "@/frontend/types";
 import { KnowledgeUploadModal } from "@/frontend/pages/large_modal_components/KnowledgeUploadModal";
 import { PhotoUploadModal } from "@/frontend/pages/large_modal_components/PhotoUploadModal";
 import { PhotoFolderView } from "@/frontend/pages/smart_components/PhotoFolderView";
@@ -60,7 +60,7 @@ interface ProjectDetailPageProps {
   onNavigate: (page: Page) => void;
   onLogout: () => void;
   onBack: () => void;
-  onSelectReport: (reportId: number) => void;
+  onSelectReport: (reportId: number | string) => void;
 }
 
 const mockReports = [
@@ -470,7 +470,8 @@ export function ProjectDetailPage({
   const shouldShowMocks = user?.organizationId === TEST_RUNNER_ORG_ID;
 
   const [isNewReportModalOpen, setIsNewReportModalOpen] = useState(false);
-  const [reports, setReports] = useState<typeof mockReports>([]);
+  const [reports, setReports] = useState<Report[]>([]);
+  const [isLoadingReports, setIsLoadingReports] = useState(true);
   const [photos, setPhotos] = useState<Photo[]>([]);
   const [selectedPhoto, setSelectedPhoto] = useState<typeof mockPhotos[0] | null>(null);
   const [isPhotoModalOpen, setIsPhotoModalOpen] = useState(false);
@@ -1141,6 +1142,46 @@ export function ProjectDetailPage({
         } catch (e) {
             console.error("Failed to fetch knowledge documents", e);
         }
+
+        // 3. Fetch Reports (NEW)
+        try {
+            const response = await fetch(`/api/project/${project.id}/reports`);
+            if (response.ok) {
+                const data = await response.json();
+                if (data.reports && Array.isArray(data.reports)) {
+                    console.log("Fetched reports from DB:", data.reports);
+                    
+                    const normalizeStatus = (status: string) => {
+                        if (!status) return "Draft";
+                        const s = status.toUpperCase();
+                        if (s === "DRAFT") return "Draft";
+                        if (s === "UNDER_REVIEW" || s === "UNDER REVIEW") return "Under Review";
+                        if (s === "COMPLETED" || s === "COMPLETE") return "Completed";
+                        return status;
+                    };
+
+                    const dbReports: Report[] = data.reports.map((r: any) => ({
+                        id: r.reportId,
+                        title: r.title || "Untitled Report",
+                        date: new Date(r.updatedAt).toISOString().split('T')[0],
+                        status: normalizeStatus(r.status),
+                        engineer: "AI Assistant",
+                        inspector: "Current User", 
+                        reviewer: "Pending",
+                        photos: r.sections?.reduce((acc: number, s: any) => acc + (s.images?.length || 0), 0) || 0,
+                        observations: r.sections?.length || 0,
+                        project: project.name,
+                        projectId: project.id
+                    }));
+
+                    setReports([...dbReports, ...(shouldShowMocks ? mockReports : [])]);
+                }
+            }
+        } catch (e) {
+            console.error("Failed to fetch reports", e);
+        } finally {
+            setIsLoadingReports(false);
+        }
     };
 
     fetchProjectData();
@@ -1286,6 +1327,13 @@ export function ProjectDetailPage({
                 <CardDescription>All observation reports for this project, organized by status</CardDescription>
               </CardHeader>
               <CardContent className="space-y-6">
+                {isLoadingReports ? (
+                  <div className="flex flex-col items-center justify-center py-12">
+                    <Loader2 className="w-8 h-8 animate-spin text-theme-primary mb-4" />
+                    <p className="text-slate-500">Loading reports...</p>
+                  </div>
+                ) : (
+                  <>
                 {/* Draft Reports */}
                 {reports.filter(r => r.status === "Draft").length > 0 && (
                   <div>
@@ -1364,6 +1412,8 @@ export function ProjectDetailPage({
                       Create First Report
                     </Button>
                   </div>
+                )}
+                  </>
                 )}
               </CardContent>
             </Card>

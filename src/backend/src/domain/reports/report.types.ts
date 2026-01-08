@@ -33,6 +33,10 @@ export interface ReportImageReference {
     imageId: string;         // Links back to the Image in Project domain
     caption: string;         // AI generated caption specific to this context
     orderIndex: number;      // 0, 1, 2... for layout ordering
+    // Hydrated fields
+    url?: string;
+    description?: string;
+    storagePath?: string;
 }
 
 // --- TEMPLATES ---

@@ -16,10 +16,12 @@ import {
 import { 
     WRITER_SYSTEM_PROMPT, 
     writerUserPrompt, 
-} from '../../prompts/report/reportSequentialPrompt';
+    REVIEWER_SYSTEM_PROMPT, 
+    reviewerUserPrompt 
+} from '../../prompts/report/reportDispatcherPrompt';
 
 
-export class SequentialAuthor extends ReportGenerationWorkflow<ReportBlueprint> {
+export class AssemblyWorkflow extends ReportGenerationWorkflow<ReportBlueprint> {
 
     constructor(
         private llmClient: any,    // Your AI Client Wrapper
@@ -56,8 +58,6 @@ export class SequentialAuthor extends ReportGenerationWorkflow<ReportBlueprint> 
         // Fallback to "Image" if no description/tag is found
         const descriptions = images.map(img => img.description || img.metadata?.tags?.join(" ") || "Image");
 
-        console.log("🔍 [RAG DEBUG] Resolved Image Descriptions in backend:", descriptions);
-
         // send the photo description to pinecone and get the relevant specs
         const relevantSpecs = await this.knowledgeService.search(descriptions, context.project.projectId);
         
@@ -71,57 +71,103 @@ export class SequentialAuthor extends ReportGenerationWorkflow<ReportBlueprint> 
     protected async invokeAgent(context: AgentExecutionContext): Promise<ReportBlueprint> {
         
         const payload = context.payload as ReportPayLoad;
-        const allNotes = payload.notes as any[]; // We pass ALL notes every time.
+        const rawPhotoNotes = payload.notes as any[]; // Assuming notes have {id, content}
 
-        // 1. Get the Master Template (The "Skeleton")
-        let blueprint = JSON.parse(JSON.stringify(ObservationReportTemplate[0]));
-        
-        // 2. THE SEQUENTIAL LOOP
-        // We act like a single author writing chapter by chapter.
-        // We build the report incrementally.
-        console.log("✍️ Starting Sequential Authoring...");
-        
-        console.log("==========================================");
-        console.log("🔍 [GENERATION DEBUG] Context Info");
-        console.log("==========================================");
-        console.log(`🧠 RAG Specs Available:`, context.retrievedContext ? context.retrievedContext.length : 0);
-        if (context.retrievedContext && context.retrievedContext.length > 0) {
-            console.log(JSON.stringify(context.retrievedContext, null, 2));
+        // 1. THE DISPATCHER (Sorts the chaos) -> TODO: Implement this once we want AI createing a report.
+        // We assume 'organizeNotesBySection' is a helper that uses embeddings or a cheap LLM
+       // const categorizedData = await this.organizeNotesBySection(allNotes, blueprint.reportContent);
+        /**
+         * categorizedData = {
+         * "2.0 Site Conditions": [Note_A, Note_B, Image_1],
+         * "3.0 Observations": [Note_C, Image_2]
+         * }
+         */
+
+        // -----------------------------------------------------
+        // PHASE A: TEMPLATE SELECTION (The "Map")
+        // -----------------------------------------------------
+        let blueprint: ReportBlueprint;
+
+        if (payload.writingMode === 'USER_DEFINED') {
+           // Convert User Groups -> SectionBlueprints
+           blueprint = {
+            _review_reasoning: "",
+            reportTitle: `Observation Report - ${context.project.name}`,
+            reportContent: payload.userDefinedGroups!.map((g, i) => ({
+                _reasoning: "",
+                title: g.title,
+                description: g.instructions || "Analyze the provided notes.",
+                required: true,
+                images: [],
+                order: i + 1,
+                isReviewRequired: true,
+                children: []
+            }))
+        };
+
+        } else {
+            console.log("📄 Loading Standard Observation Template...");
+            // Clone the template to avoid mutating the global constant
+            blueprint = JSON.parse(JSON.stringify(ObservationReportTemplate[0])); 
         }
-        console.log(`📝 Total Notes:`, allNotes.length);
-        console.log("==========================================");
+        
 
-        for (let i = 0; i < blueprint.reportContent.length; i++) {
-            const currentSection = blueprint.reportContent[i];
+        // -----------------------------------------------------
+        // PHASE B: EXECUTION (The Loop) Runs in parallel
+        // -----------------------------------------------------
+        console.log(`✍️ Spawning ${blueprint.reportContent.length} Writers in parallel...`);
+        //THE WRITERS (One per Section, NOT per Image)
+        const writingTasks = blueprint.reportContent.map(async (sectionTemplate) => {
             
-            console.log(`... Writing Section ${i + 1}: ${currentSection.title}`);
+            // 1. Contextual Retrieval (RAG)
+            //    Find notes relevant to THIS section (e.g., "Roofing" + "Leaks")
+            //    This is cheaper/smarter than passing ALL notes to EVERY writer.
+            // const query = `${sectionTemplate.title} ${sectionTemplate.description}`;
+            
+            // Map payload notes to expected format for the prompt
+            const formattedNotes = (payload.notes || []).map((n: any) => ({
+                text: n.content || JSON.stringify(n),
+                imageIds: n.imageId ? [n.imageId] : []
+            }));
 
-            // A. Context Management
-            // We pass ALL notes so the agent can decide what is relevant.
-            // (Modern LLMs can easily handle 50-100 notes in context)
-            
-            // B. The Prompt
-            // We ask the agent to fill JUST this section, but we give it 
-            // the context of what it has already written (optional, but good for flow).
+            // Use global specs retrieved in Step B (stored in context)
+            const relevantSpecs = context.retrievedContext || [];
+
+            // 2. Call The Writer
             const response = await this.llmClient.generateContent(
                 WRITER_SYSTEM_PROMPT,
-                writerUserPrompt(
-                    allNotes,           // Full Context
-                    currentSection,     // The Target to fill
-                    blueprint,           // (Optional) Pass the whole report so far for continuity
-                    context.retrievedContext // Pass RAG specs
-                ), 
+                writerUserPrompt(formattedNotes, sectionTemplate, relevantSpecs), 
                 context
             );
 
-            // C. Update the Blueprint with the result
-            const filledSection = this.parseJsonSafely<SectionBlueprint>(response);
-            blueprint.reportContent[i] = filledSection;
-        }
+            // 3. Parse & Return the Filled Section
+            return this.parseJsonSafely<SectionBlueprint>(response);
+        });
 
-        // 3. (Optional) Single Review Pass
-        // Since the sequential author is coherent, the reviewer only needs to check for typos/safety.
-        return blueprint;
+        // Wait for all sections to be drafted
+        const draftedSections = await Promise.all(writingTasks);
+
+        // Assemble the Draft Report
+        const draftReport: ReportBlueprint = {
+            ...blueprint,
+            reportContent: draftedSections
+        };
+
+        // -----------------------------------------------------
+        // PHASE C: THE REVIEWER (The "Reduce")
+        // -----------------------------------------------------
+        console.log("🕵️ Reviewer is polishing the draft...");
+
+        const reviewResponse = await this.llmClient.generateContent(
+            REVIEWER_SYSTEM_PROMPT,
+            reviewerUserPrompt(draftReport),
+            context
+        );
+
+        const finalJson = this.parseJsonSafely<ReportBlueprint>(reviewResponse);
+        
+        // Return the fully polished JSON structure
+        return finalJson;
     }
 
     // =========================================================
@@ -172,17 +218,3 @@ export class SequentialAuthor extends ReportGenerationWorkflow<ReportBlueprint> 
         }
     }
 }
-
-// 🧠 Why did we do this?
-// Consistency: You can never create a report without RAG 
-// (retrieveContextWithRAG), because it is hard-coded into the parent's generateReport flow.
-
-// Safety: If you try to create an ObservationReport without images, 
-// the collectInputs step throws an error before you waste money calling the AI API.
-
-
-
-// If you ever need to change how a Report is created (e.g., automatically adding
-// a "Disclaimer" section to every report), you only have to update the ReportBuilder
-//  class, and every workflow in your system automatically gets the update.
-
