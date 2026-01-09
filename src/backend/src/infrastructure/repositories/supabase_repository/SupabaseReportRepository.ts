@@ -23,7 +23,7 @@ export class SupabaseReportRepository implements ReportRepository {
                 title: report.title,
                 status: report.status,
                 version_number: report.versionNumber,
-                sections: report.sections, // Supabase client handles Array -> JSONB
+                sections: report.reportContent, // Map Domain 'reportContent' -> DB 'sections'
                 updated_at: report.updatedAt
             });
 
@@ -49,9 +49,11 @@ export class SupabaseReportRepository implements ReportRepository {
             status: data.status,
             versionNumber: data.version_number,
             updatedAt: new Date(data.updated_at),
+            createdAt: new Date(data.created_at || data.updated_at), // Map created_at
             
             // JSONB columns come back as objects/arrays automatically
-            sections: data.sections || [], 
+            reportContent: data.sections || [], 
+            isReviewRequired: true,
             
             // We usually load history lazily (separately) to keep this fast.
             // If you really need it here, you'd do a second query.
@@ -67,7 +69,7 @@ export class SupabaseReportRepository implements ReportRepository {
                 title: report.title,
                 status: report.status,
                 version_number: report.versionNumber,
-                sections: report.sections, // Updates the JSON content
+                sections: report.reportContent, // Updates the JSON content
                 updated_at: new Date()
             })
             .eq('id', report.reportId);
@@ -119,7 +121,9 @@ export class SupabaseReportRepository implements ReportRepository {
             status: row.status,
             versionNumber: row.version_number,
             updatedAt: new Date(row.updated_at),
-            sections: row.sections || [],
+            createdAt: new Date(row.created_at || row.updated_at), // Map created_at
+            reportContent: row.sections || [],
+            isReviewRequired: true,
             history: []
         }));
     }

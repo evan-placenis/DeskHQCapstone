@@ -4,7 +4,8 @@ import { GrokAgent } from "../strategies/LLM/Grok";
 import { TextOnlyMode } from "../strategies/Execution/TextOnlyMode";
 import { ImageAndTextMode } from "../strategies/Execution/ImageAndTextMode";
 
-import { grokClient } from '../../infrastructure/llm/grokClient'; // Import from Infra
+import { getGrokClient } from '../../infrastructure/llm/grokClient'; // Import from Infra
+
 // import { geminiClient } from '../../infrastructure/llm/geminiClient'; // Import from Infra
 
 
@@ -32,11 +33,11 @@ export class AgentFactory {
       // case 'GEMMINI':
       //   return new GemminiAgent();
       case 'GROK':
-        return new GrokAgent(grokClient);
+        return new GrokAgent(getGrokClient());
       default:
         // Default to GPT if unknown
         console.warn(`Unknown model '${modelName}', defaulting to Grok.`);
-        return new GrokAgent(grokClient);
+        return new GrokAgent(getGrokClient());
     }
   }
 
@@ -54,19 +55,21 @@ export class AgentFactory {
   
  // 3. Create Workflow (Now Public)
   public createWorkflow(
-      reportWorkflow: string, 
-      modelName: string, 
-      modeName: string
+      reportWorkflow: string | undefined, 
+      modelName: string | undefined, 
+      modeName: string | undefined
   ): ReportGenerationWorkflow<ReportBlueprint> {
-      
+    const safeReportWorkflow = reportWorkflow || 'BASIC';
+    const safeModelName = modelName || 'GROK';
+    const safeModeName = modeName || 'TEXT_ONLY';
     // 1. Create the dependencies first
-    const agent: AgentStrategy = this.createStrategy(modelName);
-    const mode: ExecutionModeStrategy = this.createMode(modeName);
+    const agent: AgentStrategy = this.createStrategy(safeModelName);
+    const mode: ExecutionModeStrategy = this.createMode(safeModeName);
 
     // 2. Inject them into the correct Workflow
     // Note: Workflows expect (llmClient, knowledgeRepo)
     // We are passing the KnowledgeService as the 'knowledgeRepo'
-    switch (reportWorkflow.toUpperCase()) {
+    switch (safeReportWorkflow) {
         case 'DISPATCHER':
             return new ParallelDispatcher(agent, this.knowledgeService);
         
@@ -80,7 +83,7 @@ export class AgentFactory {
             return new AssemblyWorkflow(agent, this.knowledgeService);
 
         case 'BASIC':
-            return new BasicWorkflow(agent, this.knowledgeService);
+            return new BasicWorkflow(agent, this.knowledgeService, mode);
 
         default:
             throw new Error(`Unknown report type: ${reportWorkflow}`);

@@ -38,11 +38,36 @@ export interface PeerReview {
   comments: PeerReviewComment[];
 }
 
+export interface ReportBulletPoint {
+  point: string;      // Matches backend 'bulletpointBlueprint.point'
+  images?: any[];
+}
+
+export interface ReportSubSection {
+  title: string;
+  description: string; // Matches backend 'SubSectionBlueprint.description'
+  order: number;
+  children: ReportBulletPoint[]; // Matches backend 'SubSectionBlueprint.children'
+}
+
+// 🟢 Backend-aligned types for raw data
+export interface MainSectionBlueprint {
+  id?: string;
+  title: string;
+  description: string;
+  required: boolean;
+  order: number;
+  children: ReportSubSection[];
+  _reasoning?: string;
+}
+
 export interface ReportSection {
   id: number | string;
   title: string;
-  content: string;
-  images?: any[]; // Hydrated image objects
+  description?: string; // 🟢 Raw parent description
+  content: string; // Flattened Markdown for display (constructed in Viewer)
+  images?: any[]; 
+  subSections?: ReportSubSection[]; // Raw backend structure
 }
 
 export interface ReportContent {
@@ -50,7 +75,6 @@ export interface ReportContent {
   date: string;
   location: string;
   engineer: string;
-  summary: string;
   sections: ReportSection[];
 }
 

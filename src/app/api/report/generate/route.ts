@@ -22,45 +22,29 @@ export async function POST(request: Request) {
       );
     }
 
-    // 🚀 Call the Service
-    const newReport = await reportService.generateNewReport(projectId, {
-      reportType,
-      reportWorkflow: reportWorkflow || 'ASSEMBLY', // Default to AUTHOR if missing
-      modelName: modelName || 'GROK',
-      modeName,
-      selectedImageIds: selectedImageIds || [],
-      templateId,
-      sections // Pass custom sections
-    }, supabase);
 
-    // Return the generated report ID so frontend can redirect
-    return NextResponse.json({ 
-        message: "Report generated successfully",
-        reportId: newReport.reportId,
-        projectId 
-    }, { status: 200 });
 
-        // // 🚀 Background Job (Trigger.dev)  WILL USE LATER ONCE DEPLOYED
-    // // Instead of waiting for the report to generate (which can timeout Vercel),
-    // // we queue it and return "Pending" immediately.
+        // 🚀 Background Job (Trigger.dev)  WILL USE LATER ONCE DEPLOYED
+    // Instead of waiting for the report to generate (which can timeout Vercel),
+    // we queue it and return "Pending" immediately.
     
-    // await Container.jobQueue.enqueueReportGeneration(
-    //     projectId, 
-    //     user.id, 
-    //     {
-    //       reportType,
-    //       modelName,
-    //       modeName,
-    //       selectedImageIds: selectedImageIds || [],
-    //       templateId
-    //     }
-    // );
+    await Container.jobQueue.enqueueReportGeneration(
+        projectId, 
+        user.id, 
+        {
+          reportType,
+          modelName,
+          modeName,
+          selectedImageIds: selectedImageIds || [],
+          templateId
+        }
+    );
 
-    // return NextResponse.json({ 
-    //     message: "Report generation started in background",
-    //     status: "QUEUED",
-    //     projectId 
-    // }, { status: 202 });
+    return NextResponse.json({ 
+        message: "Report generation started in background",
+        status: "QUEUED",
+        projectId 
+    }, { status: 202 });
 
   } catch (error: any) {
     console.error("❌ Generate Route Error:", error);
@@ -70,3 +54,23 @@ export async function POST(request: Request) {
     );
   }
 }
+
+
+
+    // // 🚀 Call the Service wihout trigger.dev
+    // const newReport = await reportService.generateNewReport(projectId, {
+    //   reportType,
+    //   reportWorkflow: reportWorkflow || 'ASSEMBLY', // Default to AUTHOR if missing
+    //   modelName: modelName || 'GROK',
+    //   modeName,
+    //   selectedImageIds: selectedImageIds || [],
+    //   templateId,
+    //   sections // Pass custom sections
+    // }, supabase);
+
+    // // Return the generated report ID so frontend can redirect
+    // return NextResponse.json({ 
+    //     message: "Report generated successfully",
+    //     reportId: newReport.reportId,
+    //     projectId 
+    // }, { status: 200 });

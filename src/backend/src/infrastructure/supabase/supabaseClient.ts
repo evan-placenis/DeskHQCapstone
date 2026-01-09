@@ -1,23 +1,44 @@
-import { createClient } from '@supabase/supabase-js';
-import dotenv from 'dotenv';
-import path from 'path';
 
-dotenv.config();
+import { createClient, SupabaseClient } from '@supabase/supabase-js';
 
-// Check for variables, allowing for the NEXT_PUBLIC_ prefix if the user renamed them (though not recommended for Service Role Key)
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+export class Container {
+    // Private holder for the client
+    private static _supabase: SupabaseClient;
 
-if (!supabaseUrl) {
-    throw new Error("Missing SUPABASE_URL in .env");
+    // ✅ THE FIX: Use a 'getter'. 
+    // This code only runs when you type 'Container.supabase'
+    static get supabase() {
+        if (!this._supabase) {
+            const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+            
+            // ⚠️ CRITICAL: For background jobs (Trigger.dev), you MUST use the Service Role Key.
+            // The Anon key will block your backend from reading user data.
+            const effectiveKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+            if (!supabaseUrl || !effectiveKey) {
+                throw new Error("Missing Supabase URL or Key in environment variables.");
+            }
+
+            this._supabase = createClient(supabaseUrl, effectiveKey);
+        }
+        return this._supabase;
+    }
+
 }
 
-// Fallback to Anon Key if Service Role Key is missing (allows app to start for RLS-only flows)
-const effectiveKey = anonKey;
 
-if (!effectiveKey) {
-    throw new Error("Missing both SUPABASE_SERVICE_ROLE_KEY and SUPABASE_ANON_KEY in .env");
-}
+
+
+
+
+
+
+
+
+
+
+
+
 
 // 🛡️ ADMIN CLIENT
 // This client has the 'Service Role' key, so it bypasses RLS.

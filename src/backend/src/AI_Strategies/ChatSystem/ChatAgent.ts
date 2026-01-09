@@ -1,16 +1,17 @@
 import { ChatSession, ChatMessage, EditSuggestion } from "../../domain/chat/chat.types";
 import { AgentStrategy } from "../strategies/interfaces";
-import { AgentFactory } from "../factory/AgentFactory"; // Re-use your factory!
+// import { AgentFactory } from "../factory/AgentFactory"; 
+import { GrokAgent } from "../strategies/LLM/Grok";
+import { getGrokClient } from "../../infrastructure/llm/grokClient";
 import { v4 as uuidv4 } from 'uuid';
 
 export class ChatAgent {
     
     private llm: AgentStrategy;
 
-    constructor() { //check if new agent is made for each message
-        // We can reuse the same strategies (Grok) for Chat
-        const factory = new AgentFactory();
-        this.llm = factory.createStrategy("Grok"); 
+    constructor() { 
+        // Direct instantiation to avoid circular dependency/KnowledgeService requirement in Factory
+        this.llm = new GrokAgent(getGrokClient()); 
     }
 
     /**
