@@ -483,6 +483,7 @@ export function ProjectDetailPage({
   // Update mocks for static data
   useEffect(() => {
     if (shouldShowMocks) {
+        // @ts-ignore
         setReports(mockReports);
         setKnowledgeDocuments(mockKnowledgeDocuments);
     } else {
@@ -528,7 +529,6 @@ export function ProjectDetailPage({
           fileType: file.name.split('.').pop()?.toUpperCase() || 'FILE'
         };
         setKnowledgeDocuments([newDoc, ...knowledgeDocuments]);
-
       }
     };
     input.click();
@@ -563,10 +563,19 @@ export function ProjectDetailPage({
       console.log("Backend response:", data);
 
       if (response.ok) {
-        alert(`Report generation started! ID: ${data.reportId}`);
-        // Navigate to the new report
-        onSelectReport(data.reportId); 
+        console.log("Report generation started:", data);
+        
+        if (data.reportId) {
+            // Navigate to the new report if ID is returned immediately
+            onSelectReport(data.reportId); 
+        } else if (data.status === "QUEUED") {
+            // Background job started
+            console.log("Background job queued. Redirecting to report viewer...");
+            setIsNewReportModalOpen(false);
+            window.location.href = `/pages/report?id=0&projectId=${project.id}&generating=true`;
+        }
       } else {
+        console.error(`Error generating report: ${data.error}`);
         alert(`Error: ${data.error}`);
       }
     } catch (error) {
@@ -724,15 +733,12 @@ export function ProjectDetailPage({
               setKnowledgeDocuments(previousDocs); // Revert
           }
       });
- 
   };
 
   const getDocumentTypeIcon = (type: KnowledgeDocument["type"]) => {
     switch (type) {
       case "specification": return "📋";
-
       case "previous_report": return "📊";
-
       default: return "📄";
     }
   };

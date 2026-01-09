@@ -14,6 +14,7 @@ interface RewritableTextProps {
   textClassName?: string;
   disabled?: boolean;
   onTextSelection?: (text: string) => void;
+  markdown?: boolean;
 }
 
 export function RewritableText({
@@ -25,7 +26,8 @@ export function RewritableText({
   placeholder = "",
   textClassName = "",
   disabled = false,
-  onTextSelection
+  onTextSelection,
+  markdown = false
 }: RewritableTextProps) {
   const [showRewriteInput, setShowRewriteInput] = useState(false);
   const [rewriteInstructions, setRewriteInstructions] = useState("");
@@ -96,6 +98,7 @@ export function RewritableText({
         textClassName={textClassName}
         disabled={disabled}
         onTextSelection={onTextSelection}
+        markdown={markdown}
       />
 
       {/* Rewrite Input Box */}

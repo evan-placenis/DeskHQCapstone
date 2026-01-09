@@ -3,6 +3,7 @@ import { ProjectRepository } from "../domain/interfaces/ProjectRepository";
 import { AgentFactory } from "../AI_Strategies/factory/AgentFactory";
 import { Report } from "../domain/reports/report.types";
 import { ReportSerializer } from "../AI_Strategies/data_serializer/serializer";
+import { StreamEvent } from "../AI_Strategies/strategies/interfaces";
 
 import { SupabaseClient } from "@supabase/supabase-js";
 
@@ -33,7 +34,8 @@ export class ReportService {
             templateId: string;
             sections?: any[];      // Custom sections from frontend
         },
-        client: SupabaseClient
+        client: SupabaseClient,
+        onStream?: (event: StreamEvent) => void // 🟢 Added Streaming Callback
     ): Promise<Report> {
         
         console.log(`⚙️ Service: Starting generation for Project ${projectId}`);
@@ -56,7 +58,8 @@ export class ReportService {
             templateId: input.templateId,
             userDefinedGroups: input.sections, // Pass custom sections here
             writingMode: input.sections && input.sections.length > 0 ? 'USER_DEFINED' : 'AI_DESIGNED',
-            userId: (await client.auth.getUser()).data.user?.id
+            userId: (await client.auth.getUser()).data.user?.id,
+            onStream: onStream // 🟢 Pass callback to workflow
         });
 
         // 4. Save the result to the Database
@@ -72,14 +75,22 @@ export class ReportService {
 
         // Hydrate images
         const imageIds = new Set<string>();
-        report.sections.forEach(section => {
-            if (section.images) {
-                section.images.forEach((ref: any) => {
-                    const id = typeof ref === 'string' ? ref : ref.imageId;
-                    if (id) imageIds.add(id);
-                });
-            }
-        });
+
+        // Helper to collect IDs from nested structure
+        const collectIds = (items: any[]) => {
+            items.forEach(item => {
+                if (item.images && Array.isArray(item.images)) {
+                    item.images.forEach((ref: any) => {
+                        const id = typeof ref === 'string' ? ref : ref.imageId;
+                        if (id) imageIds.add(id);
+                    });
+                }
+                if (item.children && Array.isArray(item.children)) {
+                    collectIds(item.children);
+                }
+            });
+        };
+        collectIds(report.reportContent);
 
         if (imageIds.size > 0) {
             // 1. Fetch Referenced Project Images (Base Data for URLs)
@@ -102,27 +113,34 @@ export class ReportService {
                     reportImages.forEach((row: any) => reportImageMap.set(row.image_id, row));
                 }
                 
-                report.sections.forEach(section => {
-                    if (section.images) {
-                        section.images = section.images.map((ref: any) => {
-                            const id = typeof ref === 'string' ? ref : ref.imageId;
-                            const pImg = projectImageMap.get(id);
-                            const rImg = reportImageMap.get(id);
-                            
-                            if (pImg) {
-                                return {
-                                    imageId: id,
-                                    caption: rImg?.caption || (typeof ref === 'object' ? ref.caption : "") || pImg.description,
-                                    orderIndex: rImg?.sort_order || (typeof ref === 'object' ? ref.orderIndex : 0),
-                                    url: pImg.public_url,
-                                    storagePath: pImg.storage_path,
-                                    description: pImg.description
-                                };
-                            }
-                            return ref;
-                        });
-                    }
-                });
+                // Helper to hydrate images in nested structure
+                const hydrateItems = (items: any[]) => {
+                    items.forEach(item => {
+                        if (item.images && Array.isArray(item.images)) {
+                            item.images = item.images.map((ref: any) => {
+                                const id = typeof ref === 'string' ? ref : ref.imageId;
+                                const pImg = projectImageMap.get(id);
+                                const rImg = reportImageMap.get(id);
+                                
+                                if (pImg) {
+                                    return {
+                                        imageId: id,
+                                        caption: rImg?.caption || (typeof ref === 'object' ? ref.caption : "") || pImg.description,
+                                        orderIndex: rImg?.sort_order || (typeof ref === 'object' ? ref.orderIndex : 0),
+                                        url: pImg.public_url,
+                                        storagePath: pImg.storage_path,
+                                        description: pImg.description
+                                    };
+                                }
+                                return ref;
+                            });
+                        }
+                        if (item.children && Array.isArray(item.children)) {
+                            hydrateItems(item.children);
+                        }
+                    });
+                };
+                hydrateItems(report.reportContent);
             }
         }
 
@@ -152,18 +170,19 @@ export class ReportService {
         await this.createVersionSnapshot(report, client);
 
         // 3. Now it is safe to modify the data
-        const section = report.sections.find(s => s.id === sectionId);
+        const section = report.reportContent.find(s => s.id === sectionId);
         if (!section) throw new Error("Section not found");
 
         // 🟢 HYBRID MAGIC: Deserialize Markdown -> JSON
         // Instead of just doing "section.content = newContent", we parse it.
         // This checks if the AI swapped an image, changed a list, or just wrote text.
-        const updatedFields = ReportSerializer.deserialize(section, newContent);
+        // const updatedFields = ReportSerializer.deserialize(section, newContent); // TODO: Update Serializer for nested structure
 
-        // 4. Merge the updates into the section object
-        // This updates content, and potentially metadata (like image src)
-        Object.assign(section, updatedFields);
-        section.isReviewRequired = false;
+        // TEMPORARY: Just update description/content field since Serializer expects old structure
+        // Object.assign(section, updatedFields);
+        section.description = newContent; // Fallback for now until Serializer is updated
+        
+        // section.isReviewRequired = false; // Property removed from MainSectionBlueprint
 
         // 4. Save the new version
         await this.reportRepo.update(report, client);
@@ -183,12 +202,13 @@ export class ReportService {
         const report = await this.reportRepo.getById(reportId, client);
         if (!report) throw new Error("Report not found");
 
-        const section = report.sections.find(s => s.id === sectionId);
+        const section = report.reportContent.find(s => s.id === sectionId);
         if (!section) throw new Error("Section not found");
 
         // 🟢 HYBRID MAGIC: Serialize JSON -> Markdown
         // Turns the complex object into simple text the AI can read & edit
-        return ReportSerializer.serialize(section);
+        // return ReportSerializer.serialize(section); // TODO: Update Serializer
+        return section.description; // Fallback
     }
     
 

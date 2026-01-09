@@ -9,25 +9,50 @@ export interface Report {
     versionNumber: number;
     
     // The Core Content
-    sections: ReportSection[];
+    reportContent: MainSectionBlueprint[]; 
     
     // Audit Trail
     history?: ReportVersion[]; // Previous snapshots
     createdAt: Date;
     updatedAt: Date;
-}
-
-// --- SECTIONS ---
-export interface ReportSection {
-    id?: string;             // Useful for React keys
-    sectionTitle: string;    // e.g., "3.1 Site Observations"
-    content: string;         // Markdown or HTML text from AI
     isReviewRequired: boolean;
-    order: number;
     
-    // Images specifically referenced in THIS paragraph
-    images: ReportImageReference[]; 
 }
+export type MainSectionBlueprint = {
+    id?: string; // 🟢 Added ID for editing stability
+    title: string;
+    description: string; 
+    required: boolean;
+    order: number;
+    children: SubSectionBlueprint[]; // Added optional images array for compatibility
+    _reasoning?: string,
+};
+
+export type SubSectionBlueprint = {
+    title: string;
+    description: string; 
+    required: boolean;
+    order: number;
+    children: bulletpointBlueprint[];
+    _reasoning?: string,
+};
+
+export type bulletpointBlueprint = {
+    point: string;
+    images: ReportImageReference[];
+};
+
+// // --- SECTIONS ---
+// export interface ReportSection {
+//     id?: string;             // Useful for React keys
+//     sectionTitle: string;    // e.g., "3.1 Site Observations"
+//     content: string;         // Markdown or HTML text from AI (Legacy/Simple)
+//     isReviewRequired: boolean;
+//     order: number;
+    
+//     // Images specifically referenced in THIS paragraph
+//     images: ReportImageReference[]; 
+// }
 
 export interface ReportImageReference {
     imageId: string;         // Links back to the Image in Project domain
@@ -39,16 +64,7 @@ export interface ReportImageReference {
     storagePath?: string;
 }
 
-// --- TEMPLATES ---
-export interface ReportTemplate {
-    templateId: string;
-    name: string;            // e.g., "Structural Observation Report"
-    organizationId?: string; // Null = System Default, Set = Custom Org Template
-    
-    // Defines the skeleton (e.g., ["Intro", "Observations", "Conclusion"])
-    structureJson: any;      
-    defaultPrompts: string;  // "You are a structural engineer..."
-}
+
 
 // --- HISTORY / VERSIONING ---
 export interface ReportVersion {

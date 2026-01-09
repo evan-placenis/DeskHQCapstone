@@ -1,3 +1,6 @@
+@import "tailwindcss";
+@plugin "@tailwindcss/typography";
+
 :root {
   /* Professional Engineering Color Palette */
   --brand-primary: #0066FF;

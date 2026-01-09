@@ -10,8 +10,36 @@ export class GrokAgent implements AgentStrategy {
       this.client = client;
   }
 
-  //still need to figure out how to implement the context of (image and text or text-only)
-  async generateContent(systemPrompt: string, userMessage: string, context: AgentExecutionContext): Promise<string> {
+  async generateContent(
+      systemPrompt: string, 
+      userMessage: string, 
+      context: AgentExecutionContext,
+      onStream?: (chunk: string) => void
+  ): Promise<string> {
+    
+    // 1. If streaming is requested, use the stream API
+    if (onStream) {
+        const stream = await this.client.chat.completions.create({
+            model: "grok-3",
+            messages: [
+                { role: "system", content: systemPrompt },
+                { role: "user", content: userMessage },
+            ],
+            stream: true,
+        });
+
+        let fullContent = "";
+        for await (const chunk of stream) {
+            const content = chunk.choices[0]?.delta?.content || "";
+            if (content) {
+                fullContent += content;
+                onStream(content);
+            }
+        }
+        return fullContent;
+    }
+
+    // 2. Otherwise, standard await
     const completion = await this.client.chat.completions.create({
             model: "grok-3",
             messages: [

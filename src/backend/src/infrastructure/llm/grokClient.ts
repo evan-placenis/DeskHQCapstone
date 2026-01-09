@@ -1,14 +1,18 @@
 import OpenAI from "openai";
-import dotenv from "dotenv";
 
-dotenv.config();
 
-if (!process.env.GROK_API_KEY) {
-    throw new Error("Missing XAI_API_KEY in .env");
-}
+let _instance: OpenAI | undefined;
 
-// Initialize the Client pointing to xAI's servers
-export const grokClient = new OpenAI({
-    apiKey: process.env.GROK_API_KEY,
-    baseURL: "https://api.x.ai/v1", // 👈 This tells it to talk to Grok, not OpenAI
-});
+// ✅ This waits until you actually ask for the client
+export const getGrokClient = (): OpenAI => {
+  if (!_instance) {
+    if (!process.env.GROK_API_KEY) {
+      throw new Error("Missing GROK_API_KEY in environment variables");
+    }
+    _instance = new OpenAI({
+      apiKey: process.env.GROK_API_KEY,
+      baseURL: "https://api.x.ai/v1",
+    });
+  }
+  return _instance;
+};

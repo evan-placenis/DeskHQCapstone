@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
+import ReactMarkdown from 'react-markdown';
 import { Textarea } from "../ui_components/textarea";
 import { Input } from "../ui_components/input";
 
@@ -13,6 +14,7 @@ interface EditableTextProps {
   textClassName?: string;
   disabled?: boolean;
   onTextSelection?: (text: string) => void;
+  markdown?: boolean;
 }
 
 export function EditableText({
@@ -23,7 +25,8 @@ export function EditableText({
   placeholder = "",
   textClassName = "",
   disabled = false,
-  onTextSelection
+  onTextSelection,
+  markdown = false
 }: EditableTextProps) {
   const [isEditing, setIsEditing] = useState(false);
   const [editValue, setEditValue] = useState(value);
@@ -125,7 +128,17 @@ export function EditableText({
       className={`${disabled ? 'cursor-text select-text hover:bg-blue-50/30' : 'cursor-text hover:bg-slate-50'} rounded px-2 py-1 -mx-2 -my-1 transition-colors ${textClassName}`}
       style={disabled ? { userSelect: 'text', WebkitUserSelect: 'text', MozUserSelect: 'text', msUserSelect: 'text' } as React.CSSProperties : undefined}
     >
-      {value || <span className="text-slate-400 italic">{placeholder}</span>}
+      {value ? (
+        markdown ? (
+          <div className="prose prose-sm prose-slate max-w-none">
+            <ReactMarkdown>{value}</ReactMarkdown>
+          </div>
+        ) : (
+          value
+        )
+      ) : (
+        <span className="text-slate-400 italic">{placeholder}</span>
+      )}
     </div>
   );
 }

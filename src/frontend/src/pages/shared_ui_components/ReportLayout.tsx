@@ -1,3 +1,4 @@
+import ReactMarkdown from 'react-markdown';
 import { useState, useEffect, useRef } from "react";
 import { Button } from "../ui_components/button";
 import { Card } from "../ui_components/card";
@@ -43,7 +44,7 @@ import {
 } from "lucide-react";
 
 interface SelectedContext {
-  type: "photo" | "section" | "summary" | "text";
+  type: "photo" | "section" | "text";
   content: string;
   id?: number | string;
   label: string;
@@ -89,6 +90,7 @@ interface ReportLayoutProps {
   onResolveComment?: (commentId: number) => void;
   onCompleteReview?: () => void;
   onOpenRatingModal?: () => void;
+  initialReviewNotes?: string;
 }
 
 export function ReportLayout({
@@ -111,18 +113,35 @@ export function ReportLayout({
   onResolveComment,
   onCompleteReview,
   onOpenRatingModal,
+  initialReviewNotes,
 }: ReportLayoutProps) {
   const [pendingChange, setPendingChange] = useState<PendingChange | null>(null);
-  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([
-    {
-      id: 1,
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>(() => {
+    // 🟢 Initialize with Reviewer Notes if available
+    const initialMessages: ChatMessage[] = [];
+    
+    // Add the Reviewer's thinking process first if it exists
+    if (initialReviewNotes) {
+      initialMessages.push({
+        id: 1,
+        role: "assistant",
+        content: `**Reviewer Scratchpad:**\n\n${initialReviewNotes}`,
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+      });
+    }
+
+    // Add standard greeting
+    initialMessages.push({
+      id: initialMessages.length + 1,
       role: "assistant",
       content: mode === "edit" 
         ? "Hello! I'm your AI assistant for this report. I can help you revise sections, add technical details, adjust the tone, or answer questions about the observations. What would you like me to help with?"
         : "Hello! I'm here to help you review this report. Feel free to ask questions about any section or request clarifications.",
-      timestamp: "10:30 AM"
-    }
-  ]);
+      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+    });
+
+    return initialMessages;
+  });
   const [isChatCollapsed, setIsChatCollapsed] = useState(false);
   const [chatWidth, setChatWidth] = useState(384); // Default 384px (w-96)
   const [isResizing, setIsResizing] = useState(false);
@@ -226,12 +245,51 @@ export function ReportLayout({
     }
   }, [chatMessages]);
 
+  const handleUpdateNestedContent = (
+    sectionId: string | number,
+    subSectionIndex: number, // -1 means Parent Description
+    pointIndex: number | null, // null means updating subsection description
+    newValue: string
+  ) => {
+    const newSections = reportContent.sections.map(sec => {
+      if (sec.id !== sectionId) return sec;
+      
+      // Update Parent Description
+      if (subSectionIndex === -1) {
+          return { ...sec, description: newValue };
+      }
+
+      // Deep clone subSections to avoid mutation
+      if (!sec.subSections) return sec;
+      const newSubSections = [...sec.subSections];
+      
+      // Clone the specific subsection
+      const sub = { ...newSubSections[subSectionIndex] };
+      
+      if (pointIndex !== null) {
+        // Update bullet point
+        if (sub.children && sub.children[pointIndex]) {
+            const newChildren = [...sub.children];
+            newChildren[pointIndex] = { ...newChildren[pointIndex], point: newValue };
+            sub.children = newChildren;
+        }
+      } else {
+        // Update description
+        sub.description = newValue;
+      }
+      
+      newSubSections[subSectionIndex] = sub;
+      
+      return { ...sec, subSections: newSubSections };
+    });
+
+    onContentChange({ sections: newSections });
+  };
+
   const handleAcceptChange = () => {
     if (!pendingChange) return;
 
-    if (pendingChange.field === "summary") {
-      onContentChange({ summary: pendingChange.newValue });
-    } else if (pendingChange.sectionId) {
+    if (pendingChange.sectionId) {
       onSectionChange(pendingChange.sectionId, pendingChange.newValue);
     }
 
@@ -293,20 +351,7 @@ export function ReportLayout({
     const lowerInput = input.toLowerCase();
     const timestamp = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     
-    if (lowerInput.includes("summary") && (lowerInput.includes("shorter") || lowerInput.includes("concise"))) {
-      const newSummary = "Foundation inspection at Route 95, Section A evaluates structural integrity, material quality, and design compliance.";
-      return {
-        id: chatMessages.length + 2,
-        role: "assistant",
-        content: "I've made the summary more concise while keeping the key points. Review the changes below and accept if you're satisfied.",
-        timestamp,
-        suggestedChanges: {
-          field: "summary",
-          oldValue: reportContent.summary,
-          newValue: newSummary
-        }
-      };
-    } else if (lowerInput.includes("detail") && reportContent.sections.length > 0) {
+    if (lowerInput.includes("detail") && reportContent.sections.length > 0) {
       const section = reportContent.sections[0];
       const newContent = section.content + "\n\nAdditional technical details: All measurements were taken using calibrated instruments with ±0.1% accuracy. Environmental conditions were monitored throughout the inspection period to ensure data quality and reliability.";
       return {
@@ -325,33 +370,22 @@ export function ReportLayout({
     return {
       id: chatMessages.length + 2,
       role: "assistant",
-      content: "I can help you with:\n\n• Making sections more concise or detailed\n• Adding technical specifications and measurements\n• Improving clarity and structure\n• Adjusting professional tone\n• Expanding recommendations\n\nTry asking: \"Make the summary shorter\" or \"Add more detail to the first section\"",
+      content: "I can help you with:\n\n• Making sections more concise or detailed\n• Adding technical specifications and measurements\n• Improving clarity and structure\n• Adjusting professional tone\n• Expanding recommendations\n\nTry asking: \"Add more detail to the first section\"",
       timestamp
     };
   };
 
   const handleHighlightEdit = (highlightedText: string, sectionId: number | string, newText: string) => {
     // Find the section content
-    if (sectionId === 0) {
-      // Summary section
+    const section = reportContent.sections.find(s => s.id === sectionId);
+    if (section) {
       setPendingChange({
         messageId: chatMessages.length + 1,
-        field: "summary",
-        oldValue: reportContent.summary,
-        newValue: reportContent.summary.replace(highlightedText, newText),
+        sectionId: sectionId,
+        oldValue: section.content,
+        newValue: section.content.replace(highlightedText, newText),
         source: "peer-review"
       });
-    } else {
-      const section = reportContent.sections.find(s => s.id === sectionId);
-      if (section) {
-        setPendingChange({
-          messageId: chatMessages.length + 1,
-          sectionId: sectionId,
-          oldValue: section.content,
-          newValue: section.content.replace(highlightedText, newText),
-          source: "peer-review"
-        });
-      }
     }
   };
 
@@ -368,8 +402,7 @@ export function ReportLayout({
 
     // Check if already selected
     const existingIndex = selectedContexts.findIndex(
-      (c) => c.type === context.type && 
-      (c.id === context.id || (c.type === "summary" && context.type === "summary"))
+      (c) => c.type === context.type && c.id === context.id
     );
 
     if (existingIndex >= 0) {
@@ -383,8 +416,7 @@ export function ReportLayout({
 
   const isItemSelected = (type: string, id?: number | string) => {
     return selectedContexts.some(
-      (c) => c.type === type && 
-      (id !== undefined ? c.id === id : c.type === "summary")
+      (c) => c.type === type && c.id === id
     );
   };
 
@@ -659,68 +691,24 @@ export function ReportLayout({
                   </div>
 
 
-                  {/* Summary with diff view */}
-                  <div>
-                    <h3 
-                      className={`text-slate-900 mb-3 cursor-pointer transition-all ${
-                        isItemSelected("summary")
-                          ? "text-theme-primary" 
-                          : isSelectionMode
-                            ? "hover:text-theme-primary"
-                            : "hover:text-theme-primary"
-                      }`}
-                      onClick={() => handleItemClick({
-                        type: "summary",
-                        content: reportContent.summary,
-                        label: "Summary"
-                      })}
-                    >
-                      Summary {isItemSelected("summary") && <CheckCircle2 className="w-4 h-4 inline ml-1" />}
-                    </h3>
-                    {pendingChange && pendingChange.field === "summary" ? (
-                      <DiffView
-                        oldText={pendingChange.oldValue}
-                        newText={pendingChange.newValue}
-                        onAccept={handleAcceptChange}
-                        onReject={handleRejectChange}
-                        source={pendingChange.source}
-                      />
-                    ) : mode === "peer-review" && peerReview && peerReview.comments ? (
-                      <HighlightableText
-                        content={reportContent.summary}
-                        sectionId={0}
-                        comments={peerReview.comments}
-                        onAddHighlightComment={onAddHighlightComment}
-                        onAddHighlightEdit={handleHighlightEdit}
-                        onHighlightClick={(commentId) => setActiveHighlightCommentId(commentId)}
-                        activeCommentId={activeHighlightCommentId}
-                        disabled={isSelectionMode}
-                        onTextSelection={(text) => handleTextSelection(text, undefined, "Summary")}
-                      />
-                    ) : (
-                      <RewritableText
-                        value={reportContent.summary}
-                        onChange={(value) => onContentChange({ summary: value })}
-                        onRequestRewrite={(currentText, instructions) => 
-                          handleRequestRewrite(currentText, instructions, undefined, "summary")
-                        }
-                        multiline
-                        disabled={isSelectionMode}
-                        onTextSelection={(text) => handleTextSelection(text, undefined, "Summary")}
-                      />
-                    )}
-                  </div>
-
                   <Separator />
 
+
                   {/* Report Sections */}
-                  {reportContent.sections.map((section) => {
+                  {reportContent.sections.map((section, secIdx) => {
+                    const hasSubSections = section.subSections && section.subSections.length > 0;
                     const hasImages = section.images && section.images.length > 0;
                     
+                    // 🟢 Auto-numbering Logic
+                    // Extract "2" from "2.0 Title" or default to index + 1
+                    const sectionMatch = section.title.match(/^(\d+)/);
+                    const sectionPrefix = sectionMatch ? sectionMatch[1] : (secIdx + 1).toString();
+                    let globalPointCounter = 1;
+
                     return (
                     <div key={section.id} className="mb-8">
                       <h3 
-                        className={`text-slate-900 mb-3 cursor-pointer transition-all ${
+                        className={`text-xl sm:text-1xl font-bold text-slate-800 mb-4 cursor-pointer transition-all ${
                           isItemSelected("section", section.id) 
                             ? "text-theme-primary" 
                             : isSelectionMode
@@ -737,7 +725,103 @@ export function ReportLayout({
                         {section.title} {isItemSelected("section", section.id) && <CheckCircle2 className="w-4 h-4 inline ml-1" />}
                       </h3>
 
-                      <div className={`grid grid-cols-1 gap-6 ${hasImages ? 'sm:grid-cols-2' : ''}`}>
+                      {hasSubSections ? (
+                        // 🟢 NEW STRUCTURED RENDERING (Editable & Aligned)
+                        <div>
+                            {/* Parent Section Description (Editable) */}
+                            {section.description && (
+                                <div className="mb-6">
+                                    <EditableText
+                                        value={section.description}
+                                        onChange={(val) => handleUpdateNestedContent(section.id, -1, null, val)}
+                                        multiline
+                                        markdown={true}
+                                        className="text-slate-600"
+                                    />
+                                </div>
+                            )}
+
+                            {section.subSections!.map((sub, subIdx) => (
+                                <div key={subIdx} className="mb-6">
+                                    {/* Sub Title */}
+                                    {sub.title !== "General Summary" && sub.title !== "Observed Conditions" && (
+                                        <h4 className="text-lg font-medium text-slate-800 mb-2">{sub.title}</h4>
+                                    )}
+                                    
+                                    {/* Sub Description (Editable) */}
+                                    {sub.description && (
+                                        <div className="mb-4">
+                                            <EditableText
+                                                value={sub.description}
+                                                onChange={(val) => handleUpdateNestedContent(section.id, subIdx, null, val)}
+                                                multiline
+                                                markdown={true}
+                                                className="text-slate-600"
+                                            />
+                                        </div>
+                                    )}
+                                    
+                                    {/* Points (Editable & Aligned) */}
+                                    <div className="space-y-3 mt-2">
+                                        {sub.children.map((point, pIdx) => {
+                                            const pointHasImages = point.images && point.images.length > 0;
+                                            const pointLabel = `${sectionPrefix}.${globalPointCounter++}`;
+
+                                            return (
+                                                <div key={pIdx} className={`grid grid-cols-1 ${pointHasImages ? 'md:grid-cols-2 gap-6' : 'gap-4'}`}>
+                                                    {/* Text Column (Editable) */}
+                                                    <div className="flex gap-3">
+                                                        <span className="mt-1 text-slate-900 font-normal min-w-[2rem] select-none">{pointLabel}</span>
+                                                        <div className="flex-1">
+                                                            <EditableText
+                                                                value={point.point}
+                                                                onChange={(val) => handleUpdateNestedContent(section.id, subIdx, pIdx, val)}
+                                                                multiline
+                                                                markdown={true}
+                                                                className="w-full"
+                                                            />
+                                                        </div>
+                                                    </div>
+                                                    
+                                                    {/* Images Column */}
+                                                    {pointHasImages && (
+                                                        <div className="space-y-4">
+                                                            {point.images!.map((img: any) => (
+                                                                <div key={img.imageId || img.id || Math.random()} className="rounded-lg overflow-hidden border border-slate-200 shadow-sm bg-white">
+                                                                    {img.storagePath ? (
+                                                                        <SecureImage 
+                                                                            storagePath={img.storagePath}
+                                                                            alt={img.description || img.caption || "Report Image"}
+                                                                            className="w-full h-48 object-cover"
+                                                                        />
+                                                                    ) : (
+                                                                        <ImageWithFallback
+                                                                            src={img.url}
+                                                                            alt={img.description || img.caption || "Report Image"}
+                                                                            className="w-full h-48 object-cover"
+                                                                        />
+                                                                    )}
+                                                                    {(img.description || img.caption) && (
+                                                                        <div className="p-2 border-t border-slate-200 bg-slate-50">
+                                                                            <p className="text-xs text-slate-600 line-clamp-2">
+                                                                                {img.description || img.caption}
+                                                                            </p>
+                                                                        </div>
+                                                                    )}
+                                                                </div>
+                                                            ))}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                      ) : (
+                       // 🟢 FALLBACK TO OLD FLATTENED RENDERING
+                       <div className={`grid grid-cols-1 gap-6 ${hasImages ? 'sm:grid-cols-2' : ''}`}>
                         {/* Text Content */}
                         <div className={`min-w-0 ${hasImages ? 'md:col-span-2' : ''}`}>
                           {pendingChange && pendingChange.sectionId === section.id ? (
@@ -768,6 +852,7 @@ export function ReportLayout({
                                 handleRequestRewrite(currentText, instructions, section.id, undefined)
                               }
                               multiline
+                              markdown={true} // 🟢 Enable Markdown Rendering
                               disabled={isSelectionMode}
                               onTextSelection={(text) => handleTextSelection(text, section.id, section.title)}
                             />
@@ -804,6 +889,7 @@ export function ReportLayout({
                           </div>
                         )}
                       </div>
+                      )}
                     </div>
                   );
                   })}

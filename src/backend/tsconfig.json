@@ -10,9 +10,6 @@
     "skipLibCheck": true,
     "verbatimModuleSyntax": false /* <--- THIS IS THE CULPRIT. Set to false. */
   },
-  "include": [
-    "src/**/*",
-    "trigger.config.ts"
-  ],
+  "include": ["src/**/*", "../../trigger.config.ts"],
   "exclude": ["node_modules"]
 }

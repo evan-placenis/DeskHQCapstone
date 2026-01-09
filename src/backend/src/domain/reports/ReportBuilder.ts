@@ -1,18 +1,18 @@
 // src/domain/reports/ReportBuilder.ts
 
-import { Report, ReportSection, ReportImageReference } from "./report.types";
+import { Report, MainSectionBlueprint } from "./report.types";
 import { v4 as uuidv4 } from 'uuid'; 
 
 export class ReportBuilder {
     
     // Internal state: We use Partial because we fill it in step-by-step
     private reportData: Partial<Report> = {
-        sections: [],
+        reportContent: [],
         history: [],
         versionNumber: 1
     };
 
-    constructor(projectId: string, userId: string) { // We could use userId for 'createdBy' if you add it later
+    constructor(projectId: string, userId: string) { 
         this.reportData.reportId = uuidv4();
         this.reportData.projectId = projectId;
         this.reportData.createdAt = new Date();
@@ -45,39 +45,24 @@ export class ReportBuilder {
     // --- The Section Logic ---
     
     /**
-     * Adds a section to the report.
-     * Automatically converts simple Image IDs (from AI) into rich Image References.
+     * Adds a complete Main Section to the report using the new Blueprint structure.
      */
-    public addSection(
-        title: string, 
-        contentMd: string, 
-        imageIds: string[] = []
-    ): ReportBuilder {
+    public addMainSection(section: MainSectionBlueprint): ReportBuilder {
+        if (!this.reportData.reportContent) {
+            this.reportData.reportContent = [];
+        }
         
-        // 1. Convert simple strings into your Domain's Image Reference objects
-        const imageReferences: ReportImageReference[] = imageIds.map((id, index) => ({
-            imageId: id,
-            caption: `Figure ${index + 1}`, // Default caption (User can edit later)
-            orderIndex: index
-        }));
-
-        // 2. Create the Section Object
-        const newSection: ReportSection = {
-            id: uuidv4(),
-            sectionTitle: title,    // Matches your interface
-            content: contentMd,     // Matches your interface
-            isReviewRequired: true, // Default to true so humans check AI work
-            order: (this.reportData.sections?.length || 0) + 1,
-            images: imageReferences
-        };
-
-        // 3. Push to state
-        if (this.reportData.sections) {
-            this.reportData.sections.push(newSection);
-        } else {
-            this.reportData.sections = [newSection];
+        // Ensure order is set if missing
+        if (!section.order) {
+            section.order = this.reportData.reportContent.length + 1;
         }
 
+        // 🟢 Ensure ID is present
+        if (!section.id) {
+            section.id = uuidv4();
+        }
+
+        this.reportData.reportContent.push(section);
         return this;
     }
 
