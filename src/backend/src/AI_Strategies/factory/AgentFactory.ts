@@ -5,6 +5,7 @@ import { TextOnlyMode } from "../strategies/Execution/TextOnlyMode";
 import { ImageAndTextMode } from "../strategies/Execution/ImageAndTextMode";
 
 import { getGrokClient } from '../../infrastructure/llm/grokClient'; // Import from Infra
+import { getOpenAIClient } from '../../infrastructure/llm/openAIClient'; // 🟢 Import OpenAI Client
 
 // import { geminiClient } from '../../infrastructure/llm/geminiClient'; // Import from Infra
 
@@ -17,11 +18,16 @@ import { AssemblyWorkflow } from "../ReportWorkflows/workflow/AssemblyWorkflow";
 import { BasicWorkflow } from "../ReportWorkflows/workflow/BasicWorkflow";
 
 import { ReportBlueprint } from "../../domain/reports/templates/report_temples";
+import { PlannerAgent } from "../ChatSystem/Agents/PlannerAgent";
+import { ResearcherAgent } from "../ChatSystem/Agents/ResearcherAgent";
+import { DataSerializer } from "../ChatSystem/adapter/serializer";
 
 
 // The Chat System
-import { ChatAgent } from "../ChatSystem/ChatAgent";
+import { ChatOrchestrator } from "../ChatSystem/core/ChatOrchestrator";
 import { KnowledgeService } from "../../Services/KnowledgeServivce";
+import { ChatEditor } from "../ChatSystem/Agents/EditorAgent";
+import { ToolAgent } from "../ChatSystem/Agents/ToolAgent";
 
 export class AgentFactory {
   
@@ -34,6 +40,8 @@ export class AgentFactory {
       //   return new GemminiAgent();
       case 'GROK':
         return new GrokAgent(getGrokClient());
+      // case 'GPT-4o':
+      //   return new """";
       default:
         // Default to GPT if unknown
         console.warn(`Unknown model '${modelName}', defaulting to Grok.`);
@@ -89,5 +97,24 @@ export class AgentFactory {
             throw new Error(`Unknown report type: ${reportWorkflow}`);
     }
   }
+  // Create the full Orchestrator
+  public createChatAgent(modeName: string): ChatOrchestrator {
+    // 1. Create Dependencies
+    const editorAgent = new ChatEditor(this.createStrategy(modeName));
+    
+    // 🟢 FIX: Pass the raw OpenAI client to Router and ToolAgent
+    // The previous implementation used grokClient which caused "model not found" for gpt-4o
+    const openAIClient = getOpenAIClient();
+    const agent = this.createStrategy(modeName);
+  
+
+    const planner = new PlannerAgent(agent); // Logic to detect "change/rewrite"
+    const researcher = new ResearcherAgent(agent);
+    const serializer = new DataSerializer();
+    const toolAgent = new ToolAgent(openAIClient);
+
+    // 2. Inject them
+    return new ChatOrchestrator(planner, researcher, editorAgent, serializer, toolAgent);
+}
 
 }

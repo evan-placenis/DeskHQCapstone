@@ -11,7 +11,7 @@ import { AgentFactory } from '../AI_Strategies/factory/AgentFactory';
 import { DocumentStrategyFactory } from '../Document_Strategies/factory/DocumentFactory';
 import { ReportService } from '../Services/ReportService';
 import { ChatService } from '../Services/ChatService';
-import { ChatAgent } from '../AI_Strategies/ChatSystem/ChatAgent';
+import { ChatOrchestrator } from '../AI_Strategies/ChatSystem/core/ChatOrchestrator';
 import { KnowledgeService } from '../Services/KnowledgeServivce'; 
 import { UserService } from '../Services/UserService';
 import { StorageService } from '../Services/StorageService';
@@ -36,7 +36,7 @@ export class Container {
     private static _knowledgeService: KnowledgeService;
     private static _agentFactory: AgentFactory;
     private static _jobQueue: TriggerJobQueue;
-    private static _chatAgent: ChatAgent;
+    private static _chatAgent: ChatOrchestrator;
   
     private static _reportService: ReportService;
     private static _chatService: ChatService;
@@ -113,7 +113,9 @@ export class Container {
     }
     
     static get chatAgent() {
-        if (!this._chatAgent) this._chatAgent = new ChatAgent();
+        if (!this._chatAgent) {
+            this._chatAgent = this.agentFactory.createChatAgent("GROK");
+        }
         return this._chatAgent;
     }
   
@@ -159,75 +161,3 @@ export class Container {
       return this._storageService;
     }
   }
-
-
-
-// // 1. Create the ADMIN client (Service Role)
-// // ⚠️ NEVER expose this key to the frontend (NEXT_PUBLIC)
-// const supabaseAdminClient = createClient(
-//     process.env.NEXT_PUBLIC_SUPABASE_URL!,
-//     process.env.SUPABASE_SERVICE_ROLE_KEY! // Must be the secret key
-// );
-
-
-// // --- Instantiation ---
-
-// // 1. Create the Ingredients (The Repositories)
-// const chatRepo = new SupabaseChatRepository();
-// const reportRepo = new SupabaseReportRepository();
-// const projectRepo = new SupabaseProjectRepository();
-// const knowledgeRepo = new SupabaseKnowledgeRepository();
-// const vectorStore = new PineconeVectorStore();
-
-// // 2. Create the Tools (AI & Queue)
-// const documentFactory = new DocumentStrategyFactory();
-
-// // KnowledgeService needs Repo + Vector Store + DocumentFactory + Admin Client
-// // Instantiated BEFORE AgentFactory because AgentFactory needs it
-// const knowledgeService = new KnowledgeService(knowledgeRepo, vectorStore, documentFactory, supabaseAdminClient);
-
-// // AgentFactory needs KnowledgeService
-// const agentFactory = new AgentFactory(knowledgeService);
-
-// //const grokStrategy = agentFactory.createStrategy("GROK")
-
-// const chatAgent = new ChatAgent();
-
-// const jobQueue = new TriggerJobQueue();
-
-// // 3. Assemble the Services (The Chefs)
-// // ReportService needs repositories to work
-// const reportService = new ReportService(reportRepo, projectRepo, agentFactory);
-
-// // ChatService needs the ReportService to do its job
-// const chatService = new ChatService(chatRepo, reportService, chatAgent);
-
-// // UserService needs Supabase Admin to register users
-// const userService = new UserService(supabaseAdminClient);
-
-// // StorageService for Images
-// // We instantiate it without a default client, forcing the use of per-request clients (RLS)
-// const storageService = new StorageService();
-
-
-// // --- Exports ---
-
-// // 4. Export the Container (The Bag of Dependencies)
-// export const Container = {
-//     // Repos (Optional, but good for debugging)
-//     projectRepo,
-    
-//     // Strategies
-//     agentFactory,
-//     documentFactory,
-    
-//     // Services
-//     reportService,
-//     chatService,      // Needed by ChatController
-//     knowledgeService, // Needed by KnowledgeController
-//     userService,
-//     storageService,
-    
-//     // Queue
-//     jobQueue
-// };

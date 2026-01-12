@@ -1,5 +1,6 @@
 import {Project} from "../../domain/core/project.types"
 import { SupabaseClient } from "@supabase/supabase-js";
+import { ExecutionPlan } from "../ChatSystem/interfaces";
 
 // --- 1. The Brain Contract ---
 // Every AI model MUST have a generateContent method.
@@ -7,7 +8,7 @@ export interface AgentStrategy {
   generateContent(
       systemPrompt: string, 
       userMessage: string, 
-      context: AgentExecutionContext,
+      context?: AgentExecutionContext,
       onStream?: (chunk: string) => void // Optional streaming callback
   ): Promise<string>;
 }

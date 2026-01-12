@@ -1,5 +1,5 @@
 import { ChatRepository } from "../domain/interfaces/ChatRepository";
-import { ChatAgent } from "../AI_Strategies/ChatSystem/ChatAgent";
+import { ChatOrchestrator } from "../AI_Strategies/ChatSystem/core/ChatOrchestrator";
 import { ChatSession, ChatMessage } from "../domain/chat/chat.types";
 import { v4 as uuidv4 } from 'uuid';
 import { ReportService } from "./ReportService";
@@ -10,12 +10,12 @@ export class ChatService {
     
     // Dependencies
     private repo: ChatRepository;
-    private chatAgent: ChatAgent;
+    private ChatOrchestrator: ChatOrchestrator;
     private reportService: ReportService;
 
-    constructor(repo: ChatRepository, reportService: ReportService, chatAgent: ChatAgent) {
+    constructor(repo: ChatRepository, reportService: ReportService, ChatOrchestrator: ChatOrchestrator) {
         this.repo = repo;
-        this.chatAgent = chatAgent;
+        this.ChatOrchestrator = ChatOrchestrator;
         this.reportService = reportService;
     }
 
@@ -26,9 +26,13 @@ export class ChatService {
         sessionId: string, 
         userText: string,
         client: SupabaseClient,
-        activeSectionId?: string // 👈 New Optional Param: Is the user looking at a specific section?
+        activeSectionId?: string, // 👈 New Optional Param: Is the user looking at a specific section?
+        reportId?: string // 🟢 New Optional Param: Fallback if session doesn't have it
     ): Promise<ChatMessage> {
         
+        // console.log(`🤖 ChatService: Handling message for session ${sessionId}`);
+        // console.log(`📍 Active Section ID:`, activeSectionId || "None");
+
         // 1. Fetch Session
         const session = await this.repo.getSessionById(sessionId, client);
         if (!session) throw new Error("Session not found");
@@ -47,18 +51,24 @@ export class ChatService {
         // 3. 🔍 FETCH CONTEXT (The "Glue")
         // If the user is currently editing a specific section, the AI needs to "see" it.
         let reportContext = "";
-        if (session.reportId && activeSectionId) {
+        
+        // Use session.reportId OR the passed reportId
+        const targetReportId = session.reportId || reportId;
+
+        if (targetReportId && activeSectionId) {
              // 👇 This calls the function inside ReportService
              reportContext = await this.reportService.getSectionContextForAI(
-                 session.reportId, 
+                 targetReportId, 
                  activeSectionId, 
                  client
              );
+        } else {
+            console.log(`⚠️ No context fetched. ReportId: ${targetReportId}, SectionId: ${activeSectionId}`);
         }
 
         // 4. Ask the AI 🧠
         // We pass the new 'reportContext' string to the Agent
-        const aiMsg = await this.chatAgent.processUserMessage(
+        const aiMsg = await this.ChatOrchestrator.processUserMessage(
             session, 
             userText, 
             reportContext 
@@ -123,13 +133,3 @@ export class ChatService {
         return newSession;
     }
 }
-
-
-// This is the "Glue". The Controller shouldn't talk to the AI directly; it should ask the Service to "handle the message."
- // The Service does 3 things:
-
-// Saves the User's message to the DB.
-
-// Calls the AI Agent to get an answer.
-
-// Saves the AI's response to the DB.

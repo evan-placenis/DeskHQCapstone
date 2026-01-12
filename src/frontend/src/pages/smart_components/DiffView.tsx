@@ -7,6 +7,8 @@ import { diffWords, Change } from "diff";
 interface DiffViewProps {
   oldText: string;
   newText: string;
+  changes?: Change[]; // 🟢 Added
+  stats?: { changeSummary: string }; // 🟢 Added
   onAccept: () => void;
   onReject: () => void;
   sectionTitle?: string;
@@ -16,12 +18,15 @@ interface DiffViewProps {
 export function DiffView({
   oldText,
   newText,
+  changes, // 🟢 New prop
+  stats,   // 🟢 New prop
   onAccept,
   onReject,
   sectionTitle,
   source = "ai"
 }: DiffViewProps) {
-  const differences = diffWords(oldText, newText);
+  // 🟢 Use backend-provided diffs if available, otherwise compute them
+  const differences = changes || diffWords(oldText, newText);
   
   const isPeerReview = source === "peer-review";
 
@@ -36,6 +41,11 @@ export function DiffView({
           )}
           <span className={`text-sm ${isPeerReview ? 'text-theme-secondary' : 'text-blue-900'}`}>
             {isPeerReview ? 'Peer Review' : 'AI'} suggested changes{sectionTitle ? ` for "${sectionTitle}"` : ""}
+            {stats && ( // 🟢 Display Stats Badge
+              <span className="ml-2 text-xs bg-white/50 px-2 py-0.5 rounded-full border border-blue-200">
+                {stats.changeSummary}
+              </span>
+            )}
           </span>
         </div>
         <div className="flex items-center gap-2">

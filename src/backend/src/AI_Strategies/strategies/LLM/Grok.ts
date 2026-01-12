@@ -13,7 +13,7 @@ export class GrokAgent implements AgentStrategy {
   async generateContent(
       systemPrompt: string, 
       userMessage: string, 
-      context: AgentExecutionContext,
+      context?: AgentExecutionContext,
       onStream?: (chunk: string) => void
   ): Promise<string> {
     
