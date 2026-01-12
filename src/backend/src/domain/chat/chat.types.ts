@@ -31,4 +31,22 @@ export interface EditSuggestion {
     suggestedText: string;
     reason: string;          // "Correcting grammar" or "Adding missing spec"
     status: 'PENDING' | 'ACCEPTED' | 'REJECTED';
+    changes: DiffChange[]; // The raw array for rendering green/red text
+    stats: DiffStats;      // The summary data (e.g. "+5 words")
+    suggestedData?: any;     // 🟢 NEW: Structured JSON version of the suggested text
+}
+
+// 1. The shape of a single text change (matches the 'diff' library output)
+export interface DiffChange {
+    value: string;
+    added?: boolean;
+    removed?: boolean;
+}
+
+// 2. The statistics for the summary
+export interface DiffStats {
+    added: number;
+    removed: number;
+    changeSummary: string;
+    hasChanges: boolean;
 }

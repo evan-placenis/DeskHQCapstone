@@ -17,10 +17,11 @@ import { RewritableText } from "../smart_components/RewritableText";
 import { DiffView } from "../smart_components/DiffView";
 import { HighlightableText } from "../smart_components/HighlightableText";
 import { AIChatInput } from "./AIChatInput";
+import { ChatBubble, ChatMessage } from "../smart_components/ChatBubble"; // 🟢 Updated Import
 import { PeerReviewPanel } from "../smart_components/PeerReviewPanel";
 import { ImageWithFallback } from "../figma/ImageWithFallback";
 import { SecureImage } from "../smart_components/SecureImage";
-import { PeerReview, ReportContent, ChatMessage } from "@/frontend/types";
+import { PeerReview, ReportContent } from "@/frontend/types"; // 🟢 Removed ChatMessage from here
 import {
   ArrowLeft,
   Download,
@@ -52,19 +53,24 @@ interface SelectedContext {
 }
 
 interface PendingChange {
-  messageId: number;
+  messageId: number | string; // Updated to allow string IDs
   sectionId?: number | string;
   field?: string;
   oldValue: string;
   newValue: string;
+  newData?: any;
+  changes?: any[]; 
+  stats?: any;     
   source: "ai" | "peer-review";
 }
 
 interface ReportLayoutProps {
   mode: "edit" | "peer-review";
+  projectId?: string | number; 
+  reportId?: string | number;  
   reportContent: ReportContent;
   onContentChange: (updates: Partial<ReportContent>) => void;
-  onSectionChange: (sectionId: number | string, newContent: string) => void;
+  onSectionChange: (sectionId: number | string, newContent: string, newData?: any) => void;
   
   // Header props
   onBack: () => void;
@@ -95,6 +101,8 @@ interface ReportLayoutProps {
 
 export function ReportLayout({
   mode,
+  projectId,
+  reportId,
   reportContent,
   onContentChange,
   onSectionChange,
@@ -115,6 +123,7 @@ export function ReportLayout({
   onOpenRatingModal,
   initialReviewNotes,
 }: ReportLayoutProps) {
+  const [sessionId, setSessionId] = useState<string | null>(null);
   const [pendingChange, setPendingChange] = useState<PendingChange | null>(null);
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>(() => {
     // 🟢 Initialize with Reviewer Notes if available
@@ -123,21 +132,21 @@ export function ReportLayout({
     // Add the Reviewer's thinking process first if it exists
     if (initialReviewNotes) {
       initialMessages.push({
-        id: 1,
+        id: "init-1",
         role: "assistant",
         content: `**Reviewer Scratchpad:**\n\n${initialReviewNotes}`,
-        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+        timestamp: new Date()
       });
     }
 
     // Add standard greeting
     initialMessages.push({
-      id: initialMessages.length + 1,
+      id: "init-2",
       role: "assistant",
       content: mode === "edit" 
         ? "Hello! I'm your AI assistant for this report. I can help you revise sections, add technical details, adjust the tone, or answer questions about the observations. What would you like me to help with?"
         : "Hello! I'm here to help you review this report. Feel free to ask questions about any section or request clarifications.",
-      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+      timestamp: new Date()
     });
 
     return initialMessages;
@@ -290,7 +299,8 @@ export function ReportLayout({
     if (!pendingChange) return;
 
     if (pendingChange.sectionId) {
-      onSectionChange(pendingChange.sectionId, pendingChange.newValue);
+      // 🟢 Pass newData if available
+      onSectionChange(pendingChange.sectionId, pendingChange.newValue, pendingChange.newData);
     }
 
     setPendingChange(null);
@@ -300,79 +310,120 @@ export function ReportLayout({
     setPendingChange(null);
   };
 
-  const handleSendMessage = (message: string) => {
+  const handleSendMessage = async (message: string) => {
     if (!message.trim()) return;
 
+    // 1. Optimistic UI Update
     const userMessage: ChatMessage = {
-      id: chatMessages.length + 1,
+      id: Date.now().toString(), 
       role: "user",
       content: message,
-      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+      timestamp: new Date()
     };
 
-    // Add user message and thinking indicator
     const thinkingMessage: ChatMessage = {
-      id: chatMessages.length + 2,
+      id: (Date.now() + 1).toString(),
       role: "assistant",
       content: "Reasoning >",
-      timestamp: ""
+      timestamp: new Date()
     };
 
-    setChatMessages([...chatMessages, userMessage, thinkingMessage]);
-    
-    // Simulate AI response with changes
-    setTimeout(() => {
-      const response = generateAIResponse(message);
-      
-      // Replace the thinking message with actual response
-      setChatMessages(prev => {
-        const withoutThinking = prev.filter(msg => msg.content !== "Reasoning >");
-        return [...withoutThinking, response];
-      });
-      
-      // If the response has suggested changes, set them as pending
-      if (response.suggestedChanges) {
-        setPendingChange({
-          messageId: response.id,
-          sectionId: response.suggestedChanges.sectionId,
-          field: response.suggestedChanges.field,
-          oldValue: response.suggestedChanges.oldValue,
-          newValue: response.suggestedChanges.newValue,
-          source: "ai"
-        });
-      }
-      
-      // Play notification sound
-      playNotificationChime();
-    }, 1500);
-  };
+    setChatMessages(prev => [...prev, userMessage, thinkingMessage]);
 
-  const generateAIResponse = (input: string): ChatMessage => {
-    const lowerInput = input.toLowerCase();
-    const timestamp = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-    
-    if (lowerInput.includes("detail") && reportContent.sections.length > 0) {
-      const section = reportContent.sections[0];
-      const newContent = section.content + "\n\nAdditional technical details: All measurements were taken using calibrated instruments with ±0.1% accuracy. Environmental conditions were monitored throughout the inspection period to ensure data quality and reliability.";
-      return {
-        id: chatMessages.length + 2,
-        role: "assistant",
-        content: "I've added more technical details to the first section. Review the changes below.",
-        timestamp,
-        suggestedChanges: {
-          sectionId: section.id,
-          oldValue: section.content,
-          newValue: newContent
+    try {
+        let currentSessionId = sessionId;
+
+        // 2. Ensure Session Exists
+        if (!currentSessionId) {
+            if (!projectId) {
+                // If no projectId, fallback to mock/warning but don't break
+                console.warn("Missing Project ID - cannot start real session");
+                // Fallback to mock behavior or error message
+                throw new Error("Missing Project ID");
+            }
+            const res = await fetch("/api/chat/sessions", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ 
+                    projectId, 
+                    reportId 
+                })
+            });
+            if (!res.ok) throw new Error("Failed to create session");
+            const sessionData = await res.json();
+            currentSessionId = sessionData.sessionId;
+            setSessionId(currentSessionId);
         }
-      };
-    }
 
-    return {
-      id: chatMessages.length + 2,
-      role: "assistant",
-      content: "I can help you with:\n\n• Making sections more concise or detailed\n• Adding technical specifications and measurements\n• Improving clarity and structure\n• Adjusting professional tone\n• Expanding recommendations\n\nTry asking: \"Add more detail to the first section\"",
-      timestamp
-    };
+        // 3. Send Message to Backend (including active context)
+        const activeSection = selectedContexts.find(c => c.type === "section");
+        const activeSectionId = activeSection ? String(activeSection.id) : undefined;
+        
+        // console.log("📤 Sending Message:", { message, activeSectionId, reportId }); // 🟢 FRONTEND DEBUG
+
+        const response = await fetch(`/api/chat/sessions/${currentSessionId}`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ 
+                message,
+                activeSectionId,
+                reportId // 🟢 Pass reportId in case session is missing it
+            })
+        });
+
+        if (!response.ok) throw new Error("Failed to send message");
+        const aiMessageData = await response.json();
+
+        // 4. Update UI with Real Response
+        const aiMessage: ChatMessage = {
+            id: (Date.now() + 2).toString(),
+            role: "assistant",
+            content: aiMessageData.content,
+            timestamp: new Date(),
+            suggestion: aiMessageData.suggestion ? {
+                id: aiMessageData.suggestion.id || "temp-id", // Use backend ID or fallback
+                targetSectionId: aiMessageData.suggestion.targetSectionId,
+                status: aiMessageData.suggestion.status,
+                stats: aiMessageData.suggestion.stats,
+                changes: aiMessageData.suggestion.changes,
+                // We keep 'originalText', 'suggestedText' in raw object if needed, but 'suggestion' follows EditSuggestion interface
+                // Note: The backend 'EditSuggestion' might have extra fields, but that's fine.
+            } : undefined
+        };
+
+        setChatMessages(prev => {
+            const filtered = prev.filter(msg => msg.content !== "Reasoning >");
+            return [...filtered, aiMessage];
+        });
+
+        // Handle Suggestions (Legacy support for Main Diff View)
+        if (aiMessageData.suggestion) {
+            setPendingChange({
+                messageId: aiMessage.id,
+                sectionId: aiMessageData.suggestion.targetSectionId,
+                oldValue: aiMessageData.suggestion.originalText,
+                newValue: aiMessageData.suggestion.suggestedText,
+                newData: aiMessageData.suggestion.suggestedData,
+                changes: aiMessageData.suggestion.changes, // 🟢 Map from backend
+                stats: aiMessageData.suggestion.stats,     // 🟢 Map from backend
+                source: "ai"
+            });
+        }
+
+        playNotificationChime();
+
+    } catch (error) {
+        console.error("Chat Error:", error);
+        setChatMessages(prev => {
+            const filtered = prev.filter(msg => msg.content !== "Reasoning >");
+            return [...filtered, {
+                id: Date.now().toString(),
+                role: "assistant",
+                content: "Sorry, I encountered an error processing your request. Please ensure you are connected to a valid project.",
+                timestamp: new Date()
+            }];
+        });
+    }
   };
 
   const handleHighlightEdit = (highlightedText: string, sectionId: number | string, newText: string) => {
@@ -452,36 +503,39 @@ export function ReportLayout({
   const handleRequestRewrite = (currentText: string, instructions: string, sectionId?: number | string, field?: string) => {
     // Create a user message with the rewrite request
     const userMessage: ChatMessage = {
-      id: chatMessages.length + 1,
+      id: Date.now().toString(),
       role: "user",
       content: `Rewrite this text: "${currentText.substring(0, 100)}${currentText.length > 100 ? '...' : ''}"\n\nInstructions: ${instructions}`,
-      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+      timestamp: new Date()
     };
 
     // Add thinking indicator
     const thinkingMessage: ChatMessage = {
-      id: chatMessages.length + 2,
+      id: (Date.now() + 1).toString(),
       role: "assistant",
       content: "Reasoning >",
-      timestamp: ""
+      timestamp: new Date()
     };
 
     setChatMessages([...chatMessages, userMessage, thinkingMessage]);
     
     // Simulate AI response with rewrite
     setTimeout(() => {
-      const rewrittenText = generateRewrittenText(currentText, instructions);
+        // Fallback or move this logic to backend too if needed
+      const rewrittenText = "Rewrite logic pending backend integration"; 
       
       const response: ChatMessage = {
-        id: chatMessages.length + 2,
+        id: (Date.now() + 2).toString(),
         role: "assistant",
         content: `I've rewritten the text based on your instructions. Review the changes below and accept if you're satisfied.`,
-        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        suggestedChanges: {
-          sectionId: sectionId,
-          field: field,
-          oldValue: currentText,
-          newValue: rewrittenText
+        timestamp: new Date(),
+        // Mock suggestion for frontend simulation
+        suggestion: {
+            id: "mock-id",
+            targetSectionId: String(sectionId),
+            status: "PENDING",
+            stats: { added: 0, removed: 0, changeSummary: "Mock Edit" },
+            changes: []
         }
       };
       
@@ -504,29 +558,6 @@ export function ReportLayout({
       // Play notification sound
       playNotificationChime();
     }, 1500);
-  };
-
-  const generateRewrittenText = (originalText: string, instructions: string): string => {
-    const lowerInstructions = instructions.toLowerCase();
-    
-    // Simulate different rewrite styles based on instructions
-    if (lowerInstructions.includes("concise") || lowerInstructions.includes("shorter") || lowerInstructions.includes("brief")) {
-      // Make it shorter
-      const sentences = originalText.split(/[.!?]+/).filter(s => s.trim());
-      return sentences.slice(0, Math.max(1, Math.ceil(sentences.length / 2))).join(". ") + ".";
-    } else if (lowerInstructions.includes("detail") || lowerInstructions.includes("expand") || lowerInstructions.includes("elaborate")) {
-      // Add more detail
-      return originalText + " Additional technical specifications have been incorporated to ensure comprehensive documentation. Detailed measurements and quality control parameters are now included for reference.";
-    } else if (lowerInstructions.includes("formal") || lowerInstructions.includes("professional")) {
-      // Make more formal
-      return "Upon thorough examination, " + originalText.toLowerCase() + " All observations have been documented in accordance with industry standards and best practices.";
-    } else if (lowerInstructions.includes("simple") || lowerInstructions.includes("clear") || lowerInstructions.includes("plain")) {
-      // Simplify
-      return originalText.split(/[.!?]+/)[0].trim() + ". The findings are clear and straightforward.";
-    } else {
-      // Generic improvement
-      return originalText + " This has been reviewed and enhanced for clarity and precision.";
-    }
   };
 
   return (
@@ -694,6 +725,32 @@ export function ReportLayout({
                   <Separator />
 
 
+                  {/* 🟢 Global / Fallback Diff View for Pending Changes */}
+                  {/* If the pending change doesn't match a specific section (e.g. general context), show it here */}
+                  {pendingChange && (!pendingChange.sectionId || pendingChange.sectionId === 'general-context' || !reportContent.sections.some(s => s.id === pendingChange.sectionId)) && (
+                     <div className="mb-8 p-6 bg-blue-50/50 border border-blue-100 rounded-xl shadow-sm">
+                        <div className="flex items-center gap-2 mb-4">
+                             <Sparkles className="w-5 h-5 text-blue-600" />
+                             <span className="font-semibold text-slate-800">Suggested Edit (General)</span>
+                             {pendingChange.stats && (
+                                <Badge variant="outline" className="ml-2 bg-white text-blue-600 border-blue-200">
+                                    {pendingChange.stats.changeSummary}
+                                </Badge>
+                             )}
+                        </div>
+                         <DiffView
+                                oldText={pendingChange.oldValue}
+                                newText={pendingChange.newValue}
+                                changes={pendingChange.changes} 
+                                stats={pendingChange.stats}
+                                onAccept={handleAcceptChange}
+                                onReject={handleRejectChange}
+                                source={pendingChange.source}
+                            />
+                    </div>
+                  )}
+
+
                   {/* Report Sections */}
                   {reportContent.sections.map((section, secIdx) => {
                     const hasSubSections = section.subSections && section.subSections.length > 0;
@@ -725,7 +782,19 @@ export function ReportLayout({
                         {section.title} {isItemSelected("section", section.id) && <CheckCircle2 className="w-4 h-4 inline ml-1" />}
                       </h3>
 
-                      {hasSubSections ? (
+                      {pendingChange && pendingChange.sectionId === section.id ? (
+                        <div className="mb-6">
+                            <DiffView
+                                oldText={pendingChange.oldValue}
+                                newText={pendingChange.newValue}
+                                changes={pendingChange.changes} // 🟢 Pass pre-calculated diffs
+                                stats={pendingChange.stats}     // 🟢 Pass stats
+                                onAccept={handleAcceptChange}
+                                onReject={handleRejectChange}
+                                source={pendingChange.source}
+                            />
+                        </div>
+                      ) : hasSubSections ? (
                         // 🟢 NEW STRUCTURED RENDERING (Editable & Aligned)
                         <div>
                             {/* Parent Section Description (Editable) */}
@@ -824,15 +893,7 @@ export function ReportLayout({
                        <div className={`grid grid-cols-1 gap-6 ${hasImages ? 'sm:grid-cols-2' : ''}`}>
                         {/* Text Content */}
                         <div className={`min-w-0 ${hasImages ? 'md:col-span-2' : ''}`}>
-                          {pendingChange && pendingChange.sectionId === section.id ? (
-                            <DiffView
-                              oldText={pendingChange.oldValue}
-                              newText={pendingChange.newValue}
-                              onAccept={handleAcceptChange}
-                              onReject={handleRejectChange}
-                              source={pendingChange.source}
-                            />
-                          ) : mode === "peer-review" && peerReview && peerReview.comments ? (
+                          {mode === "peer-review" && peerReview && peerReview.comments ? (
                             <HighlightableText
                               content={section.content}
                               sectionId={section.id}
@@ -987,54 +1048,15 @@ export function ReportLayout({
                     No messages yet
                   </div>
                 )}
-                {chatMessages.map((message) => {
-                  const isUser = message.role === "user";
-                  const isAssistant = message.role === "assistant";
-                  
-                  return (
-                    <div
-                      key={message.id}
-                      className={`flex gap-3 ${isUser ? "flex-row-reverse" : ""}`}
-                    >
-                      {/* Avatar */}
-                      <div className={`flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center ${
-                        isAssistant 
-                          ? "bg-gradient-to-br from-[#3c6e71] to-[#2d5456] text-white ring-2 ring-[#3c6e71]/20" 
-                          : "bg-slate-200 text-slate-700"
-                      }`}>
-                        {isAssistant ? (
-                          <Bot className="w-4 h-4" />
-                        ) : (
-                          <User className="w-4 h-4" />
-                        )}
-                      </div>
-                      
-                      {/* Message Content */}
-                      <div className={`flex-1 max-w-[75%] flex flex-col ${isUser ? "items-end" : "items-start"}`}>
-                        <div className={`rounded-lg px-4 py-2.5 shadow-sm ${
-                          isAssistant
-                            ? "bg-white border border-slate-200"
-                            : "bg-gradient-to-r from-[#3c6e71] to-[#2d5456]"
-                        }`}>
-                          <div className={`text-sm whitespace-pre-wrap break-words ${
-                            message.content === "Reasoning >" 
-                              ? "text-slate-400 italic" 
-                              : isAssistant 
-                                ? "text-slate-900" 
-                                : "text-white"
-                          }`}>
-                            {message.content}
-                          </div>
-                        </div>
-                        {message.timestamp && (
-                          <div className="text-xs text-slate-500 mt-1 px-1">
-                            {message.timestamp}
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  );
-                })}
+                {/* 🟢 NEW: Using ChatBubble Component */}
+                {chatMessages.map((message) => (
+                  <ChatBubble
+                    key={message.id}
+                    message={message}
+                    onAcceptSuggestion={handleAcceptChange}
+                    onRejectSuggestion={handleRejectChange}
+                  />
+                ))}
               </div>
             </div>
 

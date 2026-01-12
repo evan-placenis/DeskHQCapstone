@@ -273,10 +273,30 @@ function ReportViewerContent() {
     console.log("Auto-saving...", updates);
   };
 
-  const handleSectionChange = (sectionId: number | string, newContent: string) => {
-    const updatedSections = reportContent.sections.map(s =>
-      s.id === sectionId ? { ...s, content: newContent } : s
-    );
+  const handleSectionChange = (sectionId: number | string, newContent: string, newData?: any) => {
+    const updatedSections = reportContent.sections.map(s => {
+      if (s.id === sectionId) {
+          if (newData) {
+              // 🟢 USE STRUCTURED DATA
+              return {
+                  ...s,
+                  ...newData, // Apply title, description, children (subSections)
+                  content: newContent, // Keep markdown backup
+                  subSections: newData.children || [], // Ensure subSections are populated
+                  children: newData.children || []
+              };
+          } else {
+              // Fallback to Flat
+              return { 
+                ...s, 
+                content: newContent,
+                subSections: [], // Force flat rendering since we don't have parsed subsections for the new content
+                children: [] 
+              };
+          }
+      }
+      return s;
+    });
     handleContentChange({ sections: updatedSections });
   };
 
@@ -372,6 +392,8 @@ function ReportViewerContent() {
       
       <ReportLayout
         mode={fromPeerReview && assignedReview ? "peer-review" : "edit"}
+        projectId={projectId}
+        reportId={reportId || undefined} // 🟢 Pass reportId to ReportLayout
         reportContent={reportContent}
         onContentChange={handleContentChange}
         onSectionChange={handleSectionChange}

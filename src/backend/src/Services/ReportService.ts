@@ -2,7 +2,7 @@ import { ReportRepository } from "../domain/interfaces/ReportRepository";
 import { ProjectRepository } from "../domain/interfaces/ProjectRepository";
 import { AgentFactory } from "../AI_Strategies/factory/AgentFactory";
 import { Report } from "../domain/reports/report.types";
-import { ReportSerializer } from "../AI_Strategies/data_serializer/serializer";
+//import { ReportSerializer } from "../AI_Strategies/ChatSystem/adapter/serializer";
 import { StreamEvent } from "../AI_Strategies/strategies/interfaces";
 
 import { SupabaseClient } from "@supabase/supabase-js";
