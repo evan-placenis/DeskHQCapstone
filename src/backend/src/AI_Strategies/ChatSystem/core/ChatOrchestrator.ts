@@ -28,7 +28,8 @@ export class ChatOrchestrator {
         try {
             // 1. PLAN: Ask the Architect/Planner for steps
             // We pass context existence boolean so the planner knows if it can edit or only answer.
-            const plan = await this.plannerAgent.generatePlan(userQuery, reportContext);
+            const recentHistory = session.messages.slice(-5);
+            const plan = await this.plannerAgent.generatePlan(userQuery, reportContext, recentHistory);
             console.log("📋 Plan Generated:", plan.steps);
 
             let accumulatedContext = ""; 
@@ -44,10 +45,15 @@ export class ChatOrchestrator {
                     
                     case "RESEARCH_DATA":
                         // Agent: Researcher
-                        const facts = await this.researcherAgent.findAnswer(step.instruction);
+                        const rawFacts = await this.researcherAgent.findAnswer(step.instruction);
+
+                        //Ensure we store a String, not an Object
+                        const factsString = typeof rawFacts === 'object' 
+                            ? JSON.stringify(rawFacts, null, 2) // Pretty print the object
+                            : rawFacts;
                         
                         // Append to context for the Editor to see later
-                        accumulatedContext += `\n\n[RESEARCH FINDINGS]: ${facts}`;
+                        accumulatedContext += `\n\n[RESEARCH FINDINGS]: ${factsString}`;
                         
                         // Add a summary to the chat response so the user knows what happened
                         finalResponseText += `I researched: "${step.instruction}" and found relevant data.\n`;
@@ -63,12 +69,18 @@ export class ChatOrchestrator {
                             CURRENT DOCUMENT:\n${currentDocMarkdown}\n
                             NEW INFORMATION:\n${accumulatedContext}
                         `;
+                        console.log("🔍 EDITING:");
+                        console.log("🔍 Augmented Context:", augmentedContext);
+                        console.log("🔍 Step Instruction:", step.instruction);
                         
                         // Execute rewrite
                         const newText = await this.editorAgent.rewriteSection(augmentedContext, step.instruction);
                         
+                        console.log("🔍 New Text:", newText.content);
+                        console.log("🔍 Reasoning:", newText.reasoning);
+                        console.log("🔍 Chat Message:", newText.chatMessage);
                         // Generate visual diff for the UI
-                        suggestion = this.createSuggestion(currentDocMarkdown, newText.content, reportContext, newText.reasoning);
+                        suggestion = this.createSuggestion(currentDocMarkdown, newText.content, reportContext, newText.chatMessage);
                         
                         // 🟢 FIX: Ensure the Chat Bubble says something useful, not just generic text.
                         finalResponseText += `\n${newText.reasoning}`; // Append reasoning to chat
@@ -113,18 +125,21 @@ export class ChatOrchestrator {
         }
     }
 
-    private createSuggestion(original: string, modified: string, reportContext: any, reason: string): EditSuggestion {
+    private createSuggestion(original: string, modified: string, reportContext: any, chatMessage: string): EditSuggestion {
         // 🛡️ SAFETY CHECK: Handle if reportContext is just a string or missing
         const sectionId = (typeof reportContext === 'object' && reportContext?.id) 
             ? reportContext.id 
             : 'general-context'; // Fallback if no specific section ID exists
 
+        // 🟢 Generate structured data from markdown for the frontend
+        const structuredData = DataSerializer.markdownToSectionStructure(modified);
 
         return {
             targetSectionId: sectionId,
-            reason: reason,
+            reason: chatMessage,
             originalText: original,
             suggestedText: modified,
+            suggestedData: structuredData, // 🟢 Include structured data for frontend state update
             changes: DiffUtils.computeDiff(original, modified),
             stats: DiffUtils.calculateDiffStats(original, modified),
             status: 'PENDING' // pending | accepted | rejected

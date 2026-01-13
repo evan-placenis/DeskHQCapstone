@@ -1,8 +1,9 @@
 import { useState } from "react";
 import { AppHeader } from "./smart_components/AppHeader";
 import { Page } from "@/app/pages/config/routes";
-import { ReportLayout, ReportContent } from "./shared_ui_components/ReportLayout";
+import { ReportLayout } from "./shared_ui_components/ReportLayout";
 import { ExportModal } from "./large_modal_components/ExportModal";
+import { ReportContent } from "@/frontend/types";
 
 interface ReportEditorPageProps {
   onNavigate: (page: Page) => void;
@@ -24,7 +25,6 @@ export function ReportEditorPage({ onNavigate, onLogout }: ReportEditorPageProps
     date: "November 10, 2025",
     location: "Route 95, Section A",
     engineer: "John Doe, P.E.",
-    summary: "Based on the site inspection conducted on November 10, 2025, the following observations were made: The foundation structure appears to be in good condition with no visible signs of cracking or deterioration. The concrete quality meets the specified standards with proper curing evident. Load-bearing elements show appropriate alignment and structural integrity.",
     sections: [
       {
         id: 1,
@@ -55,14 +55,26 @@ export function ReportEditorPage({ onNavigate, onLogout }: ReportEditorPageProps
   });
 
   const handleContentChange = (updates: Partial<ReportContent>) => {
-    setReportContent(prev => ({ ...prev, ...updates }));
+    setReportContent((prev: ReportContent) => ({ ...prev, ...updates }));
     console.log("Auto-saving...", updates);
   };
 
-  const handleSectionChange = (sectionId: number, newContent: string) => {
-    const updatedSections = reportContent.sections.map(s =>
-      s.id === sectionId ? { ...s, content: newContent } : s
-    );
+  const handleSectionChange = (sectionId: number | string, newContent: string, newData?: any) => {
+    const updatedSections = reportContent.sections.map((s: any) => {
+      if (s.id === sectionId) {
+        if (newData && newData.children) {
+            // Structure update - Use the parsed data from backend
+            return { 
+                ...s, 
+                content: newContent, // Keep markdown as fallback
+                description: newData.description, // Update description
+                subSections: newData.children // Update subsections structure
+            };
+        }
+        return { ...s, content: newContent };
+      }
+      return s;
+    });
     handleContentChange({ sections: updatedSections });
   };
 
@@ -81,7 +93,7 @@ export function ReportEditorPage({ onNavigate, onLogout }: ReportEditorPageProps
 
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col">
-      <AppHeader currentPage="editor" onNavigate={onNavigate} onLogout={onLogout} />
+      <AppHeader currentPage="report" onNavigate={onNavigate} onLogout={onLogout} />
       
       <ReportLayout
         mode="edit"
@@ -98,11 +110,11 @@ export function ReportEditorPage({ onNavigate, onLogout }: ReportEditorPageProps
         showSaveButton={true}
       />
 
-      <ExportModal
-        open={showExportModal}
-        onOpenChange={setShowExportModal}
-        reportTitle={reportContent.title}
-      />
+      {showExportModal && (
+        <ExportModal
+          onClose={() => setShowExportModal(false)}
+        />
+      )}
     </div>
   );
 }

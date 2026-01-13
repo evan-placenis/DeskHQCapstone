@@ -83,7 +83,7 @@ type StackNode = {
    * Uses a "Stack" to handle arbitrary nesting depth (#, ##, ###, ####...)
    * This replaces all those specific 'if' checks.
    */
-  public markdownToSectionStructure(markdown: string): Partial<MainSectionBlueprint> {
+  public static markdownToSectionStructure(markdown: string): Partial<MainSectionBlueprint> {
       const lines = markdown.split('\n');
       
       // The Root of our result
@@ -176,6 +176,13 @@ type StackNode = {
       if (root.children && root.children.length === 1 && root.children[0].children) {
            return root.children[0];
       }
+      
+      // If the parser didn't find any headers (just text), return the root as a "flat" structure
+      // But we need to make sure 'children' (bullets) are handled correctly.
+      
+      // If root children are just bullets (not sections), then this is a leaf node update
+      // But the return type expects MainSectionBlueprint.
+      // We might need to adjust logic based on what 'section' we are updating.
       
       return root as MainSectionBlueprint;
   }

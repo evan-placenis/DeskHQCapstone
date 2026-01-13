@@ -2,7 +2,7 @@ import { ReportRepository } from "../domain/interfaces/ReportRepository";
 import { ProjectRepository } from "../domain/interfaces/ProjectRepository";
 import { AgentFactory } from "../AI_Strategies/factory/AgentFactory";
 import { Report } from "../domain/reports/report.types";
-//import { ReportSerializer } from "../AI_Strategies/ChatSystem/adapter/serializer";
+import { DataSerializer } from "../AI_Strategies/ChatSystem/adapter/serializer"; // 🟢 Imported DataSerializer
 import { StreamEvent } from "../AI_Strategies/strategies/interfaces";
 
 import { SupabaseClient } from "@supabase/supabase-js";
@@ -176,11 +176,40 @@ export class ReportService {
         // 🟢 HYBRID MAGIC: Deserialize Markdown -> JSON
         // Instead of just doing "section.content = newContent", we parse it.
         // This checks if the AI swapped an image, changed a list, or just wrote text.
-        // const updatedFields = ReportSerializer.deserialize(section, newContent); // TODO: Update Serializer for nested structure
+        // We use the static method from DataSerializer
+        const updatedStructure = DataSerializer.markdownToSectionStructure(newContent); 
 
-        // TEMPORARY: Just update description/content field since Serializer expects old structure
-        // Object.assign(section, updatedFields);
-        section.description = newContent; // Fallback for now until Serializer is updated
+        // Update the section fields
+        if (updatedStructure) {
+            // 1. Update Title if present and changed
+            if (updatedStructure.title && updatedStructure.title !== section.title) {
+                // section.title = updatedStructure.title; // Optional: Decide if AI can rename sections
+            }
+
+            // 2. Update Description (The main text)
+            if (updatedStructure.description !== undefined) {
+                 section.description = updatedStructure.description;
+            }
+
+            // 3. Update Children/Subsections
+            // CRITICAL: Map 'children' from parser to 'subSections' or 'children' in MainSectionBlueprint
+            if (updatedStructure.children) {
+                 // We need to be careful. The parser might return a flat list of bullets if the AI just wrote bullets.
+                 // But MainSection -> SubSection -> Bullets
+                 
+                 // If the updated structure has children, we blindly assign them for now, 
+                 // assuming the AI maintained the structure of # Title -> ## Subtitle
+                 section.children = updatedStructure.children as any; 
+                 // Cast to any to bypass strict type check if there's a slight mismatch between Partial and concrete types
+                 
+                 // If the main description was empty in the parsed structure but we have children, 
+                 // we might want to ensure we don't accidentally wipe a description if the AI only returned bullets.
+                 // But usually AI returns full context.
+            }
+        } else {
+             // Fallback if parser fails
+             section.description = newContent;
+        }
         
         // section.isReviewRequired = false; // Property removed from MainSectionBlueprint
 
@@ -198,17 +227,15 @@ export class ReportService {
         reportId: string, 
         sectionId: string, 
         client: SupabaseClient
-    ): Promise<string> {
+    ): Promise<any> {
         const report = await this.reportRepo.getById(reportId, client);
         if (!report) throw new Error("Report not found");
 
         const section = report.reportContent.find(s => s.id === sectionId);
         if (!section) throw new Error("Section not found");
 
-        // 🟢 HYBRID MAGIC: Serialize JSON -> Markdown
-        // Turns the complex object into simple text the AI can read & edit
-        // return ReportSerializer.serialize(section); // TODO: Update Serializer
-        return section.description; // Fallback
+        // 🟢 Return the full section object so the Serializer can process it
+        return section; 
     }
     
 

@@ -1,19 +1,13 @@
 // agents/ChatEditor.ts
 import { AgentStrategy } from "../../strategies/interfaces";
 import { IChatEditor } from "../interfaces";
-
-// Define the shape we want the AI to return internally
-type EditorOutput = {
-    content: string;
-    reasoning: string;
-};
-
+import { EditorResponse } from "../interfaces";
 export class ChatEditor implements IChatEditor {
     
     constructor(private agent: AgentStrategy) {}
 
     // 🟢 FIX: Return type now matches the Interface
-    public async rewriteSection(originalText: string, instruction: string): Promise<{ content: string; reasoning: string }> {
+    public async rewriteSection(originalText: string, instruction: string): Promise<EditorResponse> {
         
         const systemPrompt = `
             You are a strict Technical Editor.
@@ -23,10 +17,16 @@ export class ChatEditor implements IChatEditor {
             
             OUTPUT RULES:
             1. Return strictly valid JSON.
-            2. Match this structure: { "content": "...", "reasoning": "..." }
-            3. In 'content', use Markdown Bullet Points (- item).
-            4. In 'reasoning', give a 5-word summary of what you changed (e.g. "Fixed typos and condensed text").
-            5. PRESERVE IMAGES: Keep '> [IMAGE: ...]' lines attached to their bullets.
+            2. In 'content', use Markdown Bullet Points (- item).
+            3. In 'reasoning', give a 5-word summary of what you changed (e.g. "Fixed typos and condensed text").
+            4. PRESERVE IMAGES: Keep '> [IMAGE: ...]' lines attached to their bullets.
+
+            OUTPUT FORMAT (JSON):
+            {
+                "content": "The fully rewritten markdown...",
+                "reasoning": "Technical brief of changes (e.g., 'Integrated stats from 2024').",
+                "chatMessage": "A natural, helpful sentence telling the user what you did. Use 'I'. Example: 'I have updated the section with the latest 2024 roofing stats for you.'"
+            }
         `;
 
         const userMessage = `
@@ -47,7 +47,7 @@ export class ChatEditor implements IChatEditor {
 
             // 2. Parse JSON safely
             const cleanText = responseText.replace(/```json|```/g, "").trim();
-            const parsed = JSON.parse(cleanText) as EditorOutput;
+            const parsed = JSON.parse(cleanText) as EditorResponse;
 
             return parsed;
 
@@ -58,7 +58,8 @@ export class ChatEditor implements IChatEditor {
             // so the app doesn't crash.
             return {
                 content: originalText, 
-                reasoning: "Error: AI formatting failed."
+                reasoning: "Error: AI formatting failed.",
+                chatMessage: "Error: AI formatting failed."
             };
         }
     }
