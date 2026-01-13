@@ -1,4 +1,5 @@
 // domain/agents/interfaces.ts
+import { ChatMessage } from "../../domain/chat/chat.types";
 import { z } from "zod";
 // Define the allowed actions
 const StepSchema = z.object({
@@ -13,13 +14,17 @@ const StepSchema = z.object({
   
   export type ExecutionPlan = z.infer<typeof PlanSchema>;
   
-
+export interface EditorResponse{
+    content: string; // The new Markdown text
+    reasoning: string; // Technical: "Fixed grammar in para 2"
+    chatMessage: string; // Conversational: "I've updated the intro to mention the new roofing specs."
+}
 
 export interface IChatEditor {
     /**
      * Takes existing text and instructions, returns the rewritten version.
      */
-    rewriteSection(originalText: string, instruction: string): Promise<{content: string, reasoning: string}>;
+    rewriteSection(originalText: string, instruction: string): Promise<EditorResponse>;
 }
 
 export interface IChatResearcher {
@@ -27,7 +32,7 @@ export interface IChatResearcher {
 }
 
 export interface IPlannerAgent {
-    generatePlan(userQuery: string, contentType?: string): Promise<ExecutionPlan>;
+    generatePlan(userQuery: string, contentType?: string, history?: ChatMessage[]): Promise<ExecutionPlan>;
 }
 
 export interface IToolAgent {

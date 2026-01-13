@@ -1,18 +1,34 @@
-// agents/PlannerAgent.ts
 import { AgentStrategy } from "../../strategies/interfaces";
 import { ExecutionPlan } from "../interfaces";
 import { PlannerExampleTemplate } from "../../../domain/chat/Templates/chat_templates";
+import { ChatMessage } from "../../../domain/chat/chat.types";
 
 export class PlannerAgent {
     constructor(private agent: AgentStrategy) {}
   
-    public async generatePlan(userQuery: string, contentType?: string): Promise<ExecutionPlan> {
+    public async generatePlan(userQuery: string, contentType?: any, history?: ChatMessage[]): Promise<ExecutionPlan> {
       
       const hasContext = !!contentType;
       
+      let contextDescription = "None";
+      if (hasContext) {
+         if (typeof contentType === 'string') {
+             contextDescription = contentType;
+         } else if (typeof contentType === 'object') {
+             contextDescription = contentType.title || contentType.id || "Report Section";
+         }
+      }
+
       const contextGuide = hasContext
-        ? `User is viewing content type: '${contentType}'. EDIT_TEXT and EXECUTE_TOOL can be used on this content.`
+        ? `User is viewing: '${contextDescription}'. EDIT_TEXT and EXECUTE_TOOL can be used on this content.`
         : `User is NOT viewing a section. EDIT_TEXT/EXECUTE_TOOL can be used if the user makes it clear what section they want processed.`;
+
+      let historyContext = "";
+      if (history && history.length > 0) {
+        historyContext = history.map(msg => 
+            `[${msg.sender}]: ${msg.content}`
+        ).join("\n");
+      }
 
       // 1. INJECT THE TEMPLATE INTO THE PROMPT
       const systemPrompt = `
@@ -21,6 +37,9 @@ export class PlannerAgent {
         
         CONTEXT STATUS:
         ${contextGuide}
+
+        RECENT CHAT HISTORY:
+        ${historyContext}
 
         AVAILABLE INTENTS:
         1. RESEARCH_DATA: Find external facts/specs.
