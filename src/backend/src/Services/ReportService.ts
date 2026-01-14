@@ -6,7 +6,7 @@ import { DataSerializer } from "../AI_Strategies/ChatSystem/adapter/serializer";
 import { StreamEvent } from "../AI_Strategies/strategies/interfaces";
 
 import { SupabaseClient } from "@supabase/supabase-js";
-
+import { v4 as uuidv4 } from 'uuid';
 export class ReportService {
     
     private reportRepo: ReportRepository;
@@ -161,29 +161,24 @@ export class ReportService {
         newContent: string,
         client: SupabaseClient
     ): Promise<void> {
-        // 1. Fetch Report
+        // 1. Fetch Report and section
         const report = await this.reportRepo.getById(reportId, client);
         if (!report) throw new Error("Report not found");
-
-        // 2. 👇 SAVE THE SNAPSHOT BEFORE EDITING
-        // This saves "Version 1" before we turn it into "Version 2"
-        await this.createVersionSnapshot(report, client);
-
-        // 3. Now it is safe to modify the data
         const section = report.reportContent.find(s => s.id === sectionId);
         if (!section) throw new Error("Section not found");
 
-        // 🟢 HYBRID MAGIC: Deserialize Markdown -> JSON
-        // Instead of just doing "section.content = newContent", we parse it.
-        // This checks if the AI swapped an image, changed a list, or just wrote text.
-        // We use the static method from DataSerializer
+        // 2. Snapshot (Version N)
+        await this.createVersionSnapshot(report, client);
+
+
+        // 3 Parse Markdown -> JSON
         const updatedStructure = DataSerializer.markdownToSectionStructure(newContent); 
 
         // Update the section fields
         if (updatedStructure) {
             // 1. Update Title if present and changed
             if (updatedStructure.title && updatedStructure.title !== section.title) {
-                // section.title = updatedStructure.title; // Optional: Decide if AI can rename sections
+                section.title = updatedStructure.title; // Optional: Decide if AI can rename sections
             }
 
             // 2. Update Description (The main text)
@@ -192,19 +187,8 @@ export class ReportService {
             }
 
             // 3. Update Children/Subsections
-            // CRITICAL: Map 'children' from parser to 'subSections' or 'children' in MainSectionBlueprint
             if (updatedStructure.children) {
-                 // We need to be careful. The parser might return a flat list of bullets if the AI just wrote bullets.
-                 // But MainSection -> SubSection -> Bullets
-                 
-                 // If the updated structure has children, we blindly assign them for now, 
-                 // assuming the AI maintained the structure of # Title -> ## Subtitle
-                 section.children = updatedStructure.children as any; 
-                 // Cast to any to bypass strict type check if there's a slight mismatch between Partial and concrete types
-                 
-                 // If the main description was empty in the parsed structure but we have children, 
-                 // we might want to ensure we don't accidentally wipe a description if the AI only returned bullets.
-                 // But usually AI returns full context.
+                 section.children = this.assignIdsToStructure(updatedStructure.children); 
             }
         } else {
              // Fallback if parser fails
@@ -217,6 +201,22 @@ export class ReportService {
         await this.reportRepo.update(report, client);
         
         console.log(`📝 Saved Version ${report.versionNumber - 1} and updated report.`);
+    }
+
+    /**
+     * 🛡️ Helper: Walks the tree and ensures every node has an ID.
+     * Use this when accepting structure from AI/Markdown parsers.
+     */
+    private assignIdsToStructure(items: any[]): any[] {
+        return items.map(item => {
+            return {
+                ...item,
+                // If ID exists (from previous state), keep it. If new, generate it.
+                id: item.id || uuidv4(), 
+                // Recursively handle grandchildren
+                children: item.children ? this.assignIdsToStructure(item.children) : []
+            };
+        });
     }
 
     /**
@@ -244,13 +244,19 @@ export class ReportService {
      */
     private async createVersionSnapshot(report: Report, client: SupabaseClient) {
         // Snapshot the current state before changes
-        const snapshot = JSON.stringify(report);
-        await this.reportRepo.saveVersion(
-            report.reportId, 
-            report.versionNumber, 
-            snapshot,
-            client
-        );
-        report.versionNumber++; // Increment current version
+        try {
+            const snapshot = JSON.stringify(report);
+            await this.reportRepo.saveVersion(
+                report.reportId, 
+                report.versionNumber, 
+                snapshot,
+                client
+            );
+            report.versionNumber++; // Increment current version
+        } catch (error) {
+            console.error("Error creating version snapshot:", error);
+            throw error;
+        }
+        
     }
 }
