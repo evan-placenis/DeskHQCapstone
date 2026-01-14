@@ -3,6 +3,7 @@ import { SupabaseChatRepository } from '../infrastructure/repositories/supabase_
 import { SupabaseReportRepository } from '../infrastructure/repositories/supabase_repository/SupabaseReportRepository';
 import { SupabaseProjectRepository } from '../infrastructure/repositories/supabase_repository/SupbaseProjectRepository';
 import { SupabaseKnowledgeRepository } from '../infrastructure/repositories/supabase_repository/SupabaseKnowledgeRepository';
+import { SupabaseStatsRepository } from '../infrastructure/repositories/supabase_repository/SupabaseStatsRepository';
 
 //import { supabaseAdmin } from '../infrastructure/supabase/supabaseClient';
 
@@ -15,6 +16,7 @@ import { ChatOrchestrator } from '../AI_Strategies/ChatSystem/core/ChatOrchestra
 import { KnowledgeService } from '../Services/KnowledgeServivce'; 
 import { UserService } from '../Services/UserService';
 import { StorageService } from '../Services/StorageService';
+import { StatsService } from '../Services/StatsService';
 
 
 import { TriggerJobQueue } from '../infrastructure/job/trigger/TriggerJobQueue';
@@ -42,6 +44,8 @@ export class Container {
     private static _chatService: ChatService;
     private static _userService: UserService;
     private static _storageService: StorageService;
+    private static _statsRepo: SupabaseStatsRepository;
+    private static _statsService: StatsService;
   
     // --- 1. The Foundation (Admin Client) ---
     static get adminClient() {
@@ -159,5 +163,18 @@ export class Container {
         this._storageService = new StorageService();
       }
       return this._storageService;
+    }
+
+    // --- 5. Stats (Analytics) ---
+    static get statsRepo() {
+      if (!this._statsRepo) this._statsRepo = new SupabaseStatsRepository();
+      return this._statsRepo;
+    }
+
+    static get statsService() {
+      if (!this._statsService) {
+        this._statsService = new StatsService(this.statsRepo);
+      }
+      return this._statsService;
     }
   }
