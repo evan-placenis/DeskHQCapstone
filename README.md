@@ -1,4 +1,4 @@
-# DeskHQCapstone
+# DeskHQCapstone 
 
 # ARCHITECTURE RULES: Report Generation & Chatbot
 
