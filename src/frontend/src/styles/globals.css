@@ -1,445 +1,62 @@
-@import "tailwindcss";
-@plugin "@tailwindcss/typography";
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
 
-:root {
-  /* Professional Engineering Color Palette */
-  --brand-primary: #0066FF;
-  --brand-primary-dark: #0052CC;
-  --brand-primary-light: #3385FF;
-  
-  /* ===================================
-     PRIMARY THEME COLORS
-     Change these two values to customize the entire app theme!
-     =================================== */
-  
-  /* Main brand colors */
-  --theme-primary: #3c6e71;        /* Primary brand color (teal) */
-  --theme-primary-hover: #2d5456;  /* Darker shade for hover states */
-  --theme-secondary: #52796f;      /* Secondary brand color (muted teal) */
-  
-  /* Auto-generated opacity variants for primary color */
-  /* Using RGB(60, 110, 113) for teal */
-  --theme-primary-10: rgba(60, 110, 113, 0.1);   /* 10% opacity */
-  --theme-primary-20: rgba(60, 110, 113, 0.2);   /* 20% opacity */
-  --theme-primary-30: rgba(60, 110, 113, 0.3);   /* 30% opacity */
-  --theme-primary-light: rgba(60, 110, 113, 0.1);
-  --theme-primary-lighter: rgba(60, 110, 113, 0.05);
-  
-  /* ===================================
-     STATUS COLORS - Report/Project States
-     Change these to customize status indicators
-     =================================== */
-  
-  /* Draft Status - Orange/Amber tones */
-  --theme-status-draft: #d97706;
-  --theme-status-draft-light: #fef3c7;
-  --theme-status-draft-bg: #fef3c7;
-  
-  /* Under Review Status - Blue tones */
-  --theme-status-review: #2563eb;
-  --theme-status-review-light: #dbeafe;
-  --theme-status-review-bg: #dbeafe;
-  
-  /* Completed/Success Status - Teal/Green (Matches Pretium Banner) */
-  --theme-status-complete: #3c6e71;
-  --theme-status-complete-light: #e0f2f1;
-  --theme-status-complete-bg: #e0f2f1;
-  
-  /* ===================================
-     ACTION COLORS - Buttons & CTAs
-     Change these to customize button colors
-     =================================== */
-  
-  /* Primary Action - Main CTAs */
-  --theme-action-primary: var(--theme-primary);
-  --theme-action-primary-hover: var(--theme-primary-hover);
-  
-  /* Destructive Action - Delete/Remove */
-  --theme-action-destructive: #dc2626;
-  --theme-action-destructive-light: #fee2e2;
-  
-  /* ===================================
-     INTERACTIVE STATES
-     =================================== */
-  
-  /* Input Focus State */
-  --theme-focus-ring: var(--theme-primary);
-  --theme-focus-ring-light: var(--theme-primary-20);
-  
-  /* Hover States */
-  --theme-hover-border: var(--theme-primary);
-  --theme-hover-bg: #f8fafb;
-  
-  /* ===================================
-     END THEME COLORS
-     =================================== */
-  
-  /* Base Colors */
-  --font-size: 16px;
-  --background: #FAFBFC;
-  --foreground: #172B4D;
-  --card: #FFFFFF;
-  --card-foreground: #172B4D;
-  --popover: #FFFFFF;
-  --popover-foreground: #172B4D;
-  
-  /* Primary Actions - Use theme color */
-  --primary: var(--theme-primary);
-  --primary-foreground: #FFFFFF;
-  --primary-hover: var(--theme-primary-hover);
-  
-  /* Secondary Actions */
-  --secondary: #F4F5F7;
-  --secondary-foreground: #172B4D;
-  --secondary-hover: #EBECF0;
-  
-  /* Muted / Subtle */
-  --muted: #F4F5F7;
-  --muted-foreground: #6B778C;
-  
-  /* Accent */
-  --accent: #e8f4f5;
-  --accent-foreground: var(--theme-primary);
-  
-  /* Destructive */
-  --destructive: #DE350B;
-  --destructive-foreground: #FFFFFF;
-  
-  /* Success */
-  --success: #00875A;
-  --success-foreground: #FFFFFF;
-  --success-light: #E3FCEF;
-  
-  /* Warning */
-  --warning: #FF991F;
-  --warning-foreground: #172B4D;
-  --warning-light: #FFF4E5;
-  
-  /* Borders & Inputs */
-  --border: #DFE1E6;
-  --border-hover: #B3BAC5;
-  --input: #DFE1E6;
-  --input-background: #FAFBFC;
-  --input-hover: #EBECF0;
-  --switch-background: #DFE1E6;
-  
-  /* Shadows */
-  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
-  --shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06);
-  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
-  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
-  --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
-  
-  /* Typography */
-  --font-weight-medium: 500;
-  --font-weight-semibold: 600;
-  --font-weight-normal: 400;
-  
-  /* Ring - Use theme color for focus states */
-  --ring: var(--theme-primary);
-  
-  /* Charts */
-  --chart-1: #0066FF;
-  --chart-2: #00875A;
-  --chart-3: #FF991F;
-  --chart-4: #8B5CF6;
-  --chart-5: #EC4899;
-  
-  /* Radius */
-  --radius: 0.5rem;
-  
-  /* Sidebar */
-  --sidebar: #FFFFFF;
-  --sidebar-foreground: #172B4D;
-  --sidebar-primary: #0066FF;
-  --sidebar-primary-foreground: #FFFFFF;
-  --sidebar-accent: #F4F5F7;
-  --sidebar-accent-foreground: #172B4D;
-  --sidebar-border: #DFE1E6;
-  --sidebar-ring: #0066FF;
-}
+@layer base {
+  :root {
+    /* YOUR COLORS */
+    --theme-primary: #3c6e71;
+    --theme-primary-hover: #2d5456;
+    --theme-secondary: #52796f;
+    --theme-primary-10: rgba(60, 110, 113, 0.1);
+    --theme-primary-20: rgba(60, 110, 113, 0.2);
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --color-card: var(--card);
-  --color-card-foreground: var(--card-foreground);
-  --color-popover: var(--popover);
-  --color-popover-foreground: var(--popover-foreground);
-  --color-primary: var(--primary);
-  --color-primary-foreground: var(--primary-foreground);
-  --color-primary-hover: var(--primary-hover);
-  --color-secondary: var(--secondary);
-  --color-secondary-foreground: var(--secondary-foreground);
-  --color-secondary-hover: var(--secondary-hover);
-  --color-muted: var(--muted);
-  --color-muted-foreground: var(--muted-foreground);
-  --color-accent: var(--accent);
-  --color-accent-foreground: var(--accent-foreground);
-  --color-destructive: var(--destructive);
-  --color-destructive-foreground: var(--destructive-foreground);
-  --color-success: var(--success);
-  --color-success-foreground: var(--success-foreground);
-  --color-success-light: var(--success-light);
-  --color-warning: var(--warning);
-  --color-warning-foreground: var(--warning-foreground);
-  --color-warning-light: var(--warning-light);
-  --color-border: var(--border);
-  --color-border-hover: var(--border-hover);
-  --color-input: var(--input);
-  --color-input-background: var(--input-background);
-  --color-input-hover: var(--input-hover);
-  --color-switch-background: var(--switch-background);
-  --color-ring: var(--ring);
-  --color-chart-1: var(--chart-1);
-  --color-chart-2: var(--chart-2);
-  --color-chart-3: var(--chart-3);
-  --color-chart-4: var(--chart-4);
-  --color-chart-5: var(--chart-5);
-  --radius-sm: calc(var(--radius) - 2px);
-  --radius-md: var(--radius);
-  --radius-lg: calc(var(--radius) + 2px);
-  --radius-xl: calc(var(--radius) + 4px);
-  --color-sidebar: var(--sidebar);
-  --color-sidebar-foreground: var(--sidebar-foreground);
-  --color-sidebar-primary: var(--sidebar-primary);
-  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
-  --color-sidebar-accent: var(--sidebar-accent);
-  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
-  --color-sidebar-border: var(--sidebar-border);
-  --color-sidebar-ring: var(--sidebar-ring);
+    /* STATUS COLORS */
+    --theme-status-draft: #d97706;
+    --theme-status-draft-light: #fef3c7;
+    --theme-status-draft-bg: #fef3c7;
+    --theme-status-review: #2563eb;
+    --theme-status-review-light: #dbeafe;
+    --theme-status-review-bg: #dbeafe;
+    --theme-status-complete: #3c6e71;
+    --theme-status-complete-light: #e0f2f1;
+    --theme-status-complete-bg: #e0f2f1;
+
+    /* ACTION COLORS */
+    --theme-action-primary: var(--theme-primary);
+    --theme-action-primary-hover: var(--theme-primary-hover);
+    --theme-action-destructive: #dc2626;
+    --theme-action-destructive-light: #fee2e2;
+
+    /* SHADCN DEFAULTS */
+    --background: 0 0% 100%;
+    --foreground: 222.2 84% 4.9%;
+    --card: 0 0% 100%;
+    --card-foreground: 222.2 84% 4.9%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 222.2 84% 4.9%;
+    --primary: 222.2 47.4% 11.2%;
+    --primary-foreground: 210 40% 98%;
+    --secondary: 210 40% 96.1%;
+    --secondary-foreground: 222.2 47.4% 11.2%;
+    --muted: 210 40% 96.1%;
+    --muted-foreground: 215.4 16.3% 46.9%;
+    --accent: 210 40% 96.1%;
+    --accent-foreground: 222.2 47.4% 11.2%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 214.3 31.8% 91.4%;
+    --input: 214.3 31.8% 91.4%;
+    --ring: 222.2 84% 4.9%;
+    --radius: 0.5rem;
+  }
 }
 
 @layer base {
   * {
-    @apply border-border outline-ring/50;
+    @apply border-border;
   }
-
   body {
-    @apply bg-background text-foreground antialiased;
+    @apply bg-background text-foreground;
   }
-}
-
-/**
- * Professional Typography System
- */
-@layer base {
-  :where(:not(:has([class*=' text-']), :not(:has([class^='text-'])))) {
-    h1 {
-      font-size: 2rem;
-      font-weight: 600;
-      line-height: 1.3;
-      letter-spacing: -0.02em;
-    }
-
-    h2 {
-      font-size: 1.5rem;
-      font-weight: 600;
-      line-height: 1.4;
-      letter-spacing: -0.01em;
-    }
-
-    h3 {
-      font-size: 1.125rem;
-      font-weight: 600;
-      line-height: 1.5;
-    }
-
-    h4 {
-      font-size: 1rem;
-      font-weight: 600;
-      line-height: 1.5;
-    }
-
-    p {
-      font-size: 0.9375rem;
-      font-weight: 400;
-      line-height: 1.6;
-    }
-
-    label {
-      font-size: 0.875rem;
-      font-weight: 500;
-      line-height: 1.5;
-    }
-
-    button {
-      font-size: 0.9375rem;
-      font-weight: 500;
-      line-height: 1.5;
-    }
-
-    input, textarea, select {
-      font-size: 0.9375rem;
-      font-weight: 400;
-      line-height: 1.5;
-    }
-  }
-}
-
-html {
-  font-size: var(--font-size);
-}
-
-/* Custom scrollbar styling */
-::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
-}
-
-::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-::-webkit-scrollbar-thumb {
-  background: var(--muted-foreground);
-  border-radius: 4px;
-}
-
-::-webkit-scrollbar-thumb:hover {
-  background: var(--foreground);
-}
-
-/* Focus visible improvements */
-:focus-visible {
-  outline: 2px solid var(--ring);
-  outline-offset: 2px;
-}
-
-/* Mobile Bottom Navigation Spacing */
-@media (max-width: 1023px) {
-  /* Add padding to body to prevent content from being hidden behind bottom nav */
-  body {
-    padding-bottom: 72px;
-  }
-  
-  /* Ensure main containers account for the bottom nav height */
-  .min-h-screen {
-    min-height: 100vh;
-    padding-bottom: 72px;
-  }
-}
-
-/* ===================================
-   THEME UTILITY CLASSES
-   Use these in your Tailwind classes!
-   
-   Example Usage:
-   - bg-theme-primary
-   - text-theme-secondary
-   - border-theme-primary
-   - hover:bg-theme-primary-hover
-   =================================== */
-
-@layer utilities {
-  /* ===================================
-     PRIMARY & SECONDARY THEME COLORS
-     =================================== */
-  
-  /* Background Colors */
-  .bg-theme-primary { background-color: var(--theme-primary); }
-  .bg-theme-primary-light { background-color: var(--theme-primary-light); }
-  .bg-theme-primary-lighter { background-color: var(--theme-primary-lighter); }
-  .bg-theme-primary-hover { background-color: var(--theme-primary-hover); }
-  .bg-theme-primary-10 { background-color: var(--theme-primary-10); }
-  .bg-theme-primary-20 { background-color: var(--theme-primary-20); }
-  .bg-theme-primary-30 { background-color: var(--theme-primary-30); }
-  
-  .bg-theme-secondary { background-color: var(--theme-secondary); }
-  .bg-theme-secondary-light { background-color: var(--theme-secondary-light); }
-  .bg-theme-secondary-dark { background-color: var(--theme-secondary-dark); }
-  .bg-theme-secondary-5 { background-color: var(--theme-secondary-5); }
-  .bg-theme-secondary-10 { background-color: var(--theme-secondary-10); }
-  .bg-theme-secondary-20 { background-color: var(--theme-secondary-20); }
-  .bg-theme-secondary-30 { background-color: var(--theme-secondary-30); }
-  
-  /* Text Colors */
-  .text-theme-primary { color: var(--theme-primary); }
-  .text-theme-primary-light { color: var(--theme-primary-light); }
-  .text-theme-primary-dark { color: var(--theme-primary-dark); }
-  .text-theme-secondary { color: var(--theme-secondary); }
-  .text-theme-secondary-light { color: var(--theme-secondary-light); }
-  .text-theme-secondary-dark { color: var(--theme-secondary-dark); }
-  .text-theme-gray-dark { color: var(--theme-gray-dark); }
-  
-  /* Border Colors */
-  .border-theme-primary { border-color: var(--theme-primary); }
-  .border-theme-primary-light { border-color: var(--theme-primary-light); }
-  .border-theme-primary-dark { border-color: var(--theme-primary-dark); }
-  .border-theme-primary-30 { border-color: var(--theme-primary-30); }
-  .border-theme-secondary { border-color: var(--theme-secondary); }
-  .border-theme-secondary-30 { border-color: var(--theme-secondary-30); }
-  
-  /* ===================================
-     STATUS COLORS - Draft/Review/Complete
-     =================================== */
-  
-  /* Draft Status */
-  .text-theme-status-draft { color: var(--theme-status-draft); }
-  .bg-theme-status-draft { background-color: var(--theme-status-draft); }
-  .bg-theme-status-draft-light { background-color: var(--theme-status-draft-light); }
-  .bg-theme-status-draft-bg { background-color: var(--theme-status-draft-bg); }
-  
-  /* Under Review Status */
-  .text-theme-status-review { color: var(--theme-status-review); }
-  .bg-theme-status-review { background-color: var(--theme-status-review); }
-  .bg-theme-status-review-light { background-color: var(--theme-status-review-light); }
-  .bg-theme-status-review-bg { background-color: var(--theme-status-review-bg); }
-  
-  /* Completed Status */
-  .text-theme-status-complete { color: var(--theme-status-complete); }
-  .bg-theme-status-complete { background-color: var(--theme-status-complete); }
-  .bg-theme-status-complete-light { background-color: var(--theme-status-complete-light); }
-  .bg-theme-status-complete-bg { background-color: var(--theme-status-complete-bg); }
-  
-  /* ===================================
-     ACTION COLORS - Buttons & CTAs
-     =================================== */
-  
-  /* Primary Action Buttons */
-  .bg-theme-action-primary { background-color: var(--theme-action-primary); }
-  .bg-theme-action-primary-light { background-color: var(--theme-action-primary-light); }
-  .text-theme-action-primary { color: var(--theme-action-primary); }
-  
-  /* Destructive Actions */
-  .bg-theme-action-destructive { background-color: var(--theme-action-destructive); }
-  .bg-theme-action-destructive-light { background-color: var(--theme-action-destructive-light); }
-  .text-theme-action-destructive { color: var(--theme-action-destructive); }
-  
-  /* ===================================
-     HOVER STATES
-     =================================== */
-  
-  /* Card Hover States */
-  .hover\:border-theme-hover:hover { border-color: var(--theme-hover-border); }
-  .hover\:bg-theme-hover:hover { background-color: var(--theme-hover-bg); }
-  
-  /* Primary/Secondary Hover */
-  .hover\:bg-theme-primary-hover:hover { background-color: var(--theme-primary-hover); }
-  .hover\:bg-theme-primary:hover { background-color: var(--theme-primary); }
-  .hover\:bg-theme-primary-10:hover { background-color: var(--theme-primary-10); }
-  .hover\:bg-theme-primary-20:hover { background-color: var(--theme-primary-20); }
-  .hover\:bg-theme-primary-30:hover { background-color: var(--theme-primary-30); }
-  .hover\:bg-theme-secondary-10:hover { background-color: var(--theme-secondary-10); }
-  
-  .hover\:border-theme-primary:hover { border-color: var(--theme-primary); }
-  .hover\:border-theme-primary-50:hover { border-color: var(--theme-primary-50); }
-  .hover\:border-theme-secondary:hover { border-color: var(--theme-secondary); }
-  .hover\:border-theme-hover-border:hover { border-color: var(--theme-hover-border); }
-  .hover\:border-theme-hover-secondary:hover { border-color: var(--theme-secondary); }
-  
-  .hover\:text-theme-primary:hover { color: var(--theme-primary); }
-  .hover\:text-theme-secondary:hover { color: var(--theme-secondary); }
-  
-  /* Action Button Hovers */
-  .hover\:bg-theme-action-primary-hover:hover { background-color: var(--theme-action-primary-hover); }
-  .hover\:bg-theme-action-destructive-hover:hover { background-color: var(--theme-action-destructive-hover); }
-  .hover\:bg-theme-action-destructive-light:hover { background-color: var(--theme-action-destructive-light); }
-  .hover\:border-theme-action-destructive:hover { border-color: var(--theme-action-destructive); }
-  
-  /* Group Hover Variants */
-  .group:hover .group-hover\:bg-theme-primary-20 { background-color: var(--theme-primary-20); }
-  .group:hover .group-hover\:text-theme-primary { color: var(--theme-primary); }
-  .group:hover .group-hover\:border-theme-primary { border-color: var(--theme-primary); }
-  .group:hover .group-hover\:text-theme-action-primary { color: var(--theme-action-primary); }
 }
