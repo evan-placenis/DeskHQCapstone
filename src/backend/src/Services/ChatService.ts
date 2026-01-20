@@ -49,19 +49,23 @@ export class ChatService {
         await this.repo.updateSessionTimestamp(sessionId, new Date(), client);
 
         // 3. 🔍 FETCH CONTEXT (The "Glue")
-        // If the user is currently editing a specific section, the AI needs to "see" it.
+        // Always fetch the FULL report so AI has complete context (like Cursor with open files)
         let reportContext = "";
         
         // Use session.reportId OR the passed reportId
         const targetReportId = session.reportId || reportId;
 
-        if (targetReportId && activeSectionId) {
-             // 👇 This calls the function inside ReportService
-             reportContext = await this.reportService.getSectionContextForAI(
-                 targetReportId, 
-                 activeSectionId, 
-                 client
-             );
+        if (targetReportId) {
+            // 🟢 Always fetch full report context - AI will parse section references from user's message
+            try {
+                reportContext = await this.reportService.getFullReportContextForAI(
+                    targetReportId,
+                    client
+                );
+                console.log(`✅ Full report context loaded (${reportContext.length} chars)`);
+            } catch (error) {
+                console.error(`⚠️ Failed to fetch report context:`, error);
+            }
         } else {
             console.log(`⚠️ No context fetched. ReportId: ${targetReportId}, SectionId: ${activeSectionId}`);
         }
