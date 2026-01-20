@@ -8,7 +8,7 @@ import { StreamEvent } from "../AI_Strategies/strategies/interfaces";
 import { SupabaseClient } from "@supabase/supabase-js";
 import { v4 as uuidv4 } from 'uuid';
 export class ReportService {
-    
+
     private reportRepo: ReportRepository;
     private projectRepo: ProjectRepository;
     private agentFactory: AgentFactory;
@@ -16,7 +16,7 @@ export class ReportService {
     constructor(reportRepo: ReportRepository, projectRepo: ProjectRepository, agentFactory: AgentFactory) {
         this.reportRepo = reportRepo;
         this.projectRepo = projectRepo;
-        this.agentFactory =  agentFactory;
+        this.agentFactory = agentFactory;
     }
 
     /**
@@ -27,7 +27,7 @@ export class ReportService {
         projectId: string,
         input: {
             reportType: string;    // 'OBSERVATION'
-            reportWorkflow:string; // 'DISPATCHER', "AUTHOR", "BLACKBOARD", "ASSEMBLY", "BASIC"
+            reportWorkflow: string; // 'DISPATCHER', "AUTHOR", "BLACKBOARD", "ASSEMBLY", "BASIC"
             modelName: string;     // 'GPT'
             modeName: string;      // 'IMAGE_AND_TEXT'
             selectedImageIds: string[];
@@ -37,7 +37,7 @@ export class ReportService {
         client: SupabaseClient,
         onStream?: (event: StreamEvent) => void // 🟢 Added Streaming Callback
     ): Promise<Report> {
-        
+
         console.log(`⚙️ Service: Starting generation for Project ${projectId}`);
 
         // 1. Fetch the Project Data (The Context)
@@ -73,6 +73,27 @@ export class ReportService {
         const report = await this.reportRepo.getById(reportId, client);
         if (!report) return null;
 
+        // 🟢 Ensure all sections have IDs (for backward compatibility with old reports)
+        let idsAdded = false;
+        const ensureSectionIds = (sections: any[]): void => {
+            sections.forEach(section => {
+                if (!section.id) {
+                    section.id = uuidv4();
+                    idsAdded = true;
+                }
+                if (section.children && Array.isArray(section.children)) {
+                    ensureSectionIds(section.children);
+                }
+            });
+        };
+        ensureSectionIds(report.reportContent);
+
+        // If we added IDs, save the report to persist them
+        if (idsAdded) {
+            await this.reportRepo.update(report, client);
+            console.log(`🆔 Added missing IDs to report ${reportId} and saved`);
+        }
+
         // Hydrate images
         const imageIds = new Set<string>();
 
@@ -98,7 +119,7 @@ export class ReportService {
                 .from('project_images')
                 .select('id, public_url, storage_path, description')
                 .in('id', Array.from(imageIds));
-            
+
             // 2. Fetch Report Images (Metadata/Overrides)
             const { data: reportImages, error: riError } = await client
                 .from('report_images')
@@ -112,7 +133,7 @@ export class ReportService {
                 if (reportImages) {
                     reportImages.forEach((row: any) => reportImageMap.set(row.image_id, row));
                 }
-                
+
                 // Helper to hydrate images in nested structure
                 const hydrateItems = (items: any[]) => {
                     items.forEach(item => {
@@ -121,7 +142,7 @@ export class ReportService {
                                 const id = typeof ref === 'string' ? ref : ref.imageId;
                                 const pImg = projectImageMap.get(id);
                                 const rImg = reportImageMap.get(id);
-                                
+
                                 if (pImg) {
                                     return {
                                         imageId: id,
@@ -155,9 +176,9 @@ export class ReportService {
      * ✏️ EDIT: Called by User manually OR by ChatSystem (acceptSuggestion)
      */
     public async updateSectionContent(
-        projectId: string, 
-        reportId: string, 
-        sectionId: string, 
+        projectId: string,
+        reportId: string,
+        sectionId: string,
         newContent: string,
         client: SupabaseClient
     ): Promise<void> {
@@ -172,7 +193,7 @@ export class ReportService {
 
 
         // 3 Parse Markdown -> JSON
-        const updatedStructure = DataSerializer.markdownToSectionStructure(newContent); 
+        const updatedStructure = DataSerializer.markdownToSectionStructure(newContent);
 
         // Update the section fields
         if (updatedStructure) {
@@ -183,23 +204,23 @@ export class ReportService {
 
             // 2. Update Description (The main text)
             if (updatedStructure.description !== undefined) {
-                 section.description = updatedStructure.description;
+                section.description = updatedStructure.description;
             }
 
             // 3. Update Children/Subsections
             if (updatedStructure.children) {
-                 section.children = this.assignIdsToStructure(updatedStructure.children); 
+                section.children = this.assignIdsToStructure(updatedStructure.children);
             }
         } else {
-             // Fallback if parser fails
-             section.description = newContent;
+            // Fallback if parser fails
+            section.description = newContent;
         }
-        
+
         // section.isReviewRequired = false; // Property removed from MainSectionBlueprint
 
         // 4. Save the new version
         await this.reportRepo.update(report, client);
-        
+
         console.log(`📝 Saved Version ${report.versionNumber - 1} and updated report.`);
     }
 
@@ -212,7 +233,7 @@ export class ReportService {
             return {
                 ...item,
                 // If ID exists (from previous state), keep it. If new, generate it.
-                id: item.id || uuidv4(), 
+                id: item.id || uuidv4(),
                 // Recursively handle grandchildren
                 children: item.children ? this.assignIdsToStructure(item.children) : []
             };
@@ -222,17 +243,41 @@ export class ReportService {
     /**
      * 🤖 AI READ: Helper for Chatbot to "See" the section
      * Call this BEFORE sending the prompt to the LLM.
-     */ 
+     */
     public async getSectionContextForAI( //Not in chat service because ReportService owns the Data (fetching, parsing, serializing).
-        reportId: string, 
-        sectionId: string, 
+        reportId: string,
+        sectionId: string,
         client: SupabaseClient
     ): Promise<any> {
         const report = await this.reportRepo.getById(reportId, client);
         if (!report) throw new Error("Report not found");
 
-        const section = report.reportContent.find(s => s.id === sectionId);
-        if (!section) throw new Error("Section not found");
+        // Helper function to recursively search for section by ID
+        const findSectionById = (sections: any[], targetId: string): any => {
+            for (const section of sections) {
+                // Check if this section matches
+                if (section.id === targetId) {
+                    return section;
+                }
+                // Recursively search children (subsections)
+                if (section.children && Array.isArray(section.children)) {
+                    const found = findSectionById(section.children, targetId);
+                    if (found) return found;
+                }
+            }
+            return null;
+        };
+
+        const section = findSectionById(report.reportContent, sectionId);
+
+        if (!section) {
+            // Enhanced error message with debugging info
+            const availableIds = report.reportContent.map(s => s.id || '(no id)').join(', ');
+            console.error(`❌ Section not found. Looking for: ${sectionId}`);
+            console.error(`📋 Available section IDs: [${availableIds}]`);
+            console.error(`📊 Total sections: ${report.reportContent.length}`);
+            throw new Error(`Section not found. Section ID: ${sectionId}. Available IDs: [${availableIds}]`);
+        }
 
         // Return the full section object so the Serializer can process it
         return section; 
@@ -278,8 +323,8 @@ export class ReportService {
         try {
             const snapshot = JSON.stringify(report);
             await this.reportRepo.saveVersion(
-                report.reportId, 
-                report.versionNumber, 
+                report.reportId,
+                report.versionNumber,
                 snapshot,
                 client
             );
@@ -288,6 +333,6 @@ export class ReportService {
             console.error("Error creating version snapshot:", error);
             throw error;
         }
-        
+
     }
 }
