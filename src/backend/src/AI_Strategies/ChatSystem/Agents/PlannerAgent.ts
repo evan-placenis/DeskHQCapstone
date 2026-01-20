@@ -20,8 +20,8 @@ export class PlannerAgent {
       }
 
       const contextGuide = hasContext
-        ? `User is viewing: '${contextDescription}'. EDIT_TEXT and EXECUTE_TOOL can be used on this content.`
-        : `User is NOT viewing a section. EDIT_TEXT/EXECUTE_TOOL can be used if the user makes it clear what section they want processed.`;
+        ? `User is viewing: '${contextDescription}'. EDIT_TEXT and EXECUTE_TOOL can be used on this content. RESPOND can answer questions about it.`
+        : `User is NOT viewing a section. Use RESPOND for questions/guidance. EDIT_TEXT/EXECUTE_TOOL require the user to specify which section.`;
 
       let historyContext = "";
       if (history && history.length > 0) {
@@ -45,6 +45,7 @@ export class PlannerAgent {
         1. RESEARCH_DATA: Find external facts/specs.
         2. EDIT_TEXT: Modify the text/content (Requires Context).
         3. EXECUTE_TOOL: Structural changes like 'swap image' (Requires Context).
+        4. RESPOND: Answer questions, explain concepts, or provide guidance WITHOUT making edits. Use when user is asking for information, clarification, or advice.
 
         OUTPUT INSTRUCTIONS:
         - You must output strictly valid JSON.

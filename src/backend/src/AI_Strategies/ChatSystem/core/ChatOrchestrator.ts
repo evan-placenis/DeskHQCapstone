@@ -1,5 +1,5 @@
 import { ChatSession, ChatMessage, EditSuggestion} from "../../../domain/chat/chat.types";
-import { IChatEditor, IPlannerAgent, IChatResearcher } from '../interfaces';
+import { IChatEditor, IPlannerAgent, IChatResearcher, IChatResponder } from '../interfaces';
 import { DataSerializer } from '../adapter/serializer';
 import { DiffUtils } from '../diffUtils/DiffUtils';
 import { ToolAgent } from "../Agents/ToolAgent";
@@ -12,7 +12,8 @@ export class ChatOrchestrator {
         private researcherAgent: IChatResearcher,
         private editorAgent: IChatEditor,
         private serializer: DataSerializer,
-        private toolAgent: ToolAgent
+        private toolAgent: ToolAgent,
+        private responderAgent: IChatResponder
     ) {}
 
     /**
@@ -91,6 +92,23 @@ export class ChatOrchestrator {
                         //const toolResult = await this.toolAgent.execute(step.instruction);
                         accumulatedContext += `\n\n[TOOL RESULT]: Not implemented yet`;
                         finalResponseText += `\nExecuted tool action: Not implemented yet`;
+                        break;
+
+                    case "RESPOND":
+                        // Agent: Responder - For questions, explanations, and guidance
+                        console.log(`💬 Responding to: ${step.instruction}`);
+                        
+                        // Build context string for the responder
+                        const responderContext = reportContext 
+                            ? `${this.serializer.toMarkdown(reportContext)}${accumulatedContext}`
+                            : accumulatedContext || undefined;
+                        
+                        const response = await this.responderAgent.generateResponse(
+                            step.instruction,
+                            responderContext
+                        );
+                        
+                        finalResponseText += response;
                         break;
                 }
             }

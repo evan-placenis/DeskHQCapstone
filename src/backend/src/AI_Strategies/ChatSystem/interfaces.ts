@@ -3,7 +3,7 @@ import { ChatMessage } from "../../domain/chat/chat.types";
 import { z } from "zod";
 // Define the allowed actions
 const StepSchema = z.object({
-    intent: z.enum(["RESEARCH_DATA", "EDIT_TEXT", "EXECUTE_TOOL"]),
+    intent: z.enum(["RESEARCH_DATA", "EDIT_TEXT", "EXECUTE_TOOL", "RESPOND"]),
     instruction: z.string().describe("Specific instruction for this step (e.g. 'Search for iPhone weight')"),
     reasoning: z.string().describe("Why this step is needed")
   });
@@ -38,4 +38,12 @@ export interface IPlannerAgent {
 export interface IToolAgent {
     // We need this interface if we are going to support tools!
     determineAction(userQuery: string, contextMarkdown: string): Promise<any>; 
+}
+
+export interface IChatResponder {
+    /**
+     * Generates a conversational response to answer questions or provide guidance
+     * without making edits to the document.
+     */
+    generateResponse(query: string, context?: string): Promise<string>;
 }

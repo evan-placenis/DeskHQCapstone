@@ -18,3 +18,30 @@ export const PlannerExampleTemplate: ExecutionPlan = {
     }
   ]
 };
+
+// Example for a question/guidance request (no edits)
+export const PlannerRespondExample: ExecutionPlan = {
+  steps: [
+    {
+      intent: "RESPOND",
+      instruction: "Explain what information should be included in the executive summary section",
+      reasoning: "User is asking for guidance, not requesting an edit"
+    }
+  ]
+};
+
+// Example for a mixed request (research + respond)
+export const PlannerMixedExample: ExecutionPlan = {
+  steps: [
+    {
+      intent: "RESEARCH_DATA",
+      instruction: "Find the standard requirements for foundation assessments",
+      reasoning: "Need to gather information first"
+    },
+    {
+      intent: "RESPOND",
+      instruction: "Summarize the requirements and explain how they apply to this report",
+      reasoning: "User wants information, not direct edits to the document"
+    }
+  ]
+};
