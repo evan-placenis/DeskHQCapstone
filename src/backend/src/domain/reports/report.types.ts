@@ -13,6 +13,7 @@ export interface Report {
     
     // Audit Trail
     history?: ReportVersion[]; // Previous snapshots
+    createdBy: string;       // User ID who created this report
     createdAt: Date;
     updatedAt: Date;
     isReviewRequired: boolean;

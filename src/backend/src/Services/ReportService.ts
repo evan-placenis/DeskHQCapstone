@@ -279,41 +279,10 @@ export class ReportService {
             throw new Error(`Section not found. Section ID: ${sectionId}. Available IDs: [${availableIds}]`);
         }
 
-        // Return the full section object so the Serializer can process it
-        return section; 
+        // 🟢 Return the full section object so the Serializer can process it
+        return section;
     }
 
-    /**
-     * 🤖 AI READ: Helper for Chatbot to "See" the ENTIRE report
-     * Returns the full report serialized as markdown for AI context.
-     * Similar to how Cursor sees open files - the AI gets full document context.
-     */
-    public async getFullReportContextForAI(
-        reportId: string,
-        client: SupabaseClient
-    ): Promise<string> {
-        const report = await this.reportRepo.getById(reportId, client);
-        if (!report) throw new Error("Report not found");
-
-        const serializer = new DataSerializer();
-
-        // Build a comprehensive context string
-        let context = `=== REPORT CONTEXT ===\n`;
-        context += `Title: ${report.title}\n`;
-        context += `Status: ${report.status}\n`;
-        context += `Report ID: ${report.reportId}\n`;
-        context += `\n=== FULL REPORT CONTENT ===\n\n`;
-
-        // Serialize each section to markdown
-        for (const section of report.reportContent) {
-            context += serializer.toMarkdown(section, 1) + "\n\n";
-        }
-
-        context += `=== END REPORT ===`;
-
-        return context;
-    }
-    
 
     /**
      * Helper to save a history snapshot

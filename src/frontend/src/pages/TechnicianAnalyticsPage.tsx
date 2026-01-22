@@ -22,7 +22,7 @@ import {
   FileClock,
   Camera,
 } from "lucide-react";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   LineChart,
   Line,
@@ -291,6 +291,28 @@ export function TechnicianAnalyticsPage({
   onRoleSwitch,
 }: TechnicianAnalyticsPageProps) {
   const [selectedTimeRange, setSelectedTimeRange] = useState<"week" | "month" | "all">("month");
+  
+  // Real stats fetched from database (only totalReports for now)
+  const [totalReports, setTotalReports] = useState<number>(0);
+  const [statsLoading, setStatsLoading] = useState(true);
+
+  // Fetch real stats from API
+  useEffect(() => {
+    async function fetchStats() {
+      try {
+        const response = await fetch('/api/stats');
+        if (response.ok) {
+          const data = await response.json();
+          setTotalReports(data.totalReports);
+        }
+      } catch (error) {
+        console.error('Failed to fetch stats:', error);
+      } finally {
+        setStatsLoading(false);
+      }
+    }
+    fetchStats();
+  }, []);
 
   return (
     <div className="min-h-screen bg-slate-50">
@@ -333,7 +355,7 @@ export function TechnicianAnalyticsPage({
               </div>
               <p className="text-slate-600 text-[10px] sm:text-sm mb-0.5 sm:mb-1">Total Reports</p>
               <p className="text-slate-900 text-xl sm:text-3xl leading-none">
-                {productivityData.overview.totalReports}
+                {statsLoading ? "..." : totalReports}
               </p>
             </CardContent>
           </Card>
@@ -831,7 +853,7 @@ export function TechnicianAnalyticsPage({
                   <div className="p-3 bg-slate-50 rounded-lg">
                     <p className="text-xs text-slate-600 mb-1">Total Reports</p>
                     <p className="text-slate-900 text-xl">
-                      {productivityData.overview.totalReports}
+                      {statsLoading ? "..." : totalReports}
                     </p>
                   </div>
                 </div>
