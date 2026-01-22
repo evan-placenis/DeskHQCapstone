@@ -44,10 +44,6 @@ import {
   MousePointer2,
 } from "lucide-react";
 
-// Add these to your imports
-import { DataSerializer } from "@/backend/AI_Strategies/ChatSystem/adapter/serializer"; 
-import { PlateSectionEditor } from "../smart_components/PlateSectionEditor";
-
 interface SelectedContext {
   type: "photo" | "section" | "text";
   content: string;
@@ -479,6 +475,31 @@ export function ReportLayout({
     setSelectedContexts(selectedContexts.filter((_, i) => i !== index));
   };
 
+  const handleTextSelection = (text: string, sectionId: number | string | undefined, sectionTitle: string) => {
+    if (!isSelectionMode) return;
+
+    const selectedText = text.trim();
+
+    if (selectedText && selectedText.length > 0) {
+      const context: SelectedContext = {
+        type: "text",
+        id: sectionId,
+        content: selectedText,
+        label: `"${selectedText.substring(0, 30)}${selectedText.length > 30 ? '...' : ''}" from ${sectionTitle}`,
+        highlightedText: selectedText
+      };
+
+      // Check if already selected
+      const exists = selectedContexts.some(
+        (c) => c.type === "text" && c.highlightedText === selectedText && c.id === sectionId
+      );
+
+      if (!exists) {
+        setSelectedContexts([...selectedContexts, context]);
+      }
+    }
+  };
+
   const handleRequestRewrite = (currentText: string, instructions: string, sectionId?: number | string, field?: string) => {
     // Create a user message with the rewrite request
     const userMessage: ChatMessage = {
@@ -538,40 +559,6 @@ export function ReportLayout({
       playNotificationChime();
     }, 1500);
   };
-  // 🟢 1. INSTANTIATE SERIALIZER
-  const serializer = new DataSerializer();
-
-    // 2. MERGE ALL SECTIONS into one big Markdown string
-  // We join them with "\n\n" to ensure distinct paragraphs between sections.
-  const fullReportMarkdown = reportContent.sections
-  .map(section => serializer.toMarkdown(section, 1)) // depth 1 = # Header
-  .join("\n\n");
-
-  // 🟢 3. NEW UPDATE HANDLER (Markdown -> JSON)
-  //handle the Update (Splitting it back up) When the user types, you get one giant Markdown string back. You need to split it back into sections based on the headers (# Title).
-  const handleFullDocumentUpdate = (fullMarkdown: string) => {
-    // 1. Parse markdown into rich objects
-    console.log("📥 [4. BACKEND PARSER] Received Markdown length:", fullMarkdown.length);
-    const newSections = DataSerializer.parseFullMarkdownToSections(fullMarkdown);
-    console.log("📥 [5. BACKEND PARSER] Parsed sections length:", newSections);
-    // 2. Merge with existing IDs
-    const mergedSections = newSections.map((newSec, index) => {
-        const existing = reportContent.sections[index];
-        
-        // Use existing ID if titles match (best effort), otherwise random
-        const idToUse = (existing && existing.title === newSec.title) 
-            ? existing.id 
-            : Math.random().toString();
-
-        return {
-            ...newSec,
-            id: idToUse,
-        };
-    });
-
-    onContentChange({ sections: mergedSections });
-};
-  
 
   return (
     <div className="flex h-[calc(100vh-73px)] overflow-hidden">
@@ -588,7 +575,6 @@ export function ReportLayout({
             <ArrowLeft className="w-3 h-3 sm:w-4 sm:h-4 mr-2" />
             {backLabel}
           </Button>
-
           
           <div className="flex flex-col sm:flex-row items-start justify-between gap-3 sm:gap-0">
             <div className="flex-1 min-w-0">
@@ -766,41 +752,208 @@ export function ReportLayout({
 
 
                   {/* Report Sections */}
-                  <div className="min-h-[500px]"> {/* Container to ensure editor has height */}
-  
-                  {/* 1. Global Diff View (Shows if AI suggests a change) */}
-                  {pendingChange ? (
-                      <div className="mb-6 border border-blue-200 rounded-xl overflow-hidden shadow-sm">
-                          <div className="bg-blue-50 p-3 border-b border-blue-100 flex items-center gap-2">
-                            <Sparkles className="w-4 h-4 text-blue-600" />
-                            <span className="text-sm font-medium text-blue-900">
-                              Suggested Change ({pendingChange.source === 'ai' ? 'AI Assistant' : 'Peer Review'})
-                            </span>
-                          </div>
-                          <DiffView
-                              oldText={pendingChange.oldValue}
-                              newText={pendingChange.newValue}
-                              changes={pendingChange.changes}
-                              stats={pendingChange.stats}
-                              onAccept={handleAcceptChange}
-                              onReject={handleRejectChange}
-                              source={pendingChange.source}
-                          />
-                      </div>
-                  ) : (
-                      /* 2. The Main Editor */
-                      /* We use a key to force re-render if the report structure changes externally (like after an AI edit) */
-                      <PlateSectionEditor 
-                          key={`editor-${reportContent.sections.length}-${reportContent.sections[0]?.id}`}
-                          initialMarkdown={fullReportMarkdown} 
-                          onChange={(newFullMarkdown) => {
-                            // This function takes the giant string and parses it back into JSON sections
-                            handleFullDocumentUpdate(newFullMarkdown);
-                          }}
-                      />
-                  )}
-                </div>
+                  {reportContent.sections.map((section, secIdx) => {
+                    const hasSubSections = section.subSections && section.subSections.length > 0;
+                    const hasImages = section.images && section.images.length > 0;
+                    
+                    // 🟢 Auto-numbering Logic
+                    // Extract "2" from "2.0 Title" or default to index + 1
+                    const sectionMatch = section.title.match(/^(\d+)/);
+                    const sectionPrefix = sectionMatch ? sectionMatch[1] : (secIdx + 1).toString();
+                    let globalPointCounter = 1;
 
+                    return (
+                    <div key={section.id} className="mb-8">
+                      <h3 
+                        className={`text-xl sm:text-1xl font-bold text-slate-800 mb-4 cursor-pointer transition-all ${
+                          isItemSelected("section", section.id) 
+                            ? "text-theme-primary" 
+                            : isSelectionMode
+                              ? "hover:text-theme-primary"
+                              : "hover:text-theme-primary"
+                        }`}
+                        onClick={() => handleItemClick({
+                          type: "section",
+                          id: section.id,
+                          content: section.content,
+                          label: section.title
+                        })}
+                      >
+                        {section.title} {isItemSelected("section", section.id) && <CheckCircle2 className="w-4 h-4 inline ml-1" />}
+                      </h3>
+
+                      {pendingChange && pendingChange.sectionId === section.id ? (
+                        <div className="mb-6">
+                            <DiffView
+                                oldText={pendingChange.oldValue}
+                                newText={pendingChange.newValue}
+                                changes={pendingChange.changes} // 🟢 Pass pre-calculated diffs
+                                stats={pendingChange.stats}     // 🟢 Pass stats
+                                onAccept={handleAcceptChange}
+                                onReject={handleRejectChange}
+                                source={pendingChange.source}
+                            />
+                        </div>
+                      ) : hasSubSections ? (
+                        // 🟢 NEW STRUCTURED RENDERING (Editable & Aligned)
+                        <div>
+                            {/* Parent Section Description (Editable) */}
+                            {section.description && (
+                                <div className="mb-6">
+                                    <EditableText
+                                        value={section.description}
+                                        onChange={(val) => handleUpdateNestedContent(section.id, -1, null, val)}
+                                        multiline
+                                        markdown={true}
+                                        className="text-slate-600"
+                                    />
+                                </div>
+                            )}
+
+                            {section.subSections!.map((sub, subIdx) => (
+                                <div key={subIdx} className="mb-6">
+                                    {/* Sub Title */}
+                                    {sub.title !== "General Summary" && sub.title !== "Observed Conditions" && (
+                                        <h4 className="text-lg font-medium text-slate-800 mb-2">{sub.title}</h4>
+                                    )}
+                                    
+                                    {/* Sub Description (Editable) */}
+                                    {sub.description && (
+                                        <div className="mb-4">
+                                            <EditableText
+                                                value={sub.description}
+                                                onChange={(val) => handleUpdateNestedContent(section.id, subIdx, null, val)}
+                                                multiline
+                                                markdown={true}
+                                                className="text-slate-600"
+                                            />
+                                        </div>
+                                    )}
+                                    
+                                    {/* Points (Editable & Aligned) */}
+                                    <div className="space-y-3 mt-2">
+                                        {sub.children.map((point, pIdx) => {
+                                            const pointHasImages = point.images && point.images.length > 0;
+                                            const pointLabel = `${sectionPrefix}.${globalPointCounter++}`;
+
+                                            return (
+                                                <div key={pIdx} className={`grid grid-cols-1 ${pointHasImages ? 'md:grid-cols-2 gap-6' : 'gap-4'}`}>
+                                                    {/* Text Column (Editable) */}
+                                                    <div className="flex gap-3">
+                                                        <span className="mt-1 text-slate-900 font-normal min-w-[2rem] select-none">{pointLabel}</span>
+                                                        <div className="flex-1">
+                                                            <EditableText
+                                                                value={point.point}
+                                                                onChange={(val) => handleUpdateNestedContent(section.id, subIdx, pIdx, val)}
+                                                                multiline
+                                                                markdown={true}
+                                                                className="w-full"
+                                                            />
+                                                        </div>
+                                                    </div>
+                                                    
+                                                    {/* Images Column */}
+                                                    {pointHasImages && (
+                                                        <div className="space-y-4">
+                                                            {point.images!.map((img: any) => (
+                                                                <div key={img.imageId || img.id || Math.random()} className="rounded-lg overflow-hidden border border-slate-200 shadow-sm bg-white">
+                                                                    {img.storagePath ? (
+                                                                        <SecureImage 
+                                                                            storagePath={img.storagePath}
+                                                                            alt={img.description || img.caption || "Report Image"}
+                                                                            className="w-full h-48 object-cover"
+                                                                        />
+                                                                    ) : (
+                                                                        <ImageWithFallback
+                                                                            src={img.url}
+                                                                            alt={img.description || img.caption || "Report Image"}
+                                                                            className="w-full h-48 object-cover"
+                                                                        />
+                                                                    )}
+                                                                    {(img.description || img.caption) && (
+                                                                        <div className="p-2 border-t border-slate-200 bg-slate-50">
+                                                                            <p className="text-xs text-slate-600 line-clamp-2">
+                                                                                {img.description || img.caption}
+                                                                            </p>
+                                                                        </div>
+                                                                    )}
+                                                                </div>
+                                                            ))}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                      ) : (
+                       // 🟢 FALLBACK TO OLD FLATTENED RENDERING
+                       <div className={`grid grid-cols-1 gap-6 ${hasImages ? 'sm:grid-cols-2' : ''}`}>
+                        {/* Text Content */}
+                        <div className={`min-w-0 ${hasImages ? 'md:col-span-2' : ''}`}>
+                          {mode === "peer-review" && peerReview && peerReview.comments ? (
+                            <HighlightableText
+                              content={section.content}
+                              sectionId={section.id}
+                              comments={peerReview.comments}
+                              onAddHighlightComment={onAddHighlightComment}
+                              onAddHighlightEdit={handleHighlightEdit}
+                              onHighlightClick={(commentId) => setActiveHighlightCommentId(commentId)}
+                              activeCommentId={activeHighlightCommentId}
+                              disabled={isSelectionMode}
+                              onTextSelection={(text) => handleTextSelection(text, section.id, section.title)}
+                            />
+                          ) : (
+                            <RewritableText
+                              value={section.content}
+                              onChange={(value) => onSectionChange(section.id, value)}
+                              onRequestRewrite={(currentText, instructions) => 
+                                handleRequestRewrite(currentText, instructions, section.id, undefined)
+                              }
+                              multiline
+                              markdown={true} // 🟢 Enable Markdown Rendering
+                              disabled={isSelectionMode}
+                              onTextSelection={(text) => handleTextSelection(text, section.id, section.title)}
+                            />
+                          )}
+                        </div>
+
+                        {/* Images Column */}
+                        {hasImages && (
+                          <div className="space-y-4">
+                            {section.images!.map((img: any) => (
+                              <div key={img.imageId || img.id || Math.random()} className="rounded-lg overflow-hidden border border-slate-200 shadow-sm bg-white">
+                                {img.storagePath ? (
+                                  <SecureImage 
+                                    storagePath={img.storagePath}
+                                    alt={img.description || img.caption || "Report Image"}
+                                    className="w-full h-48 object-cover"
+                                  />
+                                ) : (
+                                  <ImageWithFallback
+                                    src={img.url}
+                                    alt={img.description || img.caption || "Report Image"}
+                                    className="w-full h-48 object-cover"
+                                  />
+                                )}
+                                {(img.description || img.caption) && (
+                                  <div className="p-2 border-t border-slate-200 bg-slate-50">
+                                    <p className="text-xs text-slate-600 line-clamp-2">
+                                      {img.description || img.caption}
+                                    </p>
+                                  </div>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                      )}
+                    </div>
+                  );
+                  })}
                 </div>
               </Card>
             </div>

@@ -105,226 +105,115 @@ function ReportViewerContent() {
     sections: []
   });
 
- // Fetch Report
- useEffect(() => {
-  if (isGenerating) return;
+  // Fetch Report
+  useEffect(() => {
+    // If generating, don't fetch yet
+    if (isGenerating) return;
 
-  if (reportId && reportId !== "0") {
-    setIsLoading(true);
-    fetch(`/api/report/${reportId}`)
-      .then(res => {
-          if (!res.ok) throw new Error("Failed to fetch");
-          return res.json();
-      })
-      .then(data => {
-          console.log("Fetched report:", data);
-          
-          if (data.projectId) {
-              setProjectId(data.projectId);
-              setProjectName("Project");
-          }
-
-          // 🟢 HELPER: Extract valid URL from any DB structure
-          const getImageUrl = (img: any) => {
-              if (!img) return null;
-              if (typeof img === 'string') return img;
-              // Check common Supabase/DB patterns
-              const candidate = img.url || img.publicUrl || img.uri || img.s3Key || img.path;
-              
-              // 🔍 DEBUG: Log what we found
-              if (!candidate) console.warn("Could not find URL in image object:", img);
-              
-              // If it's a relative path (e.g., "/uploads/x"), you might need to prepend your domain
-              // return candidate.startsWith('http') ? candidate : `https://your-bucket.com/${candidate}`;
-              return candidate;
-          };
-
-          // 🟢 HELPER: Recursive Node Processor (Keeps Image & Text Together)
-          const processNodesRecursively = (nodes: any[]): string => {
-              let markdown = "";
-              
-              if (!nodes || !Array.isArray(nodes)) return "";
-
-              nodes.forEach(node => {
-                  // 1. Image (Render BEFORE text so it floats correctly)
-                  if (node.images && Array.isArray(node.images) && node.images.length > 0) {
-                      // Take the first image associated with this specific point
-                      const imgUrl = getImageUrl(node.images[0]);
-                      if (imgUrl) {
-                          markdown += `\n![Evidence](${imgUrl})\n`;
-                      }
-                  }
-
-                  // 2. Text (The Point)
-                  if (node.point) {
-                      markdown += `- ${node.point}\n`;
-                  }
-
-                  // 3. Children (Sub-points)
-                  if (node.children || node.subSections) {
-                      markdown += processNodesRecursively(node.children || node.subSections);
-                  }
-              });
-              
-              return markdown;
-          };
-
-          // 🟢 MAIN SECTION LOOP
-          const processedSections = (data.reportContent || data.sections || []).map((s: any) => {
-              let content = s.description || s.content || "";
-              
-              // Process top-level description images if any
-              if (s.images && Array.isArray(s.images) && s.images.length > 0) {
-                   const mainImg = getImageUrl(s.images[0]);
-                   if (mainImg) content = `![Main](${mainImg})\n` + content;
-              }
-
-              // Process all children (Points + Images)
-              const childrenMarkdown = processNodesRecursively(s.children || s.subSections);
-              
-              if (childrenMarkdown) {
-                  content += "\n\n" + childrenMarkdown;
-              }
-
-              return {
-                  id: s.id || Math.random().toString(),
-                  title: s.sectionTitle || s.title || "Untitled Section",
-                  
-                  // Force the editor to use our constructed string
-                  description: content.trim(), 
-                  content: content.trim(), 
-                  
-                  images: s.images || [], 
-                  subSections: s.children 
-              };
-          });
-
-          setReportContent({
-              title: data.title || "Untitled Report",
-              date: new Date(data.updatedAt).toLocaleDateString(),
-              location: "Project Site", 
-              engineer: "AI Assistant",
-              sections: processedSections 
-          });
-
-          setReportStatus(data.status || "Draft");
-      })
-      .catch(err => console.error("Error fetching report:", err))
-      .finally(() => setIsLoading(false));
-  }
-}, [reportId]);
-                    
+    if (reportId && reportId !== "0") {
+      setIsLoading(true);
+      fetch(`/api/report/${reportId}`)
+        .then(res => {
+            if (!res.ok) throw new Error("Failed to fetch");
+            return res.json();
+        })
+        .then(data => {
+            console.log("Fetched report:", data);
             
-  //           setReportContent({
-  //               title: data.title || "Untitled Report",
-  //               date: new Date(data.updatedAt).toLocaleDateString(),
-  //               location: "Project Site", 
-  //               engineer: "AI Assistant",
-  //               sections: (data.reportContent || data.sections || []).map((s: any) => {
+            if (data.projectId) {
+                setProjectId(data.projectId);
+                setProjectName("Project");
+            }
+
+            setReportContent({
+                title: data.title || "Untitled Report",
+                date: new Date(data.updatedAt).toLocaleDateString(),
+                location: "Project Site", 
+                engineer: "AI Assistant",
+                sections: (data.reportContent || data.sections || []).map((s: any) => {
                     
-  //               // 🟢 ROBUST RECURSIVE PROCESSOR
-  //               // Handles both 'children' and 'subSections' to ensure no data is lost
-  //               const processNode = (node: any, depth: number): { text: string, images: any[] } => {
-  //                 let text = "";
-  //                 let images = [...(node.images || [])];
+                    // 🟢 Robust Recursive Processing
+                    const processNode = (node: any, depth: number): { text: string, images: any[] } => {
+                        let text = "";
+                        let images = [...(node.images || [])];
+                        
+                        // 1. Handle Title (Subsections)
+                        // Depth 0 is Main Section (handled by outer map)
+                        // Depth 1 is Subsection (###)
+                        if (depth === 1 && node.title && node.title !== "General Summary" && node.title !== "Observed Conditions") {
+                            text += `### ${node.title}\n\n`;
+                        }
 
-  //                 // 🟢 X-RAY LOG: This will show us EXACTLY what keys exist in the node
-  //                 console.log(`🔍 [Depth ${depth}] keys:`, Object.keys(node), "Raw Node:", node);
+                        // 2. Handle Description / Content
+                        if (node.description) {
+                            text += `${node.description}\n\n`;
+                        } else if (node.content) {
+                            text += `${node.content}\n\n`;
+                        }
 
-  //                 console.log(`🔄 [2. PROCESSOR] Processing Depth ${depth}:`, {
-  //                   title: node.title,
-  //                   hasChildren: node.children?.length > 0,
-  //                   hasSubSections: node.subSections?.length > 0
-  //               });
-                  
-  //                 // 1. Handle Headers (Dynamic based on depth)
-  //                 if (node.title) {
-  //                     if (depth === 1) {
-  //                         text += `### ${node.title}\n\n`; // Convert Level 1 title to H3
-  //                     } else if (depth === 2) {
-  //                         text += `#### ${node.title}\n\n`; // Convert Level 2 title to H4
-  //                     } else {
-  //                         text += `**${node.title}**\n\n`; // Deep levels become bold
-  //                     }
-  //                 }
+                        // 3. Handle Bullet Point
+                        if (node.point) {
+                            text += `- ${node.point}\n`; 
+                        }
 
-  //                 const textContent = node.description || node.content || node.text || node.value || node.summary || "";
+                        // 4. Recurse Children
+                        if (node.children && Array.isArray(node.children)) {
+                            const childResults = node.children.map((child: any) => processNode(child, depth + 1));
+                            
+                            // Combine texts
+                            const childrenText = childResults.map((r: any) => r.text).join(""); // Bullets need tight packing, but subsections need spacing
+                            
+                            // If children are bullet points, we don't need extra spacing
+                            // If children are subsections, we might want spacing
+                            // Simple heuristic: Join with nothing, as children add their own trailing newlines
+                            text += childrenText;
 
-  //                 // 2. Handle Description / Content
-  //                 if (textContent) {
-  //                     text += `${node.description}\n\n`;
-  //                 }
+                            // Combine images
+                            childResults.forEach((r: any) => images.push(...r.images));
+                        }
 
-  //                 // 3. Handle Bullet Points
-  //                 if (node.point) {
-  //                     const indentLevel = Math.max(0, depth - 2); 
-  //                     const indent = "  ".repeat(indentLevel);
-  //                     text += `${indent}- ${node.point}\n`;
+                        return { text, images };
+                    };
 
-  //                     // 🟢 DEBUG: Did we actually catch the point?
-  //                     console.log(`✅ [Depth ${depth}] Captured Point:`, node.point.substring(0, 20) + "...");
-  //                 }
+                    // 🟢 Reconstruct Markdown Content from Nested Structure if needed
+                    let content = s.description || s.content || "";
+                    let aggregatedImages = [...(s.images || [])];
 
-  //                 // 4. Debugging "Invisible" Nodes
-  //                   // DIFFERENCE: If a node is truly empty, we warn you in the console instead of silently failing.
-  //                   if (!node.title && !textContent && !node.point && !node.children && !node.subSections) {
-  //                     console.warn(`⚠️ [Depth ${depth}] Found Empty/Unknown Node:`, node);
-  //                 }
+                    if (s.children && Array.isArray(s.children)) {
+                         const results = s.children.map((child: any) => processNode(child, 1));
+                         content += (content ? "\n\n" : "") + results.map((r: any) => r.text).join("\n"); // Add spacing between subsections
+                         results.forEach((r: any) => aggregatedImages.push(...r.images));
+                    }
 
-  //                 // 🟢 CRITICAL FIX: Check BOTH 'children' and 'subSections'
-  //                 const nodesToProcess = node.children || node.subSections || [];
+                    // Deduplicate aggregated images
+                    const uniqueImages: any[] = [];
+                    const seenIds = new Set();
+                    aggregatedImages.forEach(img => {
+                        const id = typeof img === 'string' ? img : (img.imageId || img.id);
+                        if (id && !seenIds.has(id)) {
+                            seenIds.add(id);
+                            uniqueImages.push(img);
+                        } else if (!id) {
+                             uniqueImages.push(img);
+                        }
+                    });
 
-  //                 if (Array.isArray(nodesToProcess) && nodesToProcess.length > 0) {
-  //                     const childResults = nodesToProcess.map((child: any) => processNode(child, depth + 1));
-                      
-  //                     const childrenText = childResults.map((r: any) => r.text).join(""); 
-  //                     text += childrenText;
-
-  //                     childResults.forEach((r: any) => images.push(...r.images));
-  //                 }
-
-  //                 return { text, images };
-  //               };
-
-  //                   // 🟢 Reconstruct Markdown Content from Nested Structure if needed
-  //                   let content = s.description || s.content || "";
-  //                   let aggregatedImages = [...(s.images || [])];
-
-  //                   if (s.children && Array.isArray(s.children)) {
-  //                        const results = s.children.map((child: any) => processNode(child, 1));
-  //                        content += (content ? "\n\n" : "") + results.map((r: any) => r.text).join("\n"); // Add spacing between subsections
-  //                        results.forEach((r: any) => aggregatedImages.push(...r.images));
-  //                   }
-
-  //                   // Deduplicate aggregated images
-  //                   const uniqueImages: any[] = [];
-  //                   const seenIds = new Set();
-  //                   aggregatedImages.forEach(img => {
-  //                       const id = typeof img === 'string' ? img : (img.imageId || img.id);
-  //                       if (id && !seenIds.has(id)) {
-  //                           seenIds.add(id);
-  //                           uniqueImages.push(img);
-  //                       } else if (!id) {
-  //                            uniqueImages.push(img);
-  //                       }
-  //                   });
-
-  //                   return {
-  //                       id: s.id || Math.random().toString(),
-  //                       title: s.sectionTitle || s.title || "Untitled Section",
-  //                       description: s.description, // 🟢 Pass raw parent description
-  //                       content: content.trim(),
-  //                       images: uniqueImages, 
-  //                       subSections: s.children 
-  //                   };
-  //               })
-  //           });
-  //           setReportStatus(data.status || "Draft");
-  //       })
-  //       .catch(err => console.error("Error fetching report:", err))
-  //       .finally(() => setIsLoading(false));
-  //   }
-  // }, [reportId]);
+                    return {
+                        id: s.id || Math.random().toString(),
+                        title: s.sectionTitle || s.title || "Untitled Section",
+                        description: s.description, // 🟢 Pass raw parent description
+                        content: content.trim(),
+                        images: uniqueImages, 
+                        subSections: s.children 
+                    };
+                })
+            });
+            setReportStatus(data.status || "Draft");
+        })
+        .catch(err => console.error("Error fetching report:", err))
+        .finally(() => setIsLoading(false));
+    }
+  }, [reportId]);
 
   // 🟢 NEW: Supabase Realtime Subscription for Report Generation
   useEffect(() => {
