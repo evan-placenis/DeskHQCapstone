@@ -1,200 +1,234 @@
-//Adapter Pattern - report serializer to transform the report data into markdown or json
 // lib/report/report-serializer.ts
 
-import { 
-    MainSectionBlueprint, 
-    SubSectionBlueprint, 
-    bulletpointBlueprint 
-  } from "../../../domain/reports/report.types";
+import { MainSectionBlueprint } from "../../../domain/reports/report.types";
 
+export class DataSerializer {
 
-// Helper type for the Stack: It can hold ANY layer of your report
-type StackNode = {
-  level: number;
-  // We use 'any' here effectively because we are building the tree dynamically.
-  // This bypasses the error: "Type X is not assignable to Type Y" during the push.
-  node: Partial<MainSectionBlueprint> | Partial<SubSectionBlueprint> | any; 
-};
+ // 🟢 A Recursive-Capable Parser using a Stack
+ public static parseFullMarkdownToSections(fullMarkdown: string): any[] {
+    const lines = fullMarkdown.split('\n');
+    const sections: any[] = [];
+    
+    // The stack holds the current hierarchy path.
+    // stack[0] is the main section (#), stack[1] is subsection (##), etc.
+    // Each item in the stack is: { node: any, level: number }
+    const stack: { node: any, level: number }[] = [];
+    let currentBuffer = "";
 
-  export class DataSerializer {
-  // =========================================================
-  // 🟢 1. UNIVERSAL RECURSIVE GENERATOR (JSON -> Markdown)
-  // =========================================================
+    const flushBuffer = () => {
+        const text = currentBuffer.trim();
+        if (!text) return;
 
-  /**
-   * Converts ANY section (Main, Sub, or future Deeply Nested) into Markdown.
-   * Uses recursion to handle children automatically.
-   */
+        // Attach text to the deepest active node
+        if (stack.length > 0) {
+            const active = stack[stack.length - 1].node;
+            
+            // If the text looks like a list item, we can parse it structurally
+            // Otherwise, append to content/description
+            if (active.content) {
+                active.content += "\n\n" + text;
+            } else {
+                active.content = text;
+            }
+            
+            // (Optional) If you want to support recovering bullets as children:
+            // if (text.startsWith('- ')) active.children = parseBullets(text);
+        }
+        currentBuffer = "";
+    };
+
+    for (const line of lines) {
+        const trimmed = line.trim();
+        
+        // 1. Detect Header (Any Level #, ##, ###...)
+        const headerMatch = trimmed.match(/^(#+)\s+(.*)/);
+        
+        if (headerMatch) {
+            flushBuffer(); // Save pending text to the previous node
+
+            const level = headerMatch[1].length; // #=1, ##=2, ###=3
+            const title = headerMatch[2];
+
+            const newNode = {
+                title: title,
+                content: "",
+                children: [], // Unified children array for recursion
+                subSections: [] // For legacy compatibility (Level 1 only)
+            };
+
+            // 2. Adjust Stack for new Level
+            // Pop items from the stack until we find the parent (level - 1)
+            while (stack.length > 0 && stack[stack.length - 1].level >= level) {
+                stack.pop();
+            }
+
+            if (stack.length === 0) {
+                // Root Level (Level 1)
+                sections.push(newNode);
+            } else {
+                // Child Level (Level > 1) -> Add to parent's children
+                const parent = stack[stack.length - 1].node;
+                
+                // Add to 'children' (Universal)
+                if (!parent.children) parent.children = [];
+                parent.children.push(newNode);
+
+                // Add to 'subSections' (Legacy: Only if parent is Root and child is Level 2)
+                if (stack.length === 1 && level === 2) {
+                     if (!parent.subSections) parent.subSections = [];
+                     parent.subSections.push(newNode);
+                }
+            }
+
+            // Push new node as the active context
+            stack.push({ node: newNode, level: level });
+            continue;
+        }
+
+        // 3. Regular Content
+        currentBuffer += line + "\n";
+    }
+
+    flushBuffer(); // Final flush
+    return sections;
+  }
+
+  // 🟢 1. JSON -> MARKDOWN (Adjusted for Tiptap Compatibility)
   public toMarkdown(node: any, depth: number = 1): string {
       let output = "";
 
-      // 1. Dynamic Header Generation
-      // depth 1 = #, depth 2 = ##, etc.
-      if (node.title) {
-          output += `${"#".repeat(depth)} ${node.title}\n`;
+      // Headers (# Title)
+      if (node.title && depth > 0) { // depth 0 might be root wrapper
+          output += `${"#".repeat(depth)} ${node.title}\n\n`;
       }
 
-      // 2. Context / Description
-      // We can style it differently based on depth if we want
+      // Description
       if (node.description) {
-          const prefix = depth === 1 ? "> **Overview:** " : "*Context: ";
-          const suffix = depth === 1 ? "" : "*";
-          output += `${prefix}${node.description}${suffix}\n\n`;
+          output += `${node.description}\n\n`;
+      } else if (node.content) {
+          // Fallback if your data uses 'content' property
+          output += `${node.content}\n\n`;
       }
 
-      // 3. Process Children (The Recursive Magic)
+      // Children
       if (node.children && node.children.length > 0) {
-          
-          // CHECK: Are we at the bottom (Bullets)? or still in Sections?
           const firstChild = node.children[0];
-          const isBulletLayer = 'point' in firstChild; // Duck typing check
+          const isBulletLayer = 'point' in firstChild;
 
           if (isBulletLayer) {
-              // BASE CASE: Render Bullets
-              node.children.forEach((b: bulletpointBlueprint) => {
+              node.children.forEach((b: any) => {
                   output += `- ${b.point}\n`;
+                  // 🟢 FIX: Use Standard Markdown Image Syntax for Tiptap
                   if (b.images && b.images.length > 0) {
                       b.images.forEach((img: any) => {
-                          output += `  > [IMAGE: ${img.caption || "Attached Image"}]\n`;
+                          // Format: ![Alt Text](URL)
+                          const url = img.url || img.storagePath || "";
+                          output += `![${img.caption || "Image"}](${url})\n`;
                       });
                   }
               });
+              output += "\n"; // Space after list
           } else {
-              // RECURSIVE STEP: Render Children Sections
               node.children.forEach((child: any) => {
-                  output += "\n" + this.toMarkdown(child, depth + 1);
+                  output += this.toMarkdown(child, depth + 1) + "\n";
               });
           }
-      } else {
-          // Handle empty sections elegantly
-          if (depth > 1) output += "(No content yet)\n";
       }
-
       return output.trim();
   }
 
-
-  // =========================================================
-  // 🟢 2. STACK-BASED PARSER (Markdown -> JSON)
-  // =========================================================
-
-  /**
-   * Parses Markdown back into a Tree structure.
-   * Uses a "Stack" to handle arbitrary nesting depth (#, ##, ###, ####...)
-   * This replaces all those specific 'if' checks.
-   */
+  // 🟢 2. MARKDOWN -> JSON (Robustness Fixes)
   public static markdownToSectionStructure(markdown: string): Partial<MainSectionBlueprint> {
       const lines = markdown.split('\n');
-      
-      // The Root of our result
       const root: any = { children: [] };
       
-      // THE STACK: Keeps track of where we are in the hierarchy
-      // We start with the root at level 0
-      const stack: StackNode[] = [
-          { level: 0, node: root }
-      ];
+      // Default to parsing into a root node if no headers found (flat text)
+      // This handles the case where user just types a paragraph without a header
+      const stack: any[] = [{ level: 0, node: root }];
 
-      let pendingImages: any[] = [];
+      let currentDescriptionBuffer = "";
+
+      // Helper to flush description buffer to current node
+      const flushDescription = () => {
+         if (currentDescriptionBuffer.trim()) {
+             const currentNode = stack[stack.length - 1].node;
+             // Append to existing or create new
+             currentNode.description = (currentNode.description || "") + "\n" + currentDescriptionBuffer.trim();
+             currentDescriptionBuffer = "";
+         }
+      };
 
       for (const line of lines) {
           const trimmed = line.trim();
           if (!trimmed) continue;
 
-          // --- A. HEADERS (#, ##, ###) ---
+          // Headers
           const headerMatch = trimmed.match(/^(#+)\s+(.*)/);
           if (headerMatch) {
-              const level = headerMatch[1].length; // number of #
+              flushDescription(); // Save previous text
+
+              const level = headerMatch[1].length;
               const title = headerMatch[2];
+              const newSection = { title, description: "", children: [] };
 
-              const newSection = {
-                  title: title,
-                  description: "",
-                  children: [],
-                  // Optional: You could infer required/order here if needed
-              };
-
-              // 1. Pop stack until we find the parent (a level strictly lower than ours)
+              // Pop stack to find parent
               while (stack.length > 0 && stack[stack.length - 1].level >= level) {
                   stack.pop();
               }
-
-              // 2. The item currently at top of stack is our parent
-              const parent = stack[stack.length - 1].node;
               
-              // 3. Attach ourselves to parent
-              // Note: We assume parent.children exists. 
+              const parent = stack[stack.length - 1].node;
               if (!parent.children) parent.children = [];
               parent.children.push(newSection);
-
-              // 4. Push ourselves onto stack to accept future children
               stack.push({ level, node: newSection });
+              continue;
+          }
+
+          // Bullets
+          if (/^[-*•] /.test(trimmed)) {
+              flushDescription(); // Save previous text
+              const point = trimmed.replace(/^[-*•] /, '').trim();
               
-              continue; // Done with this line
-          }
-
-          // --- B. BULLETS (- , * ) ---
-          // Get the current active section (top of stack)
-          const currentSection = stack[stack.length - 1].node;
-
-          if (/^[-*•] |^\d+\.\s/.test(trimmed)) {
-              const content = trimmed.replace(/^[-*•] |^\d+\.\s/, '').trim();
-              const bullet = { 
-                  point: content, 
-                  images: [...pendingImages] 
-              };
-              pendingImages = []; // Reset
-
-              // Ensure children array exists
+              const currentSection = stack[stack.length - 1].node;
               if (!currentSection.children) currentSection.children = [];
-              currentSection.children.push(bullet);
+              
+              // Add as bullet child
+              currentSection.children.push({ point, images: [] }); 
+              continue;
           }
 
-          // --- C. IMAGES ---
-          else if (trimmed.startsWith('> [IMAGE:')) {
-              const caption = trimmed.replace('> [IMAGE:', '').replace(']', '').trim();
-              pendingImages.push({ caption });
+          // Images (Standard Markdown: ![alt](url))
+          const imgMatch = trimmed.match(/^!\[(.*?)\]\((.*?)\)/);
+          if (imgMatch) {
+               const caption = imgMatch[1];
+               const url = imgMatch[2];
+               
+               // Attach to the LAST child (bullet) if it exists, otherwise attach to section?
+               // Simplified: We assume images belong to the last bullet point or section
+               const currentSection = stack[stack.length - 1].node;
+               const lastChild = currentSection.children ? currentSection.children[currentSection.children.length - 1] : null;
+               
+               if (lastChild && 'point' in lastChild) {
+                   if (!lastChild.images) lastChild.images = [];
+                   lastChild.images.push({ caption, url });
+               } 
+               continue;
           }
 
-          // --- D. DESCRIPTION / CONTEXT ---
-          else if (trimmed.startsWith('> **Overview:**')) {
-              currentSection.description = trimmed.replace('> **Overview:**', '').trim();
-          }
-          else if (!trimmed.startsWith('>')) {
-               // It's regular text, append to description of whatever section is active
-               if (!trimmed.match(/^---+$/)) { // Ignore horizontal rules
-                   currentSection.description = (currentSection.description ? currentSection.description + "\n" : "") + trimmed;
-               }
-          }
-      }
-
-      // Return the children of our invisible root (or just the root if you want the wrapper)
-      // Based on your specific MainSectionBlueprint type, you probably want the first child 
-      // if the markdown started with '# Title', or the root wrapper if it contained multiple '#'.
-      
-      // Heuristic: If root has 1 child and it looks like a Main Section, return it.
-      if (root.children && root.children.length === 1 && root.children[0].children) {
-           return root.children[0];
+          // Plain Text -> Buffer it
+          currentDescriptionBuffer += " " + trimmed;
       }
       
-      // If the parser didn't find any headers (just text), return the root as a "flat" structure
-      // But we need to make sure 'children' (bullets) are handled correctly.
+      flushDescription(); // Final flush
+
+      // Return the structure
+      // If we parsed a full tree, return root.children[0]. 
+      // If we just parsed a paragraph (no headers), return the root content as a section description.
+      if (root.children.length > 0) return root.children[0];
       
-      // If root children are just bullets (not sections), then this is a leaf node update
-      // But the return type expects MainSectionBlueprint.
-      // We might need to adjust logic based on what 'section' we are updating.
-      
-      return root as MainSectionBlueprint;
+      return {
+          title: "General Content",
+          description: root.description || "",
+          children: []
+      };
   }
-
-  // ... helper methods like extractMetadataContext ...
-
-
-    /**
-     * Extracts metadata context from the section.
-     */
-    public extractMetadataContext(section: any): string {
-        // Simple implementation
-        return `Section ID: ${section.id || 'Unknown'}, Title: ${section.title || 'Untitled'}`;
-    }
-  }
+}

@@ -56,12 +56,16 @@ export class ChatService {
         const targetReportId = session.reportId || reportId;
 
         if (targetReportId && activeSectionId) {
-             // 👇 This calls the function inside ReportService
-             reportContext = await this.reportService.getSectionContextForAI(
-                 targetReportId, 
-                 activeSectionId, 
-                 client
-             );
+            // Fetch section context when both reportId and sectionId are available
+            try {
+                reportContext = await this.reportService.getSectionContextForAI(
+                    targetReportId,
+                    activeSectionId,
+                    client
+                );
+            } catch (error) {
+                console.error(`⚠️ Failed to fetch section context:`, error);
+            }
         } else {
             console.log(`⚠️ No context fetched. ReportId: ${targetReportId}, SectionId: ${activeSectionId}`);
         }

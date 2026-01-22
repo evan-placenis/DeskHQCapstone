@@ -9,7 +9,7 @@ This system implements an **Agentic Orchestrator Pattern**. Instead of a single 
 1.  **User Input**: The user sends a message (e.g., "Find the latest population stats for Canada and update the intro").
 2.  **The Planner (Architect)**:
     - Analyzes the request.
-    - Generates a sequential **Plan** of steps (e.g., `[RESEARCH_DATA, EDIT_TEXT]`).
+    - Generates a sequential **Plan** of steps (e.g., `[RESEARCH_DATA, EDIT_TEXT]` or `[RESPOND]` for questions).
 3.  **The Orchestrator (The Loop)**:
     - Iterates through the steps one by one.
     - **Step 1 (Research)**: Calls `ResearcherAgent`. The agent scrapes/searches and returns facts. These facts are saved into `accumulatedContext` (hidden from the user).
@@ -26,10 +26,11 @@ The main controller. It maintains the "Short Term Memory" (`accumulatedContext`)
 
 ### 2. The Agents
 
-- **PlannerAgent**: Decides _what_ needs to be done. It outputs a list of intents (`RESEARCH_DATA`, `EDIT_TEXT`, `EXECUTE_TOOL`).
-- **ResearcherAgent**: optimized for search and fact-retrieval.
+- **PlannerAgent**: Decides _what_ needs to be done. It outputs a list of intents (`RESEARCH_DATA`, `EDIT_TEXT`, `EXECUTE_TOOL`, `RESPOND`).
+- **ResearcherAgent**: Optimized for search and fact-retrieval.
 - **EditorAgent**: Optimized for prose, tone, and grammar.
 - **ToolAgent**: Handles discrete actions (APIs, calculators, etc.).
+- **ResponderAgent**: Handles conversational responses - answering questions, explaining concepts, and providing guidance without making document edits.
 
 ### 3. DiffUtils & Data Structure
 

@@ -28,6 +28,7 @@ import { ChatOrchestrator } from "../ChatSystem/core/ChatOrchestrator";
 import { KnowledgeService } from "../../Services/KnowledgeServivce";
 import { ChatEditor } from "../ChatSystem/Agents/EditorAgent";
 import { ToolAgent } from "../ChatSystem/Agents/ToolAgent";
+import { ResponderAgent } from "../ChatSystem/Agents/ResponderAgent";
 
 export class AgentFactory {
   
@@ -100,21 +101,21 @@ export class AgentFactory {
   // Create the full Orchestrator
   public createChatAgent(modeName: string): ChatOrchestrator {
     // 1. Create Dependencies
-    const editorAgent = new ChatEditor(this.createStrategy(modeName));
+    const agent = this.createStrategy(modeName);
+    const editorAgent = new ChatEditor(agent);
     
     // 🟢 FIX: Pass the raw OpenAI client to Router and ToolAgent
     // The previous implementation used grokClient which caused "model not found" for gpt-4o
     const openAIClient = getOpenAIClient();
-    const agent = this.createStrategy(modeName);
-  
 
     const planner = new PlannerAgent(agent); // Logic to detect "change/rewrite"
     const researcher = new ResearcherAgent(agent);
     const serializer = new DataSerializer();
     const toolAgent = new ToolAgent(openAIClient);
+    const responderAgent = new ResponderAgent(agent); // 🟢 NEW: For conversational responses
 
     // 2. Inject them
-    return new ChatOrchestrator(planner, researcher, editorAgent, serializer, toolAgent);
+    return new ChatOrchestrator(planner, researcher, editorAgent, serializer, toolAgent, responderAgent);
 }
 
 }

@@ -54,7 +54,7 @@ export const ObservationReportTemplate: ReportBlueprint[] = [
                 children: [
                     {
                         _reasoning: "",
-                        title: "General Summary",
+                        title: "",
                         description: "",
                         required: true,
                         order: 1,
