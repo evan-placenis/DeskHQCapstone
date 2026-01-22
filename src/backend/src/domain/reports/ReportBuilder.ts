@@ -15,6 +15,7 @@ export class ReportBuilder {
     constructor(projectId: string, userId: string) { 
         this.reportData.reportId = uuidv4();
         this.reportData.projectId = projectId;
+        this.reportData.createdBy = userId;
         this.reportData.createdAt = new Date();
         this.reportData.updatedAt = new Date();
         this.reportData.status = 'DRAFT'; 

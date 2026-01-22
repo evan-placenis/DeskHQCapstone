@@ -24,6 +24,7 @@ export class SupabaseReportRepository implements ReportRepository {
                 status: report.status,
                 version_number: report.versionNumber,
                 sections: report.reportContent, // Map Domain 'reportContent' -> DB 'sections'
+                created_by: report.createdBy,   // Track who created the report
                 updated_at: report.updatedAt
             });
 
@@ -48,6 +49,7 @@ export class SupabaseReportRepository implements ReportRepository {
             title: data.title,
             status: data.status,
             versionNumber: data.version_number,
+            createdBy: data.created_by,
             updatedAt: new Date(data.updated_at),
             createdAt: new Date(data.created_at || data.updated_at), // Map created_at
             
@@ -120,6 +122,7 @@ export class SupabaseReportRepository implements ReportRepository {
             title: row.title,
             status: row.status,
             versionNumber: row.version_number,
+            createdBy: row.created_by,
             updatedAt: new Date(row.updated_at),
             createdAt: new Date(row.created_at || row.updated_at), // Map created_at
             reportContent: row.sections || [],
