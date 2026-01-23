@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
-import { createBrowserClient } from '@supabase/ssr'; // Changed import
+//import { createBrowserClient } from '@supabase/ssr'; // Changed import
+import { supabase } from "@/frontend/lib/supabaseClient";
 
 export const useSignedUrl = (
   storagePath: string | null | undefined, // Allow null so we can wait for data
@@ -15,11 +16,11 @@ export const useSignedUrl = (
   const supabaseAnonKey = (process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "").trim();
 
   if (!supabaseUrl || !supabaseAnonKey) {
-      console.error("❌ useSignedUrl: Missing Supabase Environment Variables!");
-      console.error(`URL present: ${!!supabaseUrl}, Key present: ${!!supabaseAnonKey}`);
+    console.error("❌ useSignedUrl: Missing Supabase Environment Variables!");
+    console.error(`URL present: ${!!supabaseUrl}, Key present: ${!!supabaseAnonKey}`);
   }
 
-  const supabase = createBrowserClient(supabaseUrl!, supabaseAnonKey!);
+  //const supabase = createBrowserClient(supabaseUrl!, supabaseAnonKey!);
 
   useEffect(() => {
     // 1. Reset state if path changes or is empty

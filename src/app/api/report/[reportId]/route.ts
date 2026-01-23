@@ -8,7 +8,7 @@ export async function GET(
 ) {
     try {
         const { reportId } = await params;
-        
+
         // Authenticate
         const { user, supabase } = await createAuthenticatedClient();
         if (!user) {
@@ -22,7 +22,22 @@ export async function GET(
             return NextResponse.json({ error: "Report not found" }, { status: 404 });
         }
 
-        return NextResponse.json(report);
+        // Transform domain object to match frontend expectations (snake_case)
+        const response = {
+            id: report.reportId,
+            title: report.title,
+            tiptap_content: report.tiptapContent || null, // Transform camelCase to snake_case
+            project_id: report.projectId,
+            status: report.status,
+            updated_at: report.updatedAt.toISOString(),
+            created_at: report.createdAt.toISOString(),
+            template_id: report.templateId,
+            version_number: report.versionNumber,
+            created_by: report.createdBy,
+            // Include all fields for ReportHeader
+        };
+
+        return NextResponse.json(response);
 
     } catch (error: any) {
         console.error("Get Report Error:", error);

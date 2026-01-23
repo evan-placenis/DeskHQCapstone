@@ -8,9 +8,14 @@ import { Container } from "../../../config/container";
 
 // Templates & Blueprints
 import {
-    ObservationReportTemplate,
     ReportBlueprint
-} from "../../../domain/reports/templates/report_temples";
+} from "../../../domain/reports/templates/report_templates";
+
+// Markdown Templates (Step 2: Migration to Tiptap)
+import {
+    ObservationReportMarkdownTemplate,
+    MarkdownSectionTemplate
+} from "../../../domain/reports/templates/markdown_report_templates";
 
 import { MainSectionBlueprint } from "../../../domain/reports/report.types";
 import { v4 as uuidv4 } from 'uuid';
@@ -22,6 +27,14 @@ import {
     REVIEWER_SYSTEM_PROMPT,
     reviewerUserPrompt
 } from '../../prompts/report/basicPrompt';
+
+// Markdown prompts (Step 2: Migration to Tiptap)
+import {
+    MARKDOWN_WRITER_SYSTEM_PROMPT,
+    markdownWriterUserPrompt,
+    MARKDOWN_REVIEWER_SYSTEM_PROMPT,
+    markdownReviewerUserPrompt
+} from '../../prompts/report/markdownPrompt';
 
 
 // import { ReportSubSection, ReportBulletPoint } from "../../../domain/reports/report.types";
@@ -160,52 +173,40 @@ export class BasicWorkflow extends ReportGenerationWorkflow<ReportBlueprint> {
 
         // -----------------------------------------------------
         // PHASE A: TEMPLATE SELECTION (The "Map")
+        // STEP 2 MIGRATION: Use Markdown templates directly
         // -----------------------------------------------------
-        let blueprint: ReportBlueprint;
+        let markdownTemplates: MarkdownSectionTemplate[];
+        let reportTitle: string;
 
         if (payload.writingMode === 'USER_DEFINED') {
-            // Convert User Groups -> SectionBlueprints
-            blueprint = {
-                _review_reasoning: "",
-                reportTitle: `Observation Report - ${context.project.name}`,
-                isReviewRequired: true,
-                reportContent: payload.userDefinedGroups!.map((g, i) => ({
-                    id: uuidv4(), // 🟢 Ensure every section has an ID
-                    _reasoning: "",
-                    title: g.title,
-                    description: g.instructions || "Analyze the provided notes.",
-                    required: true,
-                    order: i + 1,
-                    children: []
-                }))
-            };
+            // Convert User Groups -> Markdown Templates
+            reportTitle = `Observation Report - ${context.project.name}`;
+            markdownTemplates = payload.userDefinedGroups!.map((g, i): MarkdownSectionTemplate => ({
+                title: g.title,
+                description: g.instructions || "Analyze the provided notes.",
+                structure: `# ${g.title}\n\n[Write content based on the provided notes and images]`,
+                imageGuidance: "Place images inline where they are most relevant to the text."
+            }));
 
         } else {
-            console.log("📄 Loading Standard Observation Template...");
-            // Clone the template to avoid mutating the global constant
-            blueprint = JSON.parse(JSON.stringify(ObservationReportTemplate[0]));
-
-            // 🟢 Ensure all sections have IDs
-            blueprint.reportContent = blueprint.reportContent.map(section => ({
-                ...section,
-                id: section.id || uuidv4()
-            }));
+            console.log("📄 Loading Standard Observation Template (Markdown format)...");
+            // Use the new Markdown template directly
+            reportTitle = `Observation Report - ${context.project.name}`;
+            markdownTemplates = ObservationReportMarkdownTemplate;
         }
 
 
         // -----------------------------------------------------
         // PHASE B: EXECUTION (The Loop) Runs in parallel
+        // STEP 2 MIGRATION: Generate Markdown instead of JSON
+        // CRITICAL: Store Image IDs, NOT URLs (prevents link rot from expired signed URLs)
         // -----------------------------------------------------
-        console.log(`✍️ Spawning ${blueprint.reportContent.length} Writers in parallel...`);
-        context.emit('status', `Drafting ${blueprint.reportContent.length} sections...`);
+        console.log(`✍️ Spawning ${markdownTemplates.length} Writers in parallel (Markdown mode)...`);
+        context.emit('status', `Drafting ${markdownTemplates.length} sections in Markdown...`);
 
-        //THE WRITERS (One per Section, NOT per Image)
-        const writingTasks = blueprint.reportContent.map(async (sectionTemplate, index) => {
-
-            // 1. Contextual Retrieval (RAG)
-            //    Find notes relevant to THIS section (e.g., "Roofing" + "Leaks")
-            //    This is cheaper/smarter than passing ALL notes to EVERY writer.
-            // const query = `${sectionTemplate.title} ${sectionTemplate.description}`;
+        //THE WRITERS (One per Section, NOT per Image) - Now output Markdown
+        // NOTE: We do NOT resolve image URLs here - AI will write Image IDs, frontend resolves URLs
+        const writingTasks = markdownTemplates.map(async (markdownTemplate, index) => {
 
             // Map processed notes to expected format for the prompt
             const formattedNotes = processedNotes.map((n: any) => {
@@ -227,7 +228,7 @@ export class BasicWorkflow extends ReportGenerationWorkflow<ReportBlueprint> {
                 return {
                     userNote: n.content || JSON.stringify(n),
                     aiDescription: aiDesc,
-                    imageIds: imgIds
+                    imageIds: imgIds // Pass IDs only - AI will use them directly in Markdown
                 };
             });
 
@@ -239,77 +240,105 @@ export class BasicWorkflow extends ReportGenerationWorkflow<ReportBlueprint> {
                 ? (chunk: string) => context.emit('reasoning', chunk)
                 : undefined;
 
-            // 2. Call The Writer
+            // 2. Call The Writer with Markdown prompt (passing the full Markdown template structure)
             const response = await this.llmClient.generateContent(
-                PHOTO_WRITER_SYSTEM_PROMPT,
-                writerUserPrompt(formattedNotes, sectionTemplate, relevantSpecs),
+                MARKDOWN_WRITER_SYSTEM_PROMPT,
+                markdownWriterUserPrompt(formattedNotes, markdownTemplate, relevantSpecs),
                 context,
                 onStream
             );
 
-            // 3. Parse & Return the Filled Section
-            return this.parseJsonSafely<MainSectionBlueprint>(response);
+            // 3. Return the Markdown text (not JSON)
+            return {
+                title: markdownTemplate.title,
+                markdown: this.cleanMarkdown(response)
+            };
         });
 
         // Wait for all sections to be drafted
         const draftedSections = await Promise.all(writingTasks);
 
-        // Assemble the Draft Report
-        const draftReport: ReportBlueprint = {
-            ...blueprint,
-            reportContent: draftedSections
-        };
+        // Assemble the Draft Report as Markdown
+        // Note: The AI should already include the section heading (# Title) in its output
+        // But we add it here as a safety measure if it's missing
+        const draftMarkdown = draftedSections
+            .map(section => {
+                const markdown = section.markdown.trim();
+                // If the markdown doesn't start with a heading, add it
+                if (!markdown.startsWith('#')) {
+                    return `# ${section.title}\n\n${markdown}`;
+                }
+                return markdown;
+            })
+            .join('\n\n');
 
         // -----------------------------------------------------
-        // PHASE C: THE REVIEWER (The "Reduce")
+        // PHASE C: THE REVIEWER (The "Reduce") - Now reviews Markdown
         // -----------------------------------------------------
-        console.log("🕵️ Reviewer is polishing the draft...");
-        context.emit('status', 'Reviewing and polishing draft...');
+        console.log("🕵️ Reviewer is polishing the Markdown draft...");
+        context.emit('status', 'Reviewing and polishing Markdown draft...');
 
         // 🟢 STREAMING: Stream the Reviewer's reasoning
         const onReviewStream = (chunk: string) => context.emit('review_reasoning', chunk);
 
         const reviewResponse = await this.llmClient.generateContent(
-            REVIEWER_SYSTEM_PROMPT,
-            reviewerUserPrompt(draftReport),
+            MARKDOWN_REVIEWER_SYSTEM_PROMPT,
+            markdownReviewerUserPrompt(draftMarkdown),
             context,
             onReviewStream
         );
 
-        const finalJson = this.parseJsonSafely<ReportBlueprint>(reviewResponse);
+        const finalMarkdown = this.cleanMarkdown(reviewResponse);
 
-        // Return the fully polished JSON structure
-        return finalJson;
+        // Return the Markdown as a simple object (we'll handle conversion in postProcessOutput)
+        return {
+            reportTitle: reportTitle || "Observation Report",
+            markdown: finalMarkdown
+        } as any;
     }
 
     // =========================================================
-    // STEP 3: SERIALIZATION (JSON -> Domain Entity)
+    // STEP 3: SERIALIZATION (Markdown -> Domain Entity)
+    // STEP 2 MIGRATION: Save Markdown to tiptap_content
     // =========================================================
     protected async postProcessOutput(
-        aiOutput: ReportBlueprint,
+        aiOutput: any, // Now receives { reportTitle, markdown } instead of ReportBlueprint
         context: AgentExecutionContext
     ): Promise<Report> {
-        console.log("✨ Converting AI JSON to Domain Report...");
+        console.log("✨ Converting Markdown to Domain Report...");
         context.emit('status', 'Finalizing report...');
 
         const builder = new ReportBuilder(context.project.projectId, context.payload.userId);
 
         // 1. Header Info
+        const reportTitle = aiOutput.reportTitle || "Observation Report";
         builder
-            .setTitle(aiOutput.reportTitle) // Reviewer might have renamed it
+            .setTitle(reportTitle)
             .setStatus("DRAFT")
             .setTemplate(context.templateId);
 
-        // 2. Body Content
-        //    The Reviewer might have reordered/merged sections, so we iterate
-        //    the FINAL 'reportContent' array.
-        aiOutput.reportContent.forEach(section => {
-            // 🟢 Pass the structured section directly to the builder
-            // The domain now supports the nested structure natively.
-            builder.addMainSection(section);
-        });
+        // 2. For legacy compatibility, we still need to populate reportContent
+        //    We'll create a minimal structure from the Markdown
+        //    But the primary content is now in tiptap_content
+        const legacySections: MainSectionBlueprint[] = [{
+            id: 'main-content',
+            title: reportTitle,
+            description: '',
+            required: true,
+            order: 1,
+            children: []
+        }];
 
-        return builder.build();
+        builder.addMainSection(legacySections[0]);
+
+        // 3. Build the report
+        const report = builder.build();
+
+        // 4. STEP 2: Add the Markdown content to tiptap_content
+        //    The Markdown is ready to be hydrated by Tiptap
+        report.tiptapContent = aiOutput.markdown || '';
+
+        return report;
     }
 
     // --- Helpers ---
@@ -321,5 +350,26 @@ export class BasicWorkflow extends ReportGenerationWorkflow<ReportBlueprint> {
             console.error("Failed to parse JSON", text);
             throw new Error("AI Output was not valid JSON");
         }
+    }
+
+    /**
+     * Cleans Markdown output from LLM (removes code blocks, extra whitespace)
+     */
+    private cleanMarkdown(text: string): string {
+        // Remove markdown code blocks if present
+        let cleaned = text.replace(/```markdown/g, '').replace(/```/g, '').trim();
+
+        // Remove any JSON-like structures that might have leaked through
+        // (safety check for transition period)
+        if (cleaned.startsWith('{') || cleaned.startsWith('[')) {
+            console.warn('[BasicWorkflow] LLM output looks like JSON, attempting to extract Markdown...');
+            // Try to find Markdown content after JSON
+            const markdownMatch = cleaned.match(/```[\s\S]*?```|(?:^|\n)([^[{].*)/);
+            if (markdownMatch && markdownMatch[1]) {
+                cleaned = markdownMatch[1].trim();
+            }
+        }
+
+        return cleaned;
     }
 }
