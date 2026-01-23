@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { ObservationReportTemplate } from '@/backend/domain/reports/templates/report_temples';
+import { ObservationReportTemplate } from '@/src/backend/src/domain/reports/templates/report_templates';
 
 export async function GET() {
   // Map Backend Template to Frontend Format

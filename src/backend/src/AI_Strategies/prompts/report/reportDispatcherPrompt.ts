@@ -3,7 +3,7 @@
 // ============================================================================
 // STEP 1: THE WRITER (Refines Raw Notes -> Polished Markdown)
 // ============================================================================
-import { SectionBlueprint } from "../../../domain/reports/templates/report_temples";
+import { SectionBlueprint } from "../../../domain/reports/templates/report_templates";
 
 export const WRITER_SYSTEM_PROMPT = `
 # ROLE: Technical Report Writer
@@ -26,14 +26,14 @@ export const WRITER_SYSTEM_PROMPT = `
 6. **IMAGES:** If the input notes contain Image IDs (e.g. [Images: 123]), you MUST include the relevant IDs in the "images" array of the JSON object.
 `;
 export const writerUserPrompt = (
-  rawPhotoNotes: { text: string; imageIds?: string[] }[],
-  sectionTemplate: any,
-  relevantSpecs: string[],
-) =>  `
+   rawPhotoNotes: { text: string; imageIds?: string[] }[],
+   sectionTemplate: any,
+   relevantSpecs: string[],
+) => `
 # RAW FIELD NOTES:
 ${rawPhotoNotes.map((n, i) => {
-    const imgInfo = n.imageIds?.length ? ` [Images: ${n.imageIds.join(', ')}]` : "";
-    return `- "${n.text}"${imgInfo}`;
+   const imgInfo = n.imageIds?.length ? ` [Images: ${n.imageIds.join(', ')}]` : "";
+   return `- "${n.text}"${imgInfo}`;
 }).join('\n')}
 
 # RELEVANT SPECS:

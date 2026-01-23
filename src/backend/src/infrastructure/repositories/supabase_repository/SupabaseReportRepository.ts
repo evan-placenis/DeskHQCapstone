@@ -13,20 +13,27 @@ export class SupabaseReportRepository implements ReportRepository {
 
         // 2. Insert Report
         // We rely on Postgres to store the 'sections' array as JSONB automatically
+        const insertData: any = {
+            id: report.reportId, // Map Domain 'reportId' -> DB 'id'
+            project_id: report.projectId,
+            organization_id: orgId,
+            template_id: report.templateId,
+            title: report.title,
+            status: report.status,
+            version_number: report.versionNumber,
+            sections: report.reportContent, // Map Domain 'reportContent' -> DB 'sections' (legacy)
+            created_by: report.createdBy,   // Track who created the report
+            updated_at: report.updatedAt
+        };
+
+        // Add tiptap_content if present (Step 2: Markdown migration)
+        if (report.tiptapContent !== undefined) {
+            insertData.tiptap_content = report.tiptapContent;
+        }
+
         const { error } = await client
             .from('reports')
-            .insert({
-                id: report.reportId, // Map Domain 'reportId' -> DB 'id'
-                project_id: report.projectId,
-                organization_id: orgId,
-                template_id: report.templateId,
-                title: report.title,
-                status: report.status,
-                version_number: report.versionNumber,
-                sections: report.reportContent, // Map Domain 'reportContent' -> DB 'sections'
-                created_by: report.createdBy,   // Track who created the report
-                updated_at: report.updatedAt
-            });
+            .insert(insertData);
 
         if (error) throw new Error(`Save Report Failed: ${error.message}`);
     }
@@ -55,6 +62,7 @@ export class SupabaseReportRepository implements ReportRepository {
             
             // JSONB columns come back as objects/arrays automatically
             reportContent: data.sections || [], 
+            tiptapContent: data.tiptap_content || undefined, // Step 2: Markdown content
             isReviewRequired: true,
             
             // We usually load history lazily (separately) to keep this fast.
@@ -65,15 +73,22 @@ export class SupabaseReportRepository implements ReportRepository {
 
     // --- 3. UPDATE ---
     async update(report: Report, client: SupabaseClient): Promise<void> {
+        const updateData: any = {
+            title: report.title,
+            status: report.status,
+            version_number: report.versionNumber,
+            sections: report.reportContent, // Updates the JSON content (legacy)
+            updated_at: new Date()
+        };
+
+        // Update tiptap_content if present (Step 2: Markdown migration)
+        if (report.tiptapContent !== undefined) {
+            updateData.tiptap_content = report.tiptapContent;
+        }
+
         const { error } = await client
             .from('reports')
-            .update({
-                title: report.title,
-                status: report.status,
-                version_number: report.versionNumber,
-                sections: report.reportContent, // Updates the JSON content
-                updated_at: new Date()
-            })
+            .update(updateData)
             .eq('id', report.reportId);
 
         if (error) throw new Error(`Update Report Failed: ${error.message}`);
@@ -126,6 +141,7 @@ export class SupabaseReportRepository implements ReportRepository {
             updatedAt: new Date(row.updated_at),
             createdAt: new Date(row.created_at || row.updated_at), // Map created_at
             reportContent: row.sections || [],
+            tiptapContent: row.tiptap_content || undefined, // Step 2: Markdown content
             isReviewRequired: true,
             history: []
         }));

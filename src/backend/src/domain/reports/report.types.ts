@@ -9,7 +9,10 @@ export interface Report {
     versionNumber: number;
     
     // The Core Content
-    reportContent: MainSectionBlueprint[]; 
+    reportContent: MainSectionBlueprint[]; // Legacy JSON structure
+    
+    // Tiptap-compatible content (Markdown string stored in JSONB)
+    tiptapContent?: string; // Markdown text that Tiptap can hydrate
     
     // Audit Trail
     history?: ReportVersion[]; // Previous snapshots
