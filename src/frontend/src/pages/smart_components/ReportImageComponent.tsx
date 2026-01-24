@@ -6,7 +6,7 @@ import { Loader2, ImageOff } from 'lucide-react';
 
 export const ReportImageComponent = (props: NodeViewProps) => {
     const { node, selected } = props;
-    const src = node.attrs.src; // The UUID from the AI
+    const src = node.attrs.src || ''; // The UUID from the AI
     const alt = node.attrs.alt;
 
     const [storagePath, setStoragePath] = useState<string | null>(null);
@@ -15,6 +15,11 @@ export const ReportImageComponent = (props: NodeViewProps) => {
 
     useEffect(() => {
         let isMounted = true;
+
+        if (!src) {
+            setResolving(false);
+            return;
+        }
 
         // Check if it's already a URL (legacy or user upload)
         if (src.startsWith('http') || src.startsWith('blob:') || src.startsWith('/')) {
@@ -69,7 +74,7 @@ export const ReportImageComponent = (props: NodeViewProps) => {
                         src={publicUrl || ""}         // Fallback or Direct URL
                         storagePath={storagePath || undefined} // The magic part
                         alt={alt}
-                        className="max-h-[500px] w-auto object-contain"
+                        className="w-full h-auto w-auto object-contain"
                         fallbackSrc="/images/placeholder-error.png" // Optional
                     />
                 )}

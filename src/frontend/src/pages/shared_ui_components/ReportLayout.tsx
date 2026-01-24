@@ -14,7 +14,6 @@ import {
 } from "../ui_components/select";
 import { EditableText } from "../smart_components/EditableText";
 import { RewritableText } from "../smart_components/RewritableText";
-import { DiffView } from "../smart_components/DiffView";
 import { HighlightableText } from "../smart_components/HighlightableText";
 import { AIChatInput } from "./AIChatInput";
 import { ChatBubble, ChatMessage } from "../smart_components/ChatBubble"; // 🟢 Updated Import
@@ -130,6 +129,7 @@ export function ReportLayout({
 }: ReportLayoutProps) {
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [pendingChange, setPendingChange] = useState<PendingChange | null>(null);
+  const [diffContent, setDiffContent] = useState<string | null>(null); // For inline diff in TiptapEditor
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>(() => {
     // 🟢 Initialize with Reviewer Notes if available
     const initialMessages: ChatMessage[] = [];
@@ -309,10 +309,12 @@ export function ReportLayout({
     }
 
     setPendingChange(null);
+    setDiffContent(null); // Clear diff content
   };
 
   const handleRejectChange = () => {
     setPendingChange(null);
+    setDiffContent(null); // Clear diff content
   };
 
   const handleSendMessage = async (message: string) => {
@@ -401,18 +403,26 @@ export function ReportLayout({
         return [...filtered, aiMessage];
       });
 
-      // Handle Suggestions (Legacy support for Main Diff View)
+      // Handle Suggestions - Use inline diff in TiptapEditor
       if (aiMessageData.suggestion) {
-        setPendingChange({
-          messageId: aiMessage.id,
-          sectionId: aiMessageData.suggestion.targetSectionId,
-          oldValue: aiMessageData.suggestion.originalText,
-          newValue: aiMessageData.suggestion.suggestedText,
-          newData: aiMessageData.suggestion.suggestedData,
-          changes: aiMessageData.suggestion.changes, // 🟢 Map from backend
-          stats: aiMessageData.suggestion.stats,     // 🟢 Map from backend
-          source: "ai"
-        });
+        const targetSectionId = aiMessageData.suggestion.targetSectionId || "main-content";
+
+        // If this is for the main content section and we're using Tiptap, set diffContent
+        if (useTiptap && targetSectionId === "main-content") {
+          setDiffContent(aiMessageData.suggestion.suggestedText);
+        } else {
+          // For other sections or non-Tiptap mode, use the old DiffViewer approach
+          setPendingChange({
+            messageId: aiMessage.id,
+            sectionId: targetSectionId,
+            oldValue: aiMessageData.suggestion.originalText,
+            newValue: aiMessageData.suggestion.suggestedText,
+            newData: aiMessageData.suggestion.suggestedData,
+            changes: aiMessageData.suggestion.changes,
+            stats: aiMessageData.suggestion.stats,
+            source: "ai"
+          });
+        }
       }
 
       playNotificationChime();
@@ -729,9 +739,9 @@ export function ReportLayout({
                   <Separator />
 
 
-                  {/* 🟢 Global / Fallback Diff View for Pending Changes */}
+                  {/* 🟢 Global / Fallback Diff View for Pending Changes - Only show if not using Tiptap */}
                   {/* If the pending change doesn't match a specific section (e.g. general context), show it here */}
-                  {pendingChange && (!pendingChange.sectionId || pendingChange.sectionId === 'general-context' || !reportContent.sections.some(s => s.id === pendingChange.sectionId)) && (
+                  {!useTiptap && pendingChange && (!pendingChange.sectionId || pendingChange.sectionId === 'general-context' || !reportContent.sections.some(s => s.id === pendingChange.sectionId)) && (
                     <div className="mb-8 p-6 bg-blue-50/50 border border-blue-100 rounded-xl shadow-sm">
                       <div className="flex items-center gap-2 mb-4">
                         <Sparkles className="w-5 h-5 text-blue-600" />
@@ -742,15 +752,9 @@ export function ReportLayout({
                           </Badge>
                         )}
                       </div>
-                      <DiffView
-                        oldText={pendingChange.oldValue}
-                        newText={pendingChange.newValue}
-                        changes={pendingChange.changes}
-                        stats={pendingChange.stats}
-                        onAccept={handleAcceptChange}
-                        onReject={handleRejectChange}
-                        source={pendingChange.source}
-                      />
+                      <div className="text-sm text-slate-600 p-4 bg-white rounded border">
+                        Note: Inline diff is only available when using Tiptap editor. Please use Tiptap mode to see inline diffs.
+                      </div>
                     </div>
                   )}
 
@@ -785,17 +789,11 @@ export function ReportLayout({
                           {section.title} {isItemSelected("section", section.id) && <CheckCircle2 className="w-4 h-4 inline ml-1" />}
                         </h3>
 
-                        {pendingChange && pendingChange.sectionId === section.id ? (
+                        {!useTiptap && pendingChange && pendingChange.sectionId === section.id ? (
                           <div className="mb-6">
-                            <DiffView
-                              oldText={pendingChange.oldValue}
-                              newText={pendingChange.newValue}
-                              changes={pendingChange.changes} // 🟢 Pass pre-calculated diffs
-                              stats={pendingChange.stats}     // 🟢 Pass stats
-                              onAccept={handleAcceptChange}
-                              onReject={handleRejectChange}
-                              source={pendingChange.source}
-                            />
+                            <div className="text-sm text-slate-600">
+                              Note: Inline diff is only available when using Tiptap editor.
+                            </div>
                           </div>
                         ) : hasSubSections ? (
                           // 🟢 NEW STRUCTURED RENDERING (Editable & Aligned)
@@ -897,11 +895,21 @@ export function ReportLayout({
                             {/* Text Content */}
                             <div className={`min-w-0 ${hasImages ? 'md:col-span-2' : ''}`}>
                               {useTiptap && section.id === "main-content" ? (
-                                // 🟢 Use TiptapEditor for main content
+                                // 🟢 Use TiptapEditor for main content with inline diff support
                                 <TiptapEditor
                                   content={section.content || ""}
                                   onUpdate={(newMarkdown) => onSectionChange(section.id, newMarkdown)}
                                   editable={mode === "edit" && !isSelectionMode}
+                                  diffContent={diffContent}
+                                  onAcceptDiff={() => {
+                                    if (diffContent) {
+                                      onSectionChange(section.id, diffContent);
+                                      setDiffContent(null);
+                                    }
+                                  }}
+                                  onRejectDiff={() => {
+                                    setDiffContent(null);
+                                  }}
                                 />
                               ) : mode === "peer-review" && peerReview && peerReview.comments ? (
                                 <HighlightableText
@@ -1110,6 +1118,32 @@ export function ReportLayout({
                 </div>
               )}
               <AIChatInput onSendMessage={handleSendMessage} />
+
+              {/* 🧪 TEST BUTTON: Hardcoded Inline Diff Test */}
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  // Create a hardcoded test diff content for inline diff
+                  const testNewText = `# Executive Summary
+
+## General Summary
+This report details the observations from the site visit on [Date]. The foundation shows significant signs of settling and active water intrusion was noted in the basement area.
+
+## Scope
+A comprehensive visual inspection of the structural elements was conducted. Additional testing may be required.`;
+
+                  console.log("🧪 Test button clicked, setting diffContent:", testNewText);
+                  console.log("Current reportContent sections:", reportContent.sections);
+                  console.log("useTiptap:", useTiptap);
+
+                  // Set diffContent to trigger inline diff in TiptapEditor
+                  setDiffContent(testNewText);
+                }}
+                className="mt-2 w-full text-xs"
+              >
+                🧪 Test Inline Diff
+              </Button>
             </div>
           </>
         )}
