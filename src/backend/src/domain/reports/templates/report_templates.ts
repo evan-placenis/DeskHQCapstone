@@ -3,7 +3,7 @@ export type ReportBlueprint = {
     _review_reasoning: string;
     reportTitle: string;
     isReviewRequired: boolean;
-    reportContent: MainSectionBlueprint[]; 
+    reportContent: MainSectionBlueprint[];
 };
 // export type MainSectionBlueprint = {
 //     _reasoning: string,
@@ -54,7 +54,7 @@ export const ObservationReportTemplate: ReportBlueprint[] = [
                 children: [
                     {
                         _reasoning: "",
-                        title: "",
+                        title: "General Summary",
                         description: "",
                         required: true,
                         order: 1,

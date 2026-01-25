@@ -9,7 +9,7 @@ import { VectorStore } from '../../domain/interfaces/VectorStore';
 import { DocumentChunk } from '../../domain/knowledge/rag.types';
 
 export class PineconeVectorStore implements VectorStore {
-    
+
     private client: Pinecone;
     private indexName: string;
 
@@ -21,7 +21,7 @@ export class PineconeVectorStore implements VectorStore {
         }
 
         // Initialize Pinecone with API Key from Env
-        this.client = new Pinecone({apiKey: process.env.PINECONE_API_KEY!});
+        this.client = new Pinecone({ apiKey: process.env.PINECONE_API_KEY! });
         this.indexName = process.env.PINECONE_INDEX_NAME || 'capstone-docs';
     }
 
@@ -31,7 +31,7 @@ export class PineconeVectorStore implements VectorStore {
     // --- 1. UPSERT (Save Text -> Pinecone Embeds It -> Save Vectors) ---
     async upsertChunks(chunks: DocumentChunk[], namespace?: string): Promise<void> {
         const index = this.client.index(this.indexName);
-        
+
         // Extract just the text strings to send to the AI
         const textToEmbed = chunks.map(c => c.textSegment);
 
@@ -48,7 +48,7 @@ export class PineconeVectorStore implements VectorStore {
         // 2. Merge the new vectors back with your existing chunk data
         const records = chunks.map((chunk, i) => ({
             id: chunk.chunkId,
-            values: (embeddings.data[i] as any).values, 
+            values: (embeddings.data[i] as any).values,
             metadata: {
                 kId: chunk.kId,
                 text: chunk.textSegment,
@@ -105,12 +105,12 @@ export class PineconeVectorStore implements VectorStore {
     async deleteDocumentChunks(kId: string, namespace?: string): Promise<void> {
         const index = this.client.index(this.indexName);
         const targetIndex = namespace ? index.namespace(namespace) : index;
-        
+
         // Delete everything with this specific kId
         await targetIndex.deleteMany({
-            kId: { $eq: kId } 
+            kId: { $eq: kId }
         });
-        
+
         console.log(`🗑️ Deleted chunks for Document ${kId} (Namespace: ${namespace || 'default'})`);
     }
 
@@ -124,7 +124,8 @@ export class PineconeVectorStore implements VectorStore {
         await targetIndex.deleteMany({
             projectId: { $eq: projectId }
         });
-        
+
         console.log(`🗑️ Deleted chunks for Project ${projectId} (Namespace: ${namespace || 'default'})`);
     }
+
 }

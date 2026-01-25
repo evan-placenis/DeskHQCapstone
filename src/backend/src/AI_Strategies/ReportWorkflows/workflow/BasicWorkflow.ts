@@ -74,7 +74,7 @@ export class BasicWorkflow extends ReportGenerationWorkflow<ReportBlueprint> {
         );
     }
 
-    protected async retrieveContextWithRAG(context: AgentExecutionContext): Promise<void> {
+    protected async retrieveContextWithRAG(context: AgentExecutionContext): Promise<void> { // this should call the researcher Agent
         // 0. EXECUTION MODE: Prepare Input (e.g. Vision Analysis)
         let visionDescriptions: string[] = [];
 

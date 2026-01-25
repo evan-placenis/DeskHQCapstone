@@ -7,24 +7,24 @@ import { VectorStore } from '../domain/interfaces/VectorStore';
 import { DocumentChunk, KnowledgeItem } from '../domain/knowledge/rag.types';
 
 export class KnowledgeService {
-    
+
     constructor(
         private repo: KnowledgeRepository,
         private vectorStore: VectorStore,
         private documentFactory: DocumentStrategyFactory, // Injected dependency
         private adminClient: SupabaseClient // Injected Admin Client for RAG operations
-    ) {}
+    ) { }
 
     public async processDocument(
-        projectId: string, 
-        fileBuffer: Buffer, 
-        fileName: string, 
-        docType: string, 
+        projectId: string,
+        fileBuffer: Buffer,
+        fileName: string,
+        docType: string,
         client: SupabaseClient
     ): Promise<KnowledgeItem> {
-        
+
         // 1. Get Organization Name for Namespace
-        const orgNamespace = await this.repo.getOrgNamespace(projectId, client);
+        const orgNamespace = await this.repo.getOrgNamespace(projectId, client); //this should just be the project id?
         if (!orgNamespace) {
             console.error(`Organization namespace not found for project ${projectId}`);
             throw new Error("Organization namespace not found");
@@ -40,7 +40,7 @@ export class KnowledgeService {
         // 3. DELEGATE WORK 👷
         // Extract text (HTML for Spec, Raw Text for Report)
         const extractedContent = await strategy.extractText(fileBuffer);
-        
+
         // Chunk the content
         const rawChunks = strategy.chunkText(extractedContent);
 
@@ -61,21 +61,21 @@ export class KnowledgeService {
         try {
             // 5. PREPARE CHUNKS 
             const documentChunks: DocumentChunk[] = rawChunks.map((text) => ({
-                 chunkId: uuidv4(),
-                 kId: kId,
-                 textSegment: text,
-                 embeddingVector: [], 
-                 metadata: {
-                     pageNumber: 0, 
-                     sectionTitle: "General",
-                     documentName: fileName,
-                     projectId: projectId
-                 }
+                chunkId: uuidv4(),
+                kId: kId,
+                textSegment: text,
+                embeddingVector: [],
+                metadata: {
+                    pageNumber: 0,
+                    sectionTitle: "General",
+                    documentName: fileName,
+                    projectId: projectId
+                }
             }));
 
             // 6. SAVE TO PINECONE
             console.log(`🔍 [DEBUG] Generated ${documentChunks.length} chunks.`);
-            
+
             await this.vectorStore.upsertChunks(documentChunks, orgNamespace);
 
             // 7. UPDATE STATUS
@@ -89,7 +89,7 @@ export class KnowledgeService {
             throw error;
         }
     }
-    
+
     public async getDocuments(projectId: string, client: SupabaseClient) {
         return await this.repo.listByProject(projectId, client);
     }
@@ -104,7 +104,7 @@ export class KnowledgeService {
 
         const orgNamespace = await this.repo.getOrgNamespace(doc.projectId, client);
         console.log(`Deleting document ${kId} from Org ${orgNamespace}`);
-        
+
         // 2. Delete from Pinecone
         if (orgNamespace) {
             await this.vectorStore.deleteDocumentChunks(kId, orgNamespace);
@@ -112,7 +112,7 @@ export class KnowledgeService {
             console.warn(`Org Namespace missing for doc ${kId}, checking default namespace.`);
             await this.vectorStore.deleteDocumentChunks(kId);
         }
-        
+
         // 3. Delete from Postgres
         await this.repo.delete(kId, client);
     }
@@ -120,12 +120,12 @@ export class KnowledgeService {
     public async deleteProjectDocuments(projectId: string, client: SupabaseClient): Promise<void> {
         const orgNamespace = await this.repo.getOrgNamespace(projectId, client);
         console.log(`Deleting all documents for project ${projectId} from Org ${orgNamespace}`);
-        
+
         // 1. Delete from Pinecone
         if (orgNamespace) {
             await this.vectorStore.deleteProjectChunks(projectId, orgNamespace);
         }
-        
+
         // 2. Postgres deletion handled by cascade if project is deleted, 
         // or we can explicitly list and delete if needed. 
     }
@@ -133,14 +133,14 @@ export class KnowledgeService {
     // --- NEW: SEARCH ---
     public async search(queries: string[], projectId: string): Promise<string[]> {
         const uniqueSpecs = new Set<string>();
-        
+
         // We need the orgNamespace to search the correct Pinecone index
         // We use the ADMIN CLIENT here because this is a system-level RAG lookup
         const orgNamespace = await this.repo.getOrgNamespace(projectId, this.adminClient);
 
         if (!orgNamespace) {
-             console.warn(`No namespace found for project ${projectId}, skipping RAG search.`);
-             return [];
+            console.warn(`No namespace found for project ${projectId}, skipping RAG search.`);
+            return [];
         }
 
         console.log(`🔍 Searching Knowledge Base for Project ${projectId} (Org: ${orgNamespace})`);
@@ -159,7 +159,80 @@ export class KnowledgeService {
                 console.error(`Error searching for query "${query}":`, err);
             }
         }
-        
+
         return Array.from(uniqueSpecs);
+    }
+
+    public async saveWebDataToDatabase(webData: string, sourceUrl: string, projectId: string): Promise<void> {
+
+        // 1. Chunking: Split the massive string
+        // 2000 chars is a good default for most embedding models
+        const textSegments = this.splitTextOptimized(webData, 2000, 200);
+
+        // 2. Generate a Shared Knowledge ID (kId) 
+        // This groups all chunks from this ONE search result together
+        const knowledgeId = uuidv4();
+
+        // 3. Format for your Vector Store
+        // We leave embeddingVector empty [] as your store handles it
+        const finalData = textSegments.map((segment, index) => ({
+            chunkId: uuidv4(),
+            kId: knowledgeId, // Shared ID for the whole document
+            textSegment: segment,
+            embeddingVector: [], // 👈 Empty, gets done in the upsertChunks function
+            metadata: {
+                pageNumber: 1,  //may want to change the records to be more general(not have a page number)
+                sectionTitle: "Web Research",
+                documentName: sourceUrl || "External Search",
+                projectId: projectId,
+                chunkIndex: index
+            }
+        }));
+
+        // 4. Send to store
+        if (finalData.length > 0) {
+            // This function will presumably loop through finalData and 
+            // call openai.embeddings.create for each item before saving
+            await this.vectorStore.upsertChunks(finalData, projectId);
+        }
+    }
+
+
+    /**
+     * 🛠️ Helper: Splits text intelligently without cutting words in half.
+     * @param text The full string
+     * @param chunkSize Max characters per chunk
+     * @param overlap How many chars to repeat (helps AI keep context across chunks)
+     */
+    private splitTextOptimized(text: string, chunkSize: number, overlap: number): string[] {
+        const chunks: string[] = [];
+        let startIndex = 0;
+
+        while (startIndex < text.length) {
+            let endIndex = startIndex + chunkSize;
+
+            // If we are not at the end of the text, try to find a natural break point (space or period)
+            // so we don't slice a word like "Construc|tion"
+            if (endIndex < text.length) {
+                // Look for the last space within the chunk limit
+                const lastSpace = text.lastIndexOf(' ', endIndex);
+
+                // If found and it's not too far back, use it
+                if (lastSpace > startIndex) {
+                    endIndex = lastSpace;
+                }
+            }
+
+            const chunk = text.slice(startIndex, endIndex).trim();
+            if (chunk.length > 0) chunks.push(chunk);
+
+            // Move forward, but back up by 'overlap' amount to keep context
+            startIndex = endIndex - overlap;
+
+            // Avoid infinite loops if overlap >= chunk size (sanity check)
+            if (startIndex < 0) startIndex = 0;
+        }
+
+        return chunks;
     }
 }
