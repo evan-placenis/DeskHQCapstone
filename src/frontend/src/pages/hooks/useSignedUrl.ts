@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-//import { createBrowserClient } from '@supabase/ssr'; // Changed import
+
 import { supabase } from "@/frontend/lib/supabaseClient";
 
 export const useSignedUrl = (
@@ -20,7 +20,6 @@ export const useSignedUrl = (
     console.error(`URL present: ${!!supabaseUrl}, Key present: ${!!supabaseAnonKey}`);
   }
 
-  //const supabase = createBrowserClient(supabaseUrl!, supabaseAnonKey!);
 
   useEffect(() => {
     // 1. Reset state if path changes or is empty

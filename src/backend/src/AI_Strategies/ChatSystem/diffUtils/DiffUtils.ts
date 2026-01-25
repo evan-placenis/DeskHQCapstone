@@ -8,7 +8,7 @@ export interface DiffStats {
   hasChanges: boolean;
 }
 
-export class DiffUtils {
+export class DiffUtils { //currently not used - diff calculations are done in the frontend should look into chaning this
 
   /**
    * 🟢 MISSING METHOD FIXED
@@ -35,7 +35,7 @@ export class DiffUtils {
     diffs.forEach(part => {
       // Split by whitespace to get a rough word count
       const words = part.value.trim().split(/\s+/).filter(w => w.length > 0);
-      
+
       if (part.added) {
         addedCount += words.length;
       }
@@ -50,8 +50,8 @@ export class DiffUtils {
       added: addedCount,
       removed: removedCount,
       hasChanges: hasChanges,
-      changeSummary: hasChanges 
-        ? `+${addedCount} words, -${removedCount} words` 
+      changeSummary: hasChanges
+        ? `+${addedCount} words, -${removedCount} words`
         : "No significant changes detected."
     };
   }

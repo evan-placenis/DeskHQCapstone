@@ -1,4 +1,4 @@
-import { ChatSession, ChatMessage, EditSuggestion} from "../../../domain/chat/chat.types";
+import { ChatSession, ChatMessage, EditSuggestion } from "../../../domain/chat/chat.types";
 import { IChatEditor, IPlannerAgent, IChatResearcher, IChatResponder } from '../interfaces';
 import { DataSerializer } from '../adapter/serializer';
 import { DiffUtils } from '../diffUtils/DiffUtils';
@@ -14,18 +14,18 @@ export class ChatOrchestrator {
         private serializer: DataSerializer,
         private toolAgent: ToolAgent,
         private responderAgent: IChatResponder
-    ) {}
+    ) { }
 
     /**
      * The Brain 🧠
      * Orchestrates the Architect (Planner) -> Researcher -> Writer (Editor) flow.
      */
     public async processUserMessage(
-        session: ChatSession, 
+        session: ChatSession,
         userQuery: string,
-        reportContext?: string | any 
+        reportContext?: string | any
     ): Promise<ChatMessage> {
-        
+
         try {
             // 1. PLAN: Ask the Architect/Planner for steps
             // We pass context existence boolean so the planner knows if it can edit or only answer.
@@ -33,29 +33,29 @@ export class ChatOrchestrator {
             const plan = await this.plannerAgent.generatePlan(userQuery, reportContext, recentHistory);
             console.log("📋 Plan Generated:", plan.steps);
 
-            let accumulatedContext = ""; 
+            let accumulatedContext = "";
             let finalResponseText = "";
             let suggestion: EditSuggestion | undefined = undefined;
 
             // 2. EXECUTE LOOP: Chain of Thought
             for (const step of plan.steps) {
-                
+
                 console.log(`⚙️ Executing Step [${step.intent}]: ${step.instruction}`);
 
                 switch (step.intent) {
-                    
+
                     case "RESEARCH_DATA":
                         // Agent: Researcher
-                        const rawFacts = await this.researcherAgent.findAnswer(step.instruction);
+                        const rawFacts = await this.researcherAgent.findAnswer(step.instruction, session.projectId);
 
                         //Ensure we store a String, not an Object
-                        const factsString = typeof rawFacts === 'object' 
+                        const factsString = typeof rawFacts === 'object'
                             ? JSON.stringify(rawFacts, null, 2) // Pretty print the object
                             : rawFacts;
-                        
+
                         // Append to context for the Editor to see later
                         accumulatedContext += `\n\n[RESEARCH FINDINGS]: ${factsString}`;
-                        
+
                         // Add a summary to the chat response so the user knows what happened
                         finalResponseText += `I researched: "${step.instruction}" and found relevant data.\n`;
                         break;
@@ -64,7 +64,7 @@ export class ChatOrchestrator {
                         // Agent: Editor/Writer
                         // Serialize current document state to markdown so the LLM can read it
                         const currentDocMarkdown = this.serializer.toMarkdown(reportContext);
-                        
+
                         // Create "Super Context" (Document + Research Findings)
                         const augmentedContext = `
                             CURRENT DOCUMENT:\n${currentDocMarkdown}\n
@@ -73,16 +73,16 @@ export class ChatOrchestrator {
                         console.log("🔍 EDITING:");
                         console.log("🔍 Augmented Context:", augmentedContext);
                         console.log("🔍 Step Instruction:", step.instruction);
-                        
+
                         // Execute rewrite
                         const newText = await this.editorAgent.rewriteSection(augmentedContext, step.instruction);
-                        
+
                         console.log("🔍 New Text:", newText.content);
                         console.log("🔍 Reasoning:", newText.reasoning);
                         console.log("🔍 Chat Message:", newText.chatMessage);
                         // Generate visual diff for the UI
                         suggestion = this.createSuggestion(currentDocMarkdown, newText.content, reportContext, newText.chatMessage);
-                        
+
                         // 🟢 FIX: Ensure the Chat Bubble says something useful, not just generic text.
                         finalResponseText += `\n${newText.reasoning}`; // Append reasoning to chat
                         break;
@@ -97,17 +97,17 @@ export class ChatOrchestrator {
                     case "RESPOND":
                         // Agent: Responder - For questions, explanations, and guidance
                         console.log(`💬 Responding to: ${step.instruction}`);
-                        
+
                         // Build context string for the responder
-                        const responderContext = reportContext 
+                        const responderContext = reportContext
                             ? `${this.serializer.toMarkdown(reportContext)}${accumulatedContext}`
                             : accumulatedContext || undefined;
-                        
+
                         const response = await this.responderAgent.generateResponse(
                             step.instruction,
                             responderContext
                         );
-                        
+
                         finalResponseText += response;
                         break;
                 }
@@ -119,7 +119,7 @@ export class ChatOrchestrator {
             }
 
             // 3. RETURN: Formatted ChatMessage
-            return { 
+            return {
                 id: uuidv4(),
                 role: 'assistant', // Assuming MessageRole.Assistant
                 content: finalResponseText,
@@ -145,8 +145,8 @@ export class ChatOrchestrator {
 
     private createSuggestion(original: string, modified: string, reportContext: any, chatMessage: string): EditSuggestion {
         // 🛡️ SAFETY CHECK: Handle if reportContext is just a string or missing
-        const sectionId = (typeof reportContext === 'object' && reportContext?.id) 
-            ? reportContext.id 
+        const sectionId = (typeof reportContext === 'object' && reportContext?.id)
+            ? reportContext.id
             : 'general-context'; // Fallback if no specific section ID exists
 
         // 🟢 Generate structured data from markdown for the frontend

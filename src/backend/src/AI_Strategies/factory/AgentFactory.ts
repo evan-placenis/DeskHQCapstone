@@ -32,7 +32,7 @@ import { ResponderAgent } from "../ChatSystem/Agents/ResponderAgent";
 
 export class AgentFactory {
 
-  constructor(private knowledgeService: KnowledgeService) { }
+  constructor(private knowledgeService: KnowledgeService, private exa: any) { }
 
   // 1. Create the AI Model Strategy
   public createStrategy(modelName: string): AgentStrategy {
@@ -109,7 +109,7 @@ export class AgentFactory {
     const openAIClient = getOpenAIClient();
 
     const planner = new PlannerAgent(agent); // Logic to detect "change/rewrite"
-    const researcher = new ResearcherAgent(agent);
+    const researcher = new ResearcherAgent(agent, this.knowledgeService, this.exa);
     const serializer = new DataSerializer();
     const toolAgent = new ToolAgent(openAIClient);
     const responderAgent = new ResponderAgent(agent); // 🟢 NEW: For conversational responses
