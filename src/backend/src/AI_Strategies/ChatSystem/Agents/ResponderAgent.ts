@@ -7,15 +7,15 @@ import { IChatResponder } from "../interfaces";
  * Use this for answering questions, explaining concepts, or providing guidance.
  */
 export class ResponderAgent implements IChatResponder {
-    
-    constructor(private agent: AgentStrategy) {}
+
+    constructor(private agent: AgentStrategy) { }
 
     /**
      * Generates a helpful conversational response based on the user's query
      * and optional document context.
      */
     public async generateResponse(query: string, context?: string): Promise<string> {
-        
+
         const systemPrompt = `
             You are a helpful AI assistant for technical report editing.
             
@@ -38,7 +38,7 @@ export class ResponderAgent implements IChatResponder {
             Return only your response text. No JSON formatting needed.
         `;
 
-        const userMessage = context 
+        const userMessage = context
             ? `DOCUMENT CONTEXT:\n${context}\n\nUSER QUESTION:\n${query}`
             : `USER QUESTION:\n${query}`;
 

@@ -1,4 +1,4 @@
-import {Project} from "../../domain/core/project.types"
+import { Project } from "../../domain/core/project.types"
 import { SupabaseClient } from "@supabase/supabase-js";
 import { ExecutionPlan } from "../ChatSystem/interfaces";
 
@@ -6,10 +6,10 @@ import { ExecutionPlan } from "../ChatSystem/interfaces";
 // Every AI model MUST have a generateContent method.
 export interface AgentStrategy {
   generateContent(
-      systemPrompt: string, 
-      userMessage: string, 
-      context?: AgentExecutionContext,
-      onStream?: (chunk: string) => void // Optional streaming callback
+    systemPrompt: string,
+    userMessage: string,
+    context?: AgentExecutionContext,
+    onStream?: (chunk: string) => void // Optional streaming callback
   ): Promise<string>;
 }
 
@@ -28,12 +28,12 @@ export interface VisionStrategy {
    * Analyzes a single image and returns a description.
    */
   analyzeImage(imageUrl: string, imageId?: string): Promise<VisionAnalysis>;
-  
+
   /**
    * Batch processes images with concurrency control.
    */
   analyzeBatch(
-    images: { id: string; url: string }[], 
+    images: { id: string; url: string }[],
     concurrencyLimit?: number
   ): Promise<VisionAnalysis[]>;
 }
@@ -48,9 +48,9 @@ export interface VisionAnalysis {
 export type StreamEventType = 'status' | 'reasoning' | 'review_reasoning' | 'final_content';
 
 export interface StreamEvent {
-    type: StreamEventType;
-    content: string;
-    metadata?: any;
+  type: StreamEventType;
+  content: string;
+  metadata?: any;
 }
 
 // The "Briefcase" of data passed to the AI
@@ -61,7 +61,7 @@ export class AgentExecutionContext {
   public templateId: any; // The report structure
   public payload: any;
   public client?: SupabaseClient; // Optional to avoid breaking tests/other uses temporarily
-  
+
   // Callback for streaming updates back to the caller (Service -> Controller -> Frontend)
   public onStream?: (event: StreamEvent) => void;
 
@@ -82,11 +82,11 @@ export class AgentExecutionContext {
     this.client = client;
     this.onStream = onStream;
   }
-  
+
   // Helper to emit events safely
   public emit(type: StreamEventType, content: string, metadata?: any) {
-      if (this.onStream) {
-          this.onStream({ type, content, metadata });
-      }
+    if (this.onStream) {
+      this.onStream({ type, content, metadata });
+    }
   }
 }

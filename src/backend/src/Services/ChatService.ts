@@ -7,7 +7,7 @@ import { ReportService } from "./ReportService";
 import { SupabaseClient } from "@supabase/supabase-js";
 
 export class ChatService {
-    
+
     // Dependencies
     private repo: ChatRepository;
     private ChatOrchestrator: ChatOrchestrator;
@@ -23,13 +23,13 @@ export class ChatService {
      * The Main Function: Handles the full loop
      */
     public async handleUserMessage(
-        sessionId: string, 
+        sessionId: string,
         userText: string,
         client: SupabaseClient,
         activeSectionId?: string, // 👈 New Optional Param: Is the user looking at a specific section?
         reportId?: string // 🟢 New Optional Param: Fallback if session doesn't have it
     ): Promise<ChatMessage> {
-        
+
         // console.log(`🤖 ChatService: Handling message for session ${sessionId}`);
         // console.log(`📍 Active Section ID:`, activeSectionId || "None");
 
@@ -51,7 +51,7 @@ export class ChatService {
         // 3. 🔍 FETCH CONTEXT (The "Glue")
         // If the user is currently editing a specific section, the AI needs to "see" it.
         let reportContext = "";
-        
+
         // Use session.reportId OR the passed reportId
         const targetReportId = session.reportId || reportId;
 
@@ -73,9 +73,9 @@ export class ChatService {
         // 4. Ask the AI 🧠
         // We pass the new 'reportContext' string to the Agent
         const aiMsg = await this.ChatOrchestrator.processUserMessage(
-            session, 
-            userText, 
-            reportContext 
+            session,
+            userText,
+            reportContext
         );
 
         // 5. Save AI Message
@@ -84,14 +84,14 @@ export class ChatService {
         return aiMsg;
     }
 
-    
+
 
     /**
      * LOGIC: User clicked "Accept" on the UI. 
      * We must apply the AI's fix to the real Report.
      */
     public async acceptSuggestion(sessionId: string, messageId: string, client: SupabaseClient): Promise<void> {
-        
+
         // 1. Validation Logic
         const session = await this.repo.getSessionById(sessionId, client);
         if (!session) throw new Error("Session not found");

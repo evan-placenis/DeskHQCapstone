@@ -9,12 +9,12 @@ export const PlannerExampleTemplate: ExecutionPlan = {
     {
       intent: "RESEARCH_DATA",
       instruction: "Search for specific specs regarding X",
-      reasoning: "Need external context first"
+      reasoningText: "Need external context first"
     },
     {
       intent: "EDIT_TEXT",
       instruction: "Update section 3 with the new specs",
-      reasoning: "User asked to apply changes"
+      reasoningText: "User asked to apply changes"
     }
   ]
 };
@@ -25,7 +25,7 @@ export const PlannerRespondExample: ExecutionPlan = {
     {
       intent: "RESPOND",
       instruction: "Explain what information should be included in the executive summary section",
-      reasoning: "User is asking for guidance, not requesting an edit"
+      reasoningText: "User is asking for guidance, not requesting an edit"
     }
   ]
 };
@@ -36,12 +36,12 @@ export const PlannerMixedExample: ExecutionPlan = {
     {
       intent: "RESEARCH_DATA",
       instruction: "Find the standard requirements for foundation assessments",
-      reasoning: "Need to gather information first"
+      reasoningText: "Need to gather information first"
     },
     {
       intent: "RESPOND",
       instruction: "Summarize the requirements and explain how they apply to this report",
-      reasoning: "User wants information, not direct edits to the document"
+      reasoningText: "User wants information, not direct edits to the document"
     }
   ]
 };

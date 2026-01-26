@@ -4,10 +4,10 @@ import { ReportToolAction, ReportToolsSchema } from "../../../domain/chat/tools/
 import OpenAI from "openai";
 
 export class ToolAgent {
-  constructor(private client: OpenAI) {}
+  constructor(private client: OpenAI) { }
 
   public async determineAction(
-    userQuery: string, 
+    userQuery: string,
     contextMarkdown: string
   ): Promise<ReportToolAction | null> {
 

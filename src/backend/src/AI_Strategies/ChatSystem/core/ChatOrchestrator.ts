@@ -78,13 +78,13 @@ export class ChatOrchestrator {
                         const newText = await this.editorAgent.rewriteSection(augmentedContext, step.instruction);
 
                         console.log("🔍 New Text:", newText.content);
-                        console.log("🔍 Reasoning:", newText.reasoning);
+                        console.log("🔍 Reasoning:", newText.reasoningText);
                         console.log("🔍 Chat Message:", newText.chatMessage);
                         // Generate visual diff for the UI
                         suggestion = this.createSuggestion(currentDocMarkdown, newText.content, reportContext, newText.chatMessage);
 
                         // 🟢 FIX: Ensure the Chat Bubble says something useful, not just generic text.
-                        finalResponseText += `\n${newText.reasoning}`; // Append reasoning to chat
+                        finalResponseText += `\n${newText.reasoningText}`; // Append reasoning to chat
                         break;
 
                     case "EXECUTE_TOOL":

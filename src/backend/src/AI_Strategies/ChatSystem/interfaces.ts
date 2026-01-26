@@ -1,11 +1,11 @@
 // domain/agents/interfaces.ts
 import { ChatMessage } from "../../domain/chat/chat.types";
-import { z } from "zod";
+import { z } from 'zod/v3';
 // Define the allowed actions
 const StepSchema = z.object({
     intent: z.enum(["RESEARCH_DATA", "EDIT_TEXT", "EXECUTE_TOOL", "RESPOND"]),
     instruction: z.string().describe("Specific instruction for this step (e.g. 'Search for iPhone weight')"),
-    reasoning: z.string().describe("Why this step is needed")
+    reasoningText: z.string().describe("Why this step is needed")
 });
 
 export const PlanSchema = z.object({
@@ -16,7 +16,7 @@ export type ExecutionPlan = z.infer<typeof PlanSchema>;
 
 export interface EditorResponse {
     content: string; // The new Markdown text
-    reasoning: string; // Technical: "Fixed grammar in para 2"
+    reasoningText: string; // Technical: "Fixed grammar in para 2"
     chatMessage: string; // Conversational: "I've updated the intro to mention the new roofing specs."
 }
 

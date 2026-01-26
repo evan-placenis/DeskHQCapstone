@@ -1,6 +1,6 @@
 # Project Overview
 
-Monorepo containing a Next.js frontend and a Node.js backend.
+Monorepo containing a Next.js frontend and a Node.js backend. react 19 so we can use useActionState instead of useFormState
 
 # @Frontend(src/frontend):
 

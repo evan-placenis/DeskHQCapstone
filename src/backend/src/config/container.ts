@@ -13,6 +13,9 @@ import { DocumentStrategyFactory } from '../Document_Strategies/factory/Document
 import { ReportService } from '../Services/ReportService';
 import { ChatService } from '../Services/ChatService';
 import { ChatOrchestrator } from '../AI_Strategies/ChatSystem/core/ChatOrchestrator';
+import { ChatServiceNew } from '../Services/ChatService.new';
+import { ChatOrchestrator as ChatOrchestratorNew } from '../AI_Skills/orchestrators/ChatOrchestrator';
+import { ReportServiceNew } from '../Services/ReportService.new';
 import { KnowledgeService } from '../Services/KnowledgeServivce';
 import { UserService } from '../Services/UserService';
 import { StorageService } from '../Services/StorageService';
@@ -48,6 +51,10 @@ export class Container {
   private static _statsService: StatsService;
 
   private static _exa: Exa;
+
+  private static _chatOrchestratorNew: ChatOrchestratorNew;
+  private static _chatServiceNew: ChatServiceNew;
+  private static _reportServiceNew: ReportServiceNew;
 
   static get exa() {
     if (!this._exa) this._exa = new Exa(process.env.EXA_API_KEY!);
@@ -156,6 +163,36 @@ export class Container {
       );
     }
     return this._chatService;
+  }
+
+  // 🆕 NEW AI-SDK Chat Orchestrator (singleton)
+  static get chatOrchestratorNew() {
+    if (!this._chatOrchestratorNew) {
+      this._chatOrchestratorNew = new ChatOrchestratorNew();
+    }
+    return this._chatOrchestratorNew;
+  }
+
+  // 🆕 NEW AI-SDK Chat Service (singleton)
+  static get chatServiceNew() {
+    if (!this._chatServiceNew) {
+      this._chatServiceNew = new ChatServiceNew(
+        this.chatRepo,
+        this.reportService,
+        this.chatOrchestratorNew
+      );
+    }
+    return this._chatServiceNew;
+  }
+  static get reportServiceNew() {
+    if (!this._reportServiceNew) {
+      this._reportServiceNew = new ReportServiceNew(
+        this.reportRepo,
+        this.projectRepo,
+        this.chatOrchestratorNew
+      );
+    }
+    return this._reportServiceNew;
   }
 
   static get userService() {

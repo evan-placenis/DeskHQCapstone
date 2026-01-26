@@ -3,12 +3,12 @@ import { AgentStrategy } from "../../strategies/interfaces";
 import { IChatEditor } from "../interfaces";
 import { EditorResponse } from "../interfaces";
 export class ChatEditor implements IChatEditor {
-    
-    constructor(private agent: AgentStrategy) {}
+
+    constructor(private agent: AgentStrategy) { }
 
     // 🟢 FIX: Return type now matches the Interface
     public async rewriteSection(originalText: string, instruction: string): Promise<EditorResponse> {
-        
+
         const systemPrompt = `
             You are a strict Technical Editor.
             
@@ -42,7 +42,7 @@ export class ChatEditor implements IChatEditor {
             const responseText = await this.agent.generateContent(
                 systemPrompt,
                 userMessage,
-                undefined 
+                undefined
             );
 
             // 2. Parse JSON safely
@@ -53,12 +53,12 @@ export class ChatEditor implements IChatEditor {
 
         } catch (error) {
             console.error("Editor failed to parse JSON, falling back to raw text:", error);
-            
+
             // Fallback: If JSON parsing fails, return the original or raw text
             // so the app doesn't crash.
             return {
-                content: originalText, 
-                reasoning: "Error: AI formatting failed.",
+                content: originalText,
+                reasoningText: "Error: AI formatting failed.",
                 chatMessage: "Error: AI formatting failed."
             };
         }
