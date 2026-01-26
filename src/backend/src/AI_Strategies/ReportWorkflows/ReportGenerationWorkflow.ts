@@ -1,5 +1,5 @@
 import { AgentStrategy, ExecutionModeStrategy } from "../strategies/interfaces";
-import { AgentExecutionContext } from "../strategies/interfaces"; 
+import { AgentExecutionContext } from "../strategies/interfaces";
 import { Project } from "../../domain/core/project.types";
 import { Report } from "../../domain/reports/report.types";
 /**
@@ -35,7 +35,7 @@ export abstract class ReportGenerationWorkflow<T = any> {
     }
 
     // --- Abstract Steps ---
-    
+
     // 1. Validation
     protected abstract collectInputs(project: Project, payload: any): Promise<AgentExecutionContext>;
 
@@ -46,7 +46,7 @@ export abstract class ReportGenerationWorkflow<T = any> {
     protected abstract postProcessOutput(agentOutput: T, context: AgentExecutionContext): Promise<Report>;
 
     // --- Shared Logic ---
-    protected async retrieveContextWithRAG(context: AgentExecutionContext): Promise<void> {
+    protected async retrieveContextWithRAG(context: AgentExecutionContext): Promise<void> { // this shuld call the researcher Agent
         // Default: Do nothing. Child classes can override if they need Global Context.
         console.log("⏭️ Skipping Global RAG (Child workflow may handle local RAG).");
     }

@@ -1,5 +1,5 @@
 // domain/tools/definitions.ts
-import { z } from "zod";
+import { z } from 'zod/v3';
 
 // Tool 1: Swap an Image
 export const SwapImageSchema = z.object({

@@ -4,34 +4,34 @@ import { PlannerExampleTemplate } from "../../../domain/chat/Templates/chat_temp
 import { ChatMessage } from "../../../domain/chat/chat.types";
 
 export class PlannerAgent {
-    constructor(private agent: AgentStrategy) {}
-  
-    public async generatePlan(userQuery: string, contentType?: any, history?: ChatMessage[]): Promise<ExecutionPlan> {
-      
-      const hasContext = !!contentType;
-      
-      let contextDescription = "None";
-      if (hasContext) {
-         if (typeof contentType === 'string') {
-             contextDescription = contentType;
-         } else if (typeof contentType === 'object') {
-             contextDescription = contentType.title || contentType.id || "Report Section";
-         }
+  constructor(private agent: AgentStrategy) { }
+
+  public async generatePlan(userQuery: string, contentType?: any, history?: ChatMessage[]): Promise<ExecutionPlan> {
+
+    const hasContext = !!contentType;
+
+    let contextDescription = "None";
+    if (hasContext) {
+      if (typeof contentType === 'string') {
+        contextDescription = contentType;
+      } else if (typeof contentType === 'object') {
+        contextDescription = contentType.title || contentType.id || "Report Section";
       }
+    }
 
-      const contextGuide = hasContext
-        ? `User is viewing: '${contextDescription}'. EDIT_TEXT and EXECUTE_TOOL can be used on this content. RESPOND can answer questions about it.`
-        : `User is NOT viewing a section. Use RESPOND for questions/guidance. EDIT_TEXT/EXECUTE_TOOL require the user to specify which section.`;
+    const contextGuide = hasContext
+      ? `User is viewing: '${contextDescription}'. EDIT_TEXT and EXECUTE_TOOL can be used on this content. RESPOND can answer questions about it.`
+      : `User is NOT viewing a section. Use RESPOND for questions/guidance. EDIT_TEXT/EXECUTE_TOOL require the user to specify which section.`;
 
-      let historyContext = "";
-      if (history && history.length > 0) {
-        historyContext = history.map(msg => 
-            `[${msg.sender}]: ${msg.content}`
-        ).join("\n");
-      }
+    let historyContext = "";
+    if (history && history.length > 0) {
+      historyContext = history.map(msg =>
+        `[${msg.sender}]: ${msg.content}`
+      ).join("\n");
+    }
 
-      // 1. INJECT THE TEMPLATE INTO THE PROMPT
-      const systemPrompt = `
+    // 1. INJECT THE TEMPLATE INTO THE PROMPT
+    const systemPrompt = `
         You are the Execution Planner.
         Break the User Query down into sequential steps.
         
@@ -55,38 +55,38 @@ export class PlannerAgent {
         
         - Do not include markdown formatting (like \`\`\`json). Just the raw object.
       `;
-  
-      try {
-        // 2. CALL LLM (Standard Text Generation)
-        const responseText = await this.agent.generateContent(systemPrompt, userQuery);
 
-        // 3. PARSE SAFELY (Your custom logic)
-        // This replaces the Zod validation step.
-        return this.parseJsonSafely<ExecutionPlan>(responseText);
+    try {
+      // 2. CALL LLM (Standard Text Generation)
+      const responseText = await this.agent.generateContent(systemPrompt, userQuery);
 
-      } catch (error) {
-        console.error("Planner Agent failed:", error);
-        throw error;
-      }
+      // 3. PARSE SAFELY (Your custom logic)
+      // This replaces the Zod validation step.
+      return this.parseJsonSafely<ExecutionPlan>(responseText);
+
+    } catch (error) {
+      console.error("Planner Agent failed:", error);
+      throw error;
+    }
+  }
+
+  /**
+   * Your Safe Parser Helper
+   * (Included here for completeness, though likely lives in a utils file)
+   */
+  private parseJsonSafely<T>(text: string): T {
+    // 1. Strip Markdown fences if the AI adds them
+    const cleanText = text.replace(/```json|```/g, "").trim();
+
+    // 2. Parse
+    const parsed = JSON.parse(cleanText);
+
+    // 3. (Optional) Basic Runtime Check
+    // Since we don't have Zod, we might check one key field just to be safe.
+    if (!parsed.steps || !Array.isArray(parsed.steps)) {
+      throw new Error("Invalid JSON Structure: Missing 'steps' array");
     }
 
-    /**
-     * Your Safe Parser Helper
-     * (Included here for completeness, though likely lives in a utils file)
-     */
-    private parseJsonSafely<T>(text: string): T {
-        // 1. Strip Markdown fences if the AI adds them
-        const cleanText = text.replace(/```json|```/g, "").trim();
-        
-        // 2. Parse
-        const parsed = JSON.parse(cleanText);
-        
-        // 3. (Optional) Basic Runtime Check
-        // Since we don't have Zod, we might check one key field just to be safe.
-        if (!parsed.steps || !Array.isArray(parsed.steps)) {
-            throw new Error("Invalid JSON Structure: Missing 'steps' array");
-        }
-
-        return parsed as T;
-    }
+    return parsed as T;
+  }
 }

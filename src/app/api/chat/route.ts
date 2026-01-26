@@ -1,22 +1,27 @@
 //GET (List), POST (Create New)
 import { NextResponse } from 'next/server';
-import {Container} from '@/backend/config/container'
+import { Container } from '@/backend/config/container'
 import { createAuthenticatedClient } from "@/app/api/utils";
 
 // 1. CREATE A NEW SESSION
 export async function POST(req: Request) {
     try {
-        const { userId, projectId, reportId } = await req.json();
-        const chatService = Container.chatService
+        const { projectId, reportId } = await req.json();
 
-        // Authenticate
+        // Authenticate first to get user
         const { supabase, user } = await createAuthenticatedClient();
         if (!user) {
             return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
         }
 
-        const session = await chatService.startSession(userId, projectId, supabase, reportId);
-        
+        if (!projectId) {
+            return NextResponse.json({ error: "Project ID required" }, { status: 400 });
+        }
+
+        // Use ChatServiceNew from Container (singleton)
+        const session = await Container.chatServiceNew.startSession(user.id, projectId, supabase, reportId);
+
+        // Return session with sessionId (session already contains sessionId, so no need to duplicate)
         return NextResponse.json(session);
     } catch (error: any) {
         return NextResponse.json({ error: error.message }, { status: 500 });
@@ -28,21 +33,17 @@ export async function GET(req: Request) {
     try {
         const { searchParams } = new URL(req.url);
         const projectId = searchParams.get('projectId');
-        
+
         if (!projectId) return NextResponse.json({ error: "Project ID required" }, { status: 400 });
 
-        const chatService = Container.chatService
-        
         // Authenticate
         const { supabase, user } = await createAuthenticatedClient();
         if (!user) {
             return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
         }
 
-        // Accessing repo directly here is fine for simple reads, 
-        // or you can add a wrapper method in ChatService if you prefer strict layering.
-        // Assuming you made repo public or added a getter:
-        const sessions = await (chatService as any).repo.getSessionsByProject(projectId, supabase);
+        // Use repo directly to avoid initializing old system
+        const sessions = await Container.chatRepo.getSessionsByProject(projectId, supabase);
 
         return NextResponse.json(sessions);
     } catch (error: any) {

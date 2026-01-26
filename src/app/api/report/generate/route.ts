@@ -1,76 +1,124 @@
+// 🆕 NEW Report Generation Route using AI-SDK
 import { NextResponse } from "next/server";
-import {Container} from '@/backend/config/container'
+import { Container } from "@/backend/config/container";
 import { createAuthenticatedClient } from "@/app/api/utils";
+import { ReportServiceNew } from '@/backend/Services/ReportService.new';
+import { ReportOrchestrator } from '@/backend/AI_Skills/orchestrators/ReportOrchestrator';
+import { v4 as uuidv4 } from 'uuid';
+import { Report } from '@/backend/domain/reports/report.types';
 
-export async function POST(request: Request) {
-  try {
-    const body = await request.json();
-    const { projectId, reportType, reportWorkflow, modelName, modeName, selectedImageIds, templateId, sections } = body;
-    const reportService = Container.reportService
+export async function POST(
+    request: Request,
+    { params }: { params: Promise<{ projectId: string }> }
+) {
+    try {
+        const { projectId } = await params;
+        const body = await request.json();
+        const {
+            reportType = 'OBSERVATION',
+            modelName = 'grok',
+            selectedImageIds = [],
+            templateId,
+            sections = []
+        } = body;
 
-    // Authenticate
-    const { supabase, user } = await createAuthenticatedClient();
-    if (!user) {
-        return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    // Validation
-    if (!projectId || !reportType) {
-      return NextResponse.json(
-        { error: "Missing required fields: projectId and reportType are required" },
-        { status: 400 }
-      );
-    }
-
-
-
-        // 🚀 Background Job (Trigger.dev)  WILL USE LATER ONCE DEPLOYED
-    // Instead of waiting for the report to generate (which can timeout Vercel),
-    // we queue it and return "Pending" immediately.
-    
-    await Container.jobQueue.enqueueReportGeneration(
-        projectId, 
-        user.id, 
-        {
-          reportType,
-          modelName,
-          modeName,
-          selectedImageIds: selectedImageIds || [],
-          templateId
+        // Authenticate
+        const { supabase, user } = await createAuthenticatedClient();
+        if (!user) {
+            return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
         }
-    );
 
-    return NextResponse.json({ 
-        message: "Report generation started in background",
-        status: "QUEUED",
-        projectId 
-    }, { status: 202 });
+        // Create new service instance with AI-SDK orchestrator
+        const reportOrchestrator = new ReportOrchestrator();
+        const reportService = new ReportServiceNew(
+            Container.reportRepo,
+            Container.projectRepo,
+            reportOrchestrator
+        );
 
-  } catch (error: any) {
-    console.error("❌ Generate Route Error:", error);
-    return NextResponse.json(
-      { error: error.message || "Failed to generate report" },
-      { status: 500 }
-    );
-  }
+        // Generate report stream
+        const streamResult = await reportService.generateReportStream(
+            projectId,
+            {
+                reportType,
+                modelName,
+                selectedImageIds,
+                templateId,
+                sections
+            },
+            supabase,
+            user.id
+        );
+
+        // Return the streaming response
+        // The frontend will handle the stream and collect the final report structure
+        return streamResult.toUIMessageStreamResponse();
+
+    } catch (error: any) {
+        console.error("❌ Report Generation Error:", error);
+        return NextResponse.json(
+            { error: error.message || "Failed to generate report" },
+            { status: 500 }
+        );
+    }
 }
 
+/**
+ * Helper endpoint to save a completed report after streaming
+ * Call this from the frontend after collecting the final report structure
+ */
+export async function PUT(
+    request: Request,
+    { params }: { params: Promise<{ projectId: string }> }
+) {
+    try {
+        const { projectId } = await params;
+        const body = await request.json();
+        const { report } = body;
 
+        // Authenticate
+        const { supabase, user } = await createAuthenticatedClient();
+        if (!user) {
+            return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+        }
 
-    // // 🚀 Call the Service wihout trigger.dev
-    // const newReport = await reportService.generateNewReport(projectId, {
-    //   reportType,
-    //   reportWorkflow: reportWorkflow || 'ASSEMBLY', // Default to AUTHOR if missing
-    //   modelName: modelName || 'GROK',
-    //   modeName,
-    //   selectedImageIds: selectedImageIds || [],
-    //   templateId,
-    //   sections // Pass custom sections
-    // }, supabase);
+        // Create new service instance
+        const reportOrchestrator = new ReportOrchestrator();
+        const reportService = new ReportServiceNew(
+            Container.reportRepo,
+            Container.projectRepo,
+            reportOrchestrator
+        );
 
-    // // Return the generated report ID so frontend can redirect
-    // return NextResponse.json({ 
-    //     message: "Report generated successfully",
-    //     reportId: newReport.reportId,
-    //     projectId 
-    // }, { status: 200 });
+        // Ensure report has required fields
+        const reportToSave: Report = {
+            reportId: report.reportId || uuidv4(),
+            projectId: projectId,
+            title: report.title || `Report ${new Date().toLocaleDateString()}`,
+            reportContent: report.reportContent || [],
+            status: report.status || 'DRAFT',
+            createdAt: report.createdAt ? new Date(report.createdAt) : new Date(),
+            updatedAt: new Date(),
+            templateId: report.templateId || null,
+            versionNumber: report.versionNumber || 1,
+            createdBy: user.id,
+            tiptapContent: report.tiptapContent || null,
+            isReviewRequired: true
+        };
+
+        // Save the report
+        const savedReport = await reportService.saveReport(reportToSave, supabase);
+
+        return NextResponse.json({
+            success: true,
+            report: savedReport
+        });
+
+    } catch (error: any) {
+        console.error("❌ Save Report Error:", error);
+        return NextResponse.json(
+            { error: error.message || "Failed to save report" },
+            { status: 500 }
+        );
+    }
+}

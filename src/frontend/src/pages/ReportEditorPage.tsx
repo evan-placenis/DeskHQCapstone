@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { AppHeader } from "./smart_components/AppHeader";
 import { Page } from "@/app/pages/config/routes";
-import { ReportLayout } from "./shared_ui_components/ReportLayout";
+import { ReportLayout } from "./report_editing_components/ReportLayout";
 import { ExportModal } from "./large_modal_components/ExportModal";
 import { ReportContent } from "@/frontend/types";
 
@@ -19,7 +19,7 @@ const mockPhotos = [
 export function ReportEditorPage({ onNavigate, onLogout }: ReportEditorPageProps) {
   const [showExportModal, setShowExportModal] = useState(false);
   const [reportStatus, setReportStatus] = useState("Draft");
-  
+
   const [reportContent, setReportContent] = useState<ReportContent>({
     title: "Foundation Assessment - Section A",
     date: "November 10, 2025",
@@ -63,13 +63,13 @@ export function ReportEditorPage({ onNavigate, onLogout }: ReportEditorPageProps
     const updatedSections = reportContent.sections.map((s: any) => {
       if (s.id === sectionId) {
         if (newData && newData.children) {
-            // Structure update - Use the parsed data from backend
-            return { 
-                ...s, 
-                content: newContent, // Keep markdown as fallback
-                description: newData.description, // Update description
-                subSections: newData.children // Update subsections structure
-            };
+          // Structure update - Use the parsed data from backend
+          return {
+            ...s,
+            content: newContent, // Keep markdown as fallback
+            description: newData.description, // Update description
+            subSections: newData.children // Update subsections structure
+          };
         }
         return { ...s, content: newContent };
       }
@@ -94,7 +94,7 @@ export function ReportEditorPage({ onNavigate, onLogout }: ReportEditorPageProps
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col">
       <AppHeader currentPage="report" onNavigate={onNavigate} onLogout={onLogout} />
-      
+
       <ReportLayout
         mode="edit"
         reportContent={reportContent}

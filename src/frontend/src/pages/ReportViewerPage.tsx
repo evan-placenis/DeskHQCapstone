@@ -7,7 +7,7 @@ import { Page } from "@/app/pages/config/routes";
 import { Project, PeerReview, ReportContent, Photo } from "@/frontend/types";
 import { RequestPeerReviewModal } from "@/frontend/pages/large_modal_components/RequestPeerReviewModal";
 import { RatingModal } from "@/frontend/pages/large_modal_components/RatingModal";
-import { ReportLayout } from "@/frontend/pages/shared_ui_components/ReportLayout";
+import { ReportLayout } from "@/src/frontend/src/pages/report_editing_components/ReportLayout";
 import { ROUTES, getRoute } from "@/app/pages/config/routes";
 import { supabase } from "@/frontend/lib/supabaseClient";
 import { Loader2 } from "lucide-react";
@@ -15,7 +15,7 @@ import { Card, CardContent } from "@/frontend/pages/ui_components/card";
 import { TiptapEditor } from "@/frontend/pages/smart_components/TiptapEditor";
 
 // 🟢 NEW: Component for showing generation progress
-const GeneratingReportCard = ({ status, reasoning }: { status: string, reasoning: string }) => (
+const GeneratingReportCard = ({ status, reasoningText }: { status: string, reasoningText: string }) => (
   <Card className="rounded-xl shadow-md border-2 border-theme-primary bg-blue-50/50 mb-6 animate-in fade-in slide-in-from-top-4 duration-500 mx-auto max-w-4xl mt-8">
     <CardContent className="p-6">
       <div className="flex flex-col gap-4">

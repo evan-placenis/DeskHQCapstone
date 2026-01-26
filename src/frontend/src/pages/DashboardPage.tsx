@@ -16,7 +16,7 @@ import { Plus, FolderOpen, Camera, FileText, Clock, ArrowRight, TrendingUp, Chec
 import { useState } from "react";
 import { ProjectCard } from "./ui_components/ProjectCard";
 import { ReportCard } from "./ui_components/ReportCard";
-import { UpcomingReviewCard } from "./shared_ui_components/UpcomingReviewCard";
+import { UpcomingReviewCard } from "./report_editing_components/UpcomingReviewCard";
 import { useEffect } from "react";
 import { useDelete } from "@/frontend/pages/hooks/useDelete";
 
@@ -125,21 +125,21 @@ const upcomingReviews = [
   },
 ];
 
-export function DashboardPage({ 
-  onNavigate, 
-  onLogout, 
-  onSelectProject, 
-  onSelectReport, 
+export function DashboardPage({
+  onNavigate,
+  onLogout,
+  onSelectProject,
+  onSelectReport,
   currentUser,
   peerReviews,
   handleRequestPeerReview,
   onRoleSwitch
 }: DashboardPageProps) {
   const TEST_RUNNER_ORG_ID = "b5df0650-c7eb-4b49-afc0-b0640f6a741f";
-  
+
   console.log("Current User Org:", currentUser?.organizationId);
   console.log("Target Org:", TEST_RUNNER_ORG_ID);
-  
+
   // Force real data (disable mocks) as per user request
   const showMockData = false; // currentUser?.organizationId === TEST_RUNNER_ORG_ID;
 
@@ -150,50 +150,50 @@ export function DashboardPage({
 
   // Fetch Projects on Mount
   useEffect(() => {
-      const fetchProjects = async () => {
-          if (showMockData) {
-              setProjectsList(projects);
-              setIsLoadingProjects(false);
-              return;
-          }
-
-          if (showMockData) {
-              setProjectsList(projects);
-              setIsLoadingProjects(false);
-              return;
-          }
-
-          if (!currentUser?.id) return;
-          
-          try {
-              const response = await fetch(`/api/project/list?userId=${currentUser.id}`);
-              
-              if (response.status === 401) {
-                  console.error("Unauthorized: Redirecting to login...");
-                  onLogout(); // Or explicit navigate to login
-                  return;
-              }
-
-              const data = await response.json();
-              
-              if (response.ok && data.projects) {
-                  setProjectsList(data.projects);
-              } else {
-                  console.error("Failed to fetch projects:", data.error);
-                  if (response.status === 404 && data.error.includes("User profile")) {
-                      alert("Your user profile is incomplete. Please contact support.");
-                  }
-              }
-          } catch (error) {
-              console.error("Error loading projects:", error);
-          } finally {
-              setIsLoadingProjects(false);
-          }
-      };
-
-      if (currentUser) {
-          fetchProjects();
+    const fetchProjects = async () => {
+      if (showMockData) {
+        setProjectsList(projects);
+        setIsLoadingProjects(false);
+        return;
       }
+
+      if (showMockData) {
+        setProjectsList(projects);
+        setIsLoadingProjects(false);
+        return;
+      }
+
+      if (!currentUser?.id) return;
+
+      try {
+        const response = await fetch(`/api/project/list?userId=${currentUser.id}`);
+
+        if (response.status === 401) {
+          console.error("Unauthorized: Redirecting to login...");
+          onLogout(); // Or explicit navigate to login
+          return;
+        }
+
+        const data = await response.json();
+
+        if (response.ok && data.projects) {
+          setProjectsList(data.projects);
+        } else {
+          console.error("Failed to fetch projects:", data.error);
+          if (response.status === 404 && data.error.includes("User profile")) {
+            alert("Your user profile is incomplete. Please contact support.");
+          }
+        }
+      } catch (error) {
+        console.error("Error loading projects:", error);
+      } finally {
+        setIsLoadingProjects(false);
+      }
+    };
+
+    if (currentUser) {
+      fetchProjects();
+    }
   }, [currentUser, showMockData]);
 
   const totalReports = projectsList.reduce((sum, p) => sum + p.reports, 0);
@@ -203,26 +203,26 @@ export function DashboardPage({
   const handleCreateProject = async (newProject: any) => {
     try {
       console.log("Creating project:", newProject);
-      
+
       // Get the real user ID from local storage (set during login)
       // This is a bridge until we fully refactor the User context/prop types
       let userId: string | undefined;
       if (typeof window !== 'undefined') {
-          const storedUser = localStorage.getItem('user');
-          if (storedUser && storedUser !== "undefined") {
-              try {
-                  const userObj = JSON.parse(storedUser);
-                  userId = userObj.id || userObj.user?.id; // Handle potential structure variations
-              } catch (e) {
-                  console.error("Failed to parse stored user", e);
-                  localStorage.removeItem('user'); // Clear bad data
-              }
+        const storedUser = localStorage.getItem('user');
+        if (storedUser && storedUser !== "undefined") {
+          try {
+            const userObj = JSON.parse(storedUser);
+            userId = userObj.id || userObj.user?.id; // Handle potential structure variations
+          } catch (e) {
+            console.error("Failed to parse stored user", e);
+            localStorage.removeItem('user'); // Clear bad data
           }
+        }
       }
 
       if (!userId) {
-          alert("You must be logged in to create a project.");
-          return;
+        alert("You must be logged in to create a project.");
+        return;
       }
 
       const response = await fetch("/api/project/create", {
@@ -232,7 +232,7 @@ export function DashboardPage({
         },
         body: JSON.stringify({
           name: newProject.name,
-          clientName: "Mock Client", 
+          clientName: "Mock Client",
           address: "Mock Address",
           userId: userId // Pass the UUID
         }),
@@ -272,25 +272,25 @@ export function DashboardPage({
     // 2. Call API
     // Only call API if it's a real project (string ID or valid number)
     // Assuming mock IDs are small numbers, but for simplicity we treat all as valid unless we want to block mock deletion
-    
+
     await deleteItem(`/api/project/${projectId}`, {
-        onError: (err) => {
-            alert(`Failed to delete project: ${err}`);
-            setProjectsList(previousProjects); // Revert
-        }
+      onError: (err) => {
+        alert(`Failed to delete project: ${err}`);
+        setProjectsList(previousProjects); // Revert
+      }
     });
   };
 
   return (
     <div className="min-h-screen bg-slate-50">
-      <AppHeader 
-        currentPage="dashboard" 
-        currentUser={currentUser} 
-        onNavigate={onNavigate} 
-        onLogout={onLogout} 
+      <AppHeader
+        currentPage="dashboard"
+        currentUser={currentUser}
+        onNavigate={onNavigate}
+        onLogout={onLogout}
         onRoleSwitch={onRoleSwitch}
       />
-      
+
       <main className="container mx-auto px-4 sm:px-6 py-4 sm:py-8 max-w-7xl">
         {/* Welcome Section */}
         <div className="mb-6 sm:mb-8">
@@ -300,8 +300,8 @@ export function DashboardPage({
                 <h1 className="text-white mb-1 text-xl sm:text-2xl lg:text-3xl font-bold">Welcome back, Engineer</h1>
                 <p className="text-white/90 text-sm sm:text-base">Manage your projects and generate AI-powered reports</p>
               </div>
-              <Button 
-                size="lg" 
+              <Button
+                size="lg"
                 className="bg-white hover:bg-white/90 text-theme-primary rounded-lg shadow-md w-full sm:w-auto h-12 sm:h-auto font-semibold"
                 onClick={() => setIsNewProjectModalOpen(true)}
               >
@@ -383,37 +383,36 @@ export function DashboardPage({
                         </div>
                       ))}
                     </div>
-                    
+
                     {/* Calendar Days */}
                     <div className="grid grid-cols-7 gap-1">
                       {/* Empty cells for days before month starts (Nov 1, 2025 is Saturday) */}
                       {[...Array(6)].map((_, i) => (
                         <div key={`empty-${i}`} className="aspect-square"></div>
                       ))}
-                      
+
                       {/* Days of the month */}
                       {[...Array(30)].map((_, i) => {
                         const day = i + 1;
                         const isToday = day === 23; // Nov 23, 2025
                         const hasEvent = [10, 15, 25, 27].includes(day); // Sample event days
-                        
+
                         return (
                           <div
                             key={day}
-                            className={`aspect-square flex items-center justify-center text-xs sm:text-sm rounded-md transition-all cursor-pointer ${
-                              isToday
+                            className={`aspect-square flex items-center justify-center text-xs sm:text-sm rounded-md transition-all cursor-pointer ${isToday
                                 ? 'bg-theme-primary text-white font-bold'
                                 : hasEvent
-                                ? 'bg-theme-primary-20 text-theme-secondary font-semibold hover:bg-theme-primary-30'
-                                : 'text-slate-700 hover:bg-slate-100'
-                            }`}
+                                  ? 'bg-theme-primary-20 text-theme-secondary font-semibold hover:bg-theme-primary-30'
+                                  : 'text-slate-700 hover:bg-slate-100'
+                              }`}
                           >
                             {day}
                           </div>
                         );
                       })}
                     </div>
-                    
+
                     {/* Legend */}
                     <div className="flex items-center justify-center gap-3 pt-2 text-[10px] text-slate-600">
                       <div className="flex items-center gap-1">
@@ -443,7 +442,7 @@ export function DashboardPage({
               <CardContent className="space-y-3 sm:space-y-4 p-2 sm:p-6 pt-1 sm:pt-0">
                 {/* Active Projects */}
                 {isLoadingProjects ? (
-                    <div className="p-8 text-center text-slate-500">Loading projects...</div>
+                  <div className="p-8 text-center text-slate-500">Loading projects...</div>
                 ) : projectsList.filter(p => p.status === "Active").length > 0 ? (
                   <div>
                     <h3 className="text-sm font-semibold text-slate-700 mb-2 px-1">Active Projects</h3>
@@ -460,9 +459,9 @@ export function DashboardPage({
                     </div>
                   </div>
                 ) : (
-                    <div className="p-8 text-center text-slate-500">
-                        No active projects found. Create one to get started!
-                    </div>
+                  <div className="p-8 text-center text-slate-500">
+                    No active projects found. Create one to get started!
+                  </div>
                 )}
 
                 {/* Completed Projects */}

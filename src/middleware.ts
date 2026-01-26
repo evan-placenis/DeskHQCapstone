@@ -2,6 +2,15 @@ import { createServerClient, type CookieOptions } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 
 export async function middleware(request: NextRequest) {
+
+  // 1. FAST EXIT: Don't run on prefetch or internal Next.js data requests
+  if (
+    request.headers.get('x-nextjs-data') ||
+    request.headers.get('purpose') === 'prefetch'
+  ) {
+    return NextResponse.next()
+  }
+
   console.log("Middleware running:", request.nextUrl.pathname)
 
   let response = NextResponse.next({
@@ -15,8 +24,8 @@ export async function middleware(request: NextRequest) {
   const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_SUPABSE_ANON_KEY
 
   if (!supabaseUrl || !supabaseAnonKey) {
-      // If keys are missing, we can't refresh session, just pass through
-      return response
+    // If keys are missing, we can't refresh session, just pass through
+    return response
   }
 
   const supabase = createServerClient(
@@ -28,13 +37,10 @@ export async function middleware(request: NextRequest) {
           return request.cookies.getAll()
         },
         setAll(cookiesToSet) {
-          cookiesToSet.forEach(({ name, value, options }) => request.cookies.set(name, value))
-          response = NextResponse.next({
-            request,
+          cookiesToSet.forEach(({ name, value, options }) => {
+            request.cookies.set(name, value) // Update request for Server Components
+            response.cookies.set(name, value, options) // Update response for Browser
           })
-          cookiesToSet.forEach(({ name, value, options }) =>
-            response.cookies.set(name, value, options)
-          )
         },
       },
     }
@@ -49,14 +55,19 @@ export async function middleware(request: NextRequest) {
   const protectedPaths = ['/project', '/dashboard', '/report', '/settings', '/mystats', '/analytics_dashboard', '/audio_timeline', '/capture', '/organization_password', '/peer_review', '/reviewer', '/select-org']
   const isProtectedPath = protectedPaths.some(path => request.nextUrl.pathname.startsWith(path))
 
-  if (isProtectedPath && !user) {
-    const redirectUrl = request.nextUrl.clone()
-    redirectUrl.pathname = '/login'
-    redirectUrl.searchParams.set('redirectedFrom', request.nextUrl.pathname)
-    return NextResponse.redirect(redirectUrl)
+  if (isProtectedPath) {
+    // Only pay the "latency tax" if we actually need to check the user
+    const { data: { user } } = await supabase.auth.getUser()
+
+    if (!user) {
+      const redirectUrl = request.nextUrl.clone()
+      redirectUrl.pathname = '/login'
+      return NextResponse.redirect(redirectUrl)
+    }
   }
 
   return response
+
 }
 
 export const config = {

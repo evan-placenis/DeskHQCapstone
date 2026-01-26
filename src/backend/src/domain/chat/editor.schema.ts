@@ -1,9 +1,9 @@
-import { z } from "zod";
+import { z } from 'zod/v3';
 
 // 1. The Router Schema
 export const RouterSchema = z.object({
     intent: z.enum(["EDIT_TEXT", "RESEARCH_DATA", "EXECUTE_TOOL", "RESPOND"]),
-    reasoning: z.string(),
+    reasoningText: z.string(),
     complexity: z.enum(["LOW", "HIGH"]),
   });
   
