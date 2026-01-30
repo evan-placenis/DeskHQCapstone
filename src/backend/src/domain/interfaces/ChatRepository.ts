@@ -6,6 +6,9 @@ export interface ChatRepository {
     
     // Find an existing conversation context
     getSessionById(sessionId: string, client: SupabaseClient): Promise<ChatSession | null>;
+
+    // Find a session by report ID (so we reuse the session the trigger created instead of creating a duplicate)
+    getSessionByReportId(reportId: string, client: SupabaseClient): Promise<ChatSession | null>;
     
     // Get all chats for a project (for the Sidebar UI)
     getSessionsByProject(projectId: string, client: SupabaseClient): Promise<ChatSession[]>;

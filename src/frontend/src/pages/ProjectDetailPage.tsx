@@ -458,12 +458,12 @@ const mockKnowledgeDocuments: KnowledgeDocument[] = [
 
 import { UploadProgress } from "@/frontend/pages/ui_components/UploadProgress";
 
-export function ProjectDetailPage({ 
-  project, 
-  onNavigate, 
-  onLogout, 
+export function ProjectDetailPage({
+  project,
+  onNavigate,
+  onLogout,
   onBack,
-  onSelectReport 
+  onSelectReport
 }: ProjectDetailPageProps) {
   const { user } = useAuth();
   const TEST_RUNNER_ORG_ID = "b5df0650-c7eb-4b49-afc0-b0640f6a741f";
@@ -483,28 +483,28 @@ export function ProjectDetailPage({
   // Update mocks for static data
   useEffect(() => {
     if (shouldShowMocks) {
-        // @ts-ignore
-        setReports(mockReports);
-        setKnowledgeDocuments(mockKnowledgeDocuments);
+      // @ts-ignore
+      setReports(mockReports);
+      setKnowledgeDocuments(mockKnowledgeDocuments);
     } else {
-        setReports([]);
-        setKnowledgeDocuments([]);
+      setReports([]);
+      setKnowledgeDocuments([]);
     }
   }, [shouldShowMocks]);
-  
+
   // Upload States
   const [isUploading, setIsUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [isKnowledgeUploading, setIsKnowledgeUploading] = useState(false);
   const [knowledgeUploadProgress, setKnowledgeUploadProgress] = useState(0);
-  
+
   // Photo filter states
   const [photoSearchKeyword, setPhotoSearchKeyword] = useState("");
   const [photoFilterDateStart, setPhotoFilterDateStart] = useState("");
   const [photoFilterDateEnd, setPhotoFilterDateEnd] = useState("");
   const [photoFilterUser, setPhotoFilterUser] = useState("all");
   const [photoGridSize, setPhotoGridSize] = useState(2); // 0=smallest, 1=small, 2=medium, 3=large
-  
+
   // Use the hook
   const { deleteItem } = useDelete();
 
@@ -537,7 +537,7 @@ export function ProjectDetailPage({
   const handleCreateReport = async (reportData: any) => {
     try {
       console.log("Creating report with data:", reportData);
-      
+
       const payload = {
         projectId: project.id,
         title: reportData.title,
@@ -548,9 +548,10 @@ export function ProjectDetailPage({
         style: reportData.style,
         reportWorkflow: reportData.reportWorkflow,
         // Additional fields that might be needed
-        reportType: reportData.reportType 
+        reportType: reportData.reportType
       };
 
+      // Start the streaming request (don't await - it's a stream)
       const response = await fetch("/api/report/generate", {
         method: "POST",
         headers: {
@@ -559,20 +560,32 @@ export function ProjectDetailPage({
         body: JSON.stringify(payload),
       });
 
+      if (!response.ok) {
+        // Handle error response (non-streaming error)
+        const errorData = await response.json().catch(() => ({ error: "Failed to start report generation" }));
+        console.error(`Error generating report: ${errorData.error}`);
+        alert(`Error: ${errorData.error}`);
+        return;
+      }
+
+      // Parse JSON response
       const data = await response.json();
       console.log("Backend response:", data);
 
-      if (response.ok) {
-        console.log("Report generation started:", data);
-        
-        if (data.reportId) {
-            // Navigate to the new report if ID is returned immediately
-            onSelectReport(data.reportId); 
-        } else if (data.status === "QUEUED") {
-            // Background job started
-            console.log("Background job queued. Redirecting to report viewer...");
-            setIsNewReportModalOpen(false);
-            window.location.href = `/pages/report?id=0&projectId=${project.id}&generating=true`;
+      if (response.ok || response.status === 202) {
+        if (data.status === "QUEUED") {
+          // Background job queued - redirect to report viewer to see streaming updates
+          console.log("Report generation queued. Redirecting to report viewer...");
+          setIsNewReportModalOpen(false);
+          window.location.href = `/pages/report?id=0&projectId=${project.id}&generating=true`;
+        } else if (data.reportId) {
+          // Navigate to the new report if ID is returned immediately
+          onSelectReport(data.reportId);
+        } else {
+          // Default: redirect to report viewer
+          console.log("Report generation started. Redirecting to report viewer...");
+          setIsNewReportModalOpen(false);
+          window.location.href = `/pages/report?id=0&projectId=${project.id}&generating=true`;
         }
       } else {
         console.error(`Error generating report: ${data.error}`);
@@ -585,7 +598,7 @@ export function ProjectDetailPage({
   };
 
   const handleStatusChange = (reportId: number, newStatus: string) => {
-    setReports(reports.map(report => 
+    setReports(reports.map(report =>
       report.id === reportId ? { ...report, status: newStatus } : report
     ));
   };
@@ -626,94 +639,94 @@ export function ProjectDetailPage({
     // 1. Setup Tracking
     setIsKnowledgeUploading(true);
     setKnowledgeUploadProgress(0);
-    
+
     const CONCURRENCY_LIMIT = 6;
     const totalFiles = files.length;
     let completedCount = 0;
-    
+
     // Track failures to report at the end
     const failedFiles: { name: string; reason: string }[] = [];
 
     // 2. The Worker Function
     // This function recursively calls itself until the queue is empty
     const fileQueue = [...files]; // Clone array to consume
-    
+
     const processNext = async (): Promise<void> => {
-        if (fileQueue.length === 0) return; // Stop if empty
+      if (fileQueue.length === 0) return; // Stop if empty
 
-        const file = fileQueue.shift(); // Get next file
-        if (!file) return;
+      const file = fileQueue.shift(); // Get next file
+      if (!file) return;
 
-        try {
-            const formData = new FormData();
-            formData.append('file', file);
-            formData.append('projectId', project.id.toString());
-            formData.append('type', doc.type);
-            formData.append('description', doc.description);
+      try {
+        const formData = new FormData();
+        formData.append('file', file);
+        formData.append('projectId', project.id.toString());
+        formData.append('type', doc.type);
+        formData.append('description', doc.description);
 
-            const response = await fetch('/api/knowledge/store', {
-                method: 'POST',
-                body: formData
-            });
+        const response = await fetch('/api/knowledge/store', {
+          method: 'POST',
+          body: formData
+        });
 
-            if (!response.ok) {
-                const errorData = await response.json();
-                throw new Error(errorData.error || response.statusText);
-            }
-
-            const data = await response.json();
-
-            // Success Update
-            if (data.document) {
-                const newDoc: KnowledgeDocument = {
-                    id: data.document.id,
-                    name: data.document.name,
-                    type: (data.document.type || 'other').toLowerCase(),
-                    description: doc.description,
-                    uploadDate: new Date(data.document.uploadDate).toISOString().split('T')[0],
-                    fileSize: `${(file.size / 1024).toFixed(2)} KB`,
-                    fileType: data.document.fileType
-                };
-                // ⚡ Functional update avoids stale state issues during fast uploads
-                setKnowledgeDocuments(prev => [newDoc, ...prev]);
-            }
-
-        } catch (error: any) {
-            console.error(`Failed to upload ${file.name}:`, error);
-            failedFiles.push({ name: file.name, reason: error.message });
-        } finally {
-            completedCount++;
-            setKnowledgeUploadProgress(Math.round((completedCount / totalFiles) * 100));
-            
-            // 🔄 RECURSION: As soon as this finishes, grab the next one
-            await processNext();
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(errorData.error || response.statusText);
         }
+
+        const data = await response.json();
+
+        // Success Update
+        if (data.document) {
+          const newDoc: KnowledgeDocument = {
+            id: data.document.id,
+            name: data.document.name,
+            type: (data.document.type || 'other').toLowerCase(),
+            description: doc.description,
+            uploadDate: new Date(data.document.uploadDate).toISOString().split('T')[0],
+            fileSize: `${(file.size / 1024).toFixed(2)} KB`,
+            fileType: data.document.fileType
+          };
+          // ⚡ Functional update avoids stale state issues during fast uploads
+          setKnowledgeDocuments(prev => [newDoc, ...prev]);
+        }
+
+      } catch (error: any) {
+        console.error(`Failed to upload ${file.name}:`, error);
+        failedFiles.push({ name: file.name, reason: error.message });
+      } finally {
+        completedCount++;
+        setKnowledgeUploadProgress(Math.round((completedCount / totalFiles) * 100));
+
+        // 🔄 RECURSION: As soon as this finishes, grab the next one
+        await processNext();
+      }
     };
 
     // 3. Kickstart the Pool
     // Create 'limit' number of workers that will start eating the queue
     const activeWorkers = Array(Math.min(CONCURRENCY_LIMIT, files.length))
-        .fill(null)
-        .map(() => processNext());
+      .fill(null)
+      .map(() => processNext());
 
     await Promise.all(activeWorkers);
 
     // 4. Cleanup & Reporting
     setTimeout(() => {
-        setIsKnowledgeUploading(false);
-        setKnowledgeUploadProgress(0);
+      setIsKnowledgeUploading(false);
+      setKnowledgeUploadProgress(0);
 
-        // 🚨 Report Failures to User
-        if (failedFiles.length > 0) {
-            const msg = `Upload complete, but ${failedFiles.length} files failed:\n` + 
-                        failedFiles.map(f => `• ${f.name}`).join('\n');
-            alert(msg);
-        } else {
-            // Optional: Success Toast
-            // toast.success("All files uploaded successfully!");
-        }
+      // 🚨 Report Failures to User
+      if (failedFiles.length > 0) {
+        const msg = `Upload complete, but ${failedFiles.length} files failed:\n` +
+          failedFiles.map(f => `• ${f.name}`).join('\n');
+        alert(msg);
+      } else {
+        // Optional: Success Toast
+        // toast.success("All files uploaded successfully!");
+      }
     }, 500);
-};
+  };
 
   const handleDeleteKnowledge = async (id: number | string) => {
     if (!confirm("Are you sure you want to delete this document? This will remove it from the knowledge base and all associated search indices.")) return;
@@ -726,13 +739,13 @@ export function ProjectDetailPage({
     // Only call API if it's a real document (string ID usually means UUID from DB)
     // If it's a number, it might be a mock document, but we should try to delete anyway if it's not in the mock list
     // For simplicity, we assume string IDs are real DB items.
-    
-      await deleteItem(`/api/knowledge/${id}`, {
-          onError: (err) => {
-              alert(`Failed to delete document: ${err}`);
-              setKnowledgeDocuments(previousDocs); // Revert
-          }
-      });
+
+    await deleteItem(`/api/knowledge/${id}`, {
+      onError: (err) => {
+        alert(`Failed to delete document: ${err}`);
+        setKnowledgeDocuments(previousDocs); // Revert
+      }
+    });
   };
 
   const getDocumentTypeIcon = (type: KnowledgeDocument["type"]) => {
@@ -822,7 +835,7 @@ export function ProjectDetailPage({
 
     let targetFolderId = folderId;
     let targetFolderName = folderName;
-    
+
     // If creating a new folder (Mock for now, UI only)
     if (folderId === -1 && folderName) {
       const newFolder: PhotoFolder = {
@@ -833,11 +846,11 @@ export function ProjectDetailPage({
       setPhotoFolders([newFolder, ...photoFolders]); // Prepend new folder to the top
       targetFolderId = newFolder.id;
     } else {
-        // Find existing folder name
-        const existingFolder = photoFolders.find(f => f.id === folderId);
-        if (existingFolder) {
-            targetFolderName = existingFolder.name;
-        }
+      // Find existing folder name
+      const existingFolder = photoFolders.find(f => f.id === folderId);
+      if (existingFolder) {
+        targetFolderName = existingFolder.name;
+      }
     }
 
     // Process files in parallel, limited to 6 concurrent uploads
@@ -852,64 +865,64 @@ export function ProjectDetailPage({
 
     // Helper to process a single file
     const processFile = async (file: File) => {
-        try {
-            // Compress image before upload
-            console.log(`Compressing ${file.name}...`);
-            const compressedFile = await compressImage(file);
-            console.log(`Compressed ${file.name}: ${(file.size / 1024).toFixed(2)}KB -> ${(compressedFile.size / 1024).toFixed(2)}KB`);
+      try {
+        // Compress image before upload
+        console.log(`Compressing ${file.name}...`);
+        const compressedFile = await compressImage(file);
+        console.log(`Compressed ${file.name}: ${(file.size / 1024).toFixed(2)}KB -> ${(compressedFile.size / 1024).toFixed(2)}KB`);
 
-            const formData = new FormData();
-            formData.append('file', compressedFile);
-            formData.append('userId', user.id.toString());
-            if (targetFolderName) {
-                formData.append('folderName', targetFolderName);
-            }
-            if (useFileNameAsDescription) {
-                // Remove extension for cleaner description
-                const nameWithoutExt = file.name.replace(/\.[^/.]+$/, "");
-                formData.append('description', nameWithoutExt);
-            }
-            
-            const response = await fetch(`/api/project/${project.id}/images`, {
-                method: 'POST',
-                body: formData
-            });
-
-            const data = await response.json();
-
-            if (!response.ok) {
-                throw new Error(data.error || "Upload failed");
-            }
-
-            const dbImage = data.image;
-            
-            return {
-                id: dbImage.id || Math.random(), 
-                url: dbImage.public_url || URL.createObjectURL(compressedFile), 
-                storagePath: dbImage.storage_path,
-                name: dbImage.file_name || file.name,
-                date: new Date(dbImage.created_at).toISOString().split('T')[0],
-                location: "Project Site",
-                linkedReport: null,
-                description: dbImage.description || (useFileNameAsDescription ? file.name.replace(/\.[^/.]+$/, "") : ""),
-                folderId: targetFolderId
-            } as Photo;
-
-        } catch (error) {
-            console.error(`Failed to upload ${file.name}:`, error);
-            // Don't alert for every single failure in a batch, maybe just log
-            return null;
-        } finally {
-            completedFiles++;
-            setUploadProgress(Math.round((completedFiles / totalFiles) * 100));
+        const formData = new FormData();
+        formData.append('file', compressedFile);
+        formData.append('userId', user.id.toString());
+        if (targetFolderName) {
+          formData.append('folderName', targetFolderName);
         }
+        if (useFileNameAsDescription) {
+          // Remove extension for cleaner description
+          const nameWithoutExt = file.name.replace(/\.[^/.]+$/, "");
+          formData.append('description', nameWithoutExt);
+        }
+
+        const response = await fetch(`/api/project/${project.id}/images`, {
+          method: 'POST',
+          body: formData
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+          throw new Error(data.error || "Upload failed");
+        }
+
+        const dbImage = data.image;
+
+        return {
+          id: dbImage.id || Math.random(),
+          url: dbImage.public_url || URL.createObjectURL(compressedFile),
+          storagePath: dbImage.storage_path,
+          name: dbImage.file_name || file.name,
+          date: new Date(dbImage.created_at).toISOString().split('T')[0],
+          location: "Project Site",
+          linkedReport: null,
+          description: dbImage.description || (useFileNameAsDescription ? file.name.replace(/\.[^/.]+$/, "") : ""),
+          folderId: targetFolderId
+        } as Photo;
+
+      } catch (error) {
+        console.error(`Failed to upload ${file.name}:`, error);
+        // Don't alert for every single failure in a batch, maybe just log
+        return null;
+      } finally {
+        completedFiles++;
+        setUploadProgress(Math.round((completedFiles / totalFiles) * 100));
+      }
     };
 
     // Execute uploads with concurrency limit
     for (let i = 0; i < files.length; i += CONCURRENCY_LIMIT) {
-        const chunk = files.slice(i, i + CONCURRENCY_LIMIT);
-        const chunkResults = await Promise.all(chunk.map(file => processFile(file)));
-        results.push(...chunkResults);
+      const chunk = files.slice(i, i + CONCURRENCY_LIMIT);
+      const chunkResults = await Promise.all(chunk.map(file => processFile(file)));
+      results.push(...chunkResults);
     }
 
     setIsUploading(false); // Reset upload state
@@ -917,7 +930,7 @@ export function ProjectDetailPage({
 
     // Update state with successfully uploaded photos
     if (successfulUploads.length > 0) {
-        setPhotos([...successfulUploads, ...photos]); // Add new photos to the TOP
+      setPhotos([...successfulUploads, ...photos]); // Add new photos to the TOP
     }
   };
 
@@ -929,10 +942,10 @@ export function ProjectDetailPage({
     // 2. Call API
     // Adjusted endpoint to match standard REST pattern (DELETE /api/resource/:id)
     await deleteItem(`/api/project/${project.id}/images/${photoId}`, {
-        onError: (err) => {
-            alert(`Failed to delete photo: ${err}`);
-            setPhotos(previousPhotos); // Revert on error
-        }
+      onError: (err) => {
+        alert(`Failed to delete photo: ${err}`);
+        setPhotos(previousPhotos); // Revert on error
+      }
     });
   };
 
@@ -954,14 +967,14 @@ export function ProjectDetailPage({
     // 2. Call API
     // Since folders are virtual (based on 'folder_name' in images), we delete all images with that folder name
     // If the folder is empty/local-only, the API call will just return success with 0 deletions, which is fine.
-    
+
     await deleteItem(`/api/project/${project.id}/folders?name=${encodeURIComponent(folder.name)}`, {
-        onError: (err) => {
-            alert(`Failed to delete folder: ${err}`);
-            // Revert state
-            setPhotos(previousPhotos);
-            setPhotoFolders(previousFolders);
-        }
+      onError: (err) => {
+        alert(`Failed to delete folder: ${err}`);
+        // Revert state
+        setPhotos(previousPhotos);
+        setPhotoFolders(previousFolders);
+      }
     });
   };
 
@@ -969,7 +982,7 @@ export function ProjectDetailPage({
     // Navigate to audio timeline for this folder
     onNavigate("audio-timeline");
   };
-  
+
   // Extract unique users from folder names (initials at the end)
   const extractUsersFromFolders = () => {
     const users = new Set<string>();
@@ -981,7 +994,7 @@ export function ProjectDetailPage({
     });
     return Array.from(users).sort();
   };
-  
+
   // Extract unique dates from folders
   const extractDatesFromFolders = () => {
     const dates = new Set<string>();
@@ -992,21 +1005,21 @@ export function ProjectDetailPage({
     });
     return Array.from(dates).sort().reverse(); // Most recent first
   };
-  
+
   // Apply filters to photos and folders
   const applyPhotoFilters = () => {
     let filteredFolderIds = new Set<number>();
     let filteredPhotosList = photos;
-    
+
     // Filter by user (folder name contains user initials)
     if (photoFilterUser !== "all") {
-      const matchingFolders = photoFolders.filter(folder => 
+      const matchingFolders = photoFolders.filter(folder =>
         folder.name.includes(`- ${photoFilterUser}`)
       );
       filteredFolderIds = new Set(matchingFolders.map(f => f.id));
       filteredPhotosList = filteredPhotosList.filter(p => filteredFolderIds.has(p.folderId));
     }
-    
+
     // Filter by date range
     if (photoFilterDateStart || photoFilterDateEnd) {
       const startDate = photoFilterDateStart ? new Date(photoFilterDateStart) : null;
@@ -1029,33 +1042,33 @@ export function ProjectDetailPage({
         filteredFolderIds = new Set(matchingFolders.map(f => f.id));
       }
     }
-    
+
     // Filter by keyword (search in photo name, description, location)
     if (photoSearchKeyword) {
       const keyword = photoSearchKeyword.toLowerCase();
-          filteredPhotosList = filteredPhotosList.filter(p =>
-    p.name.toLowerCase().includes(keyword) ||
-    (p.description && p.description.toLowerCase().includes(keyword)) ||
-    p.location.toLowerCase().includes(keyword)
-  );
+      filteredPhotosList = filteredPhotosList.filter(p =>
+        p.name.toLowerCase().includes(keyword) ||
+        (p.description && p.description.toLowerCase().includes(keyword)) ||
+        p.location.toLowerCase().includes(keyword)
+      );
     }
-    
+
     // Get folders that have photos after filtering
     const foldersWithPhotos = new Set(filteredPhotosList.map(p => p.folderId));
-    
+
     // If we have folder-based filters, use those, otherwise use folders with matching photos
     const finalFilteredFolderIds = (photoFilterUser !== "all" || photoFilterDateStart || photoFilterDateEnd) && filteredFolderIds.size > 0
       ? Array.from(filteredFolderIds).filter(id => foldersWithPhotos.has(id))
       : Array.from(foldersWithPhotos);
-    
+
     const filteredFolders = photoFolders.filter(f => finalFilteredFolderIds.includes(f.id));
-    
+
     return {
       folders: filteredFolders,
       photos: filteredPhotosList
     };
   };
-  
+
   const { folders: filteredFolders, photos: filteredPhotos } = applyPhotoFilters();
   const hasActiveFilters = photoSearchKeyword || photoFilterDateStart || photoFilterDateEnd || photoFilterUser !== "all";
   const availableUsers = extractUsersFromFolders();
@@ -1069,125 +1082,125 @@ export function ProjectDetailPage({
 
     // Fetch existing images and knowledge documents from backend
     const fetchProjectData = async () => {
-        // 1. Fetch Images
-        try {
-            const response = await fetch(`/api/project/${project.id}/images`);
-            if (response.ok) {
-                const data = await response.json();
-                if (data.images && Array.isArray(data.images)) {
-                    console.log("Fetched images from DB:", data.images); // Debug log
-                    
-                    // Identify unique folder names from DB images
-                    const fetchedImages = data.images;
-                    const uniqueFolderNames = Array.from(new Set(fetchedImages.map((img: any) => img.folder_name).filter(Boolean))) as string[];
-                    
-                    // Sync folders locally first to determine IDs
-                    // Start with mockPhotoFolders as base if in test org
-                    const existingFolders = shouldShowMocks ? [...mockPhotoFolders] : [];
-                    const newFolders: PhotoFolder[] = [];
-                    
-                    uniqueFolderNames.forEach(name => {
-                        if (!existingFolders.find(f => f.name === name)) {
-                            newFolders.push({
-                                id: Math.max(0, ...existingFolders.map(f => f.id), ...newFolders.map(f => f.id)) + 1,
-                                name: name,
-                                createdDate: new Date().toISOString().split('T')[0]
-                            });
-                        }
-                    });
-                    
-                    // Update folders state: Put new (DB) folders at the TOP
-                    const allFolders = [...newFolders, ...existingFolders];
-                    setPhotoFolders(allFolders);
+      // 1. Fetch Images
+      try {
+        const response = await fetch(`/api/project/${project.id}/images`);
+        if (response.ok) {
+          const data = await response.json();
+          if (data.images && Array.isArray(data.images)) {
+            console.log("Fetched images from DB:", data.images); // Debug log
 
-                    // Map DB images to Frontend Photo objects
-                    const dbPhotos: Photo[] = data.images.map((img: any) => {
-                        const folder = allFolders.find(f => f.name === img.folder_name);
-                        return {
-                            id: img.id, // Use UUID from DB
-                            url: img.public_url,
-                            storagePath: img.storage_path, // Add storage path for signed URLs
-                            name: img.file_name,
-                            date: new Date(img.created_at).toISOString().split('T')[0],
-                            location: "Uploaded",
-                            linkedReport: null,
-                            description: img.description || "",
-                            folderId: folder ? folder.id : 1 // Use found folder ID or default
-                        };
-                    });
-                    
-                    // Prepend DB photos to mock photos (showing newest first)
-                    setPhotos([...dbPhotos, ...(shouldShowMocks ? mockPhotos : [])]);
-                }
-            }
-        } catch (e) {
-            console.error("Failed to fetch images", e);
+            // Identify unique folder names from DB images
+            const fetchedImages = data.images;
+            const uniqueFolderNames = Array.from(new Set(fetchedImages.map((img: any) => img.folder_name).filter(Boolean))) as string[];
+
+            // Sync folders locally first to determine IDs
+            // Start with mockPhotoFolders as base if in test org
+            const existingFolders = shouldShowMocks ? [...mockPhotoFolders] : [];
+            const newFolders: PhotoFolder[] = [];
+
+            uniqueFolderNames.forEach(name => {
+              if (!existingFolders.find(f => f.name === name)) {
+                newFolders.push({
+                  id: Math.max(0, ...existingFolders.map(f => f.id), ...newFolders.map(f => f.id)) + 1,
+                  name: name,
+                  createdDate: new Date().toISOString().split('T')[0]
+                });
+              }
+            });
+
+            // Update folders state: Put new (DB) folders at the TOP
+            const allFolders = [...newFolders, ...existingFolders];
+            setPhotoFolders(allFolders);
+
+            // Map DB images to Frontend Photo objects
+            const dbPhotos: Photo[] = data.images.map((img: any) => {
+              const folder = allFolders.find(f => f.name === img.folder_name);
+              return {
+                id: img.id, // Use UUID from DB
+                url: img.public_url,
+                storagePath: img.storage_path, // Add storage path for signed URLs
+                name: img.file_name,
+                date: new Date(img.created_at).toISOString().split('T')[0],
+                location: "Uploaded",
+                linkedReport: null,
+                description: img.description || "",
+                folderId: folder ? folder.id : 1 // Use found folder ID or default
+              };
+            });
+
+            // Prepend DB photos to mock photos (showing newest first)
+            setPhotos([...dbPhotos, ...(shouldShowMocks ? mockPhotos : [])]);
+          }
         }
+      } catch (e) {
+        console.error("Failed to fetch images", e);
+      }
 
-        // 2. Fetch Knowledge Documents
-        try {
-            const response = await fetch(`/api/knowledge/store?projectId=${project.id}`);
-            if (response.ok) {
-                const data = await response.json();
-                if (data.documents && Array.isArray(data.documents)) {
-                    console.log("Fetched knowledge documents from DB:", data.documents);
-                    
-                    const dbDocs: KnowledgeDocument[] = data.documents.map((doc: any) => ({
-                        id: doc.kId,
-                        name: doc.originalFileName,
-                        type: (doc.documentType || 'other').toLowerCase() as KnowledgeDocument['type'],
-                        description: "", // Description not currently stored in backend
-                        uploadDate: new Date(doc.uploadedAt).toISOString().split('T')[0],
-                        fileSize: "Unknown", // Size not currently stored in backend
-                        fileType: doc.originalFileName.split('.').pop()?.toUpperCase() || 'DOCX'
-                    }));
+      // 2. Fetch Knowledge Documents
+      try {
+        const response = await fetch(`/api/knowledge/store?projectId=${project.id}`);
+        if (response.ok) {
+          const data = await response.json();
+          if (data.documents && Array.isArray(data.documents)) {
+            console.log("Fetched knowledge documents from DB:", data.documents);
 
-                    setKnowledgeDocuments([...dbDocs, ...(shouldShowMocks ? mockKnowledgeDocuments : [])]);
-                }
-            }
-        } catch (e) {
-            console.error("Failed to fetch knowledge documents", e);
+            const dbDocs: KnowledgeDocument[] = data.documents.map((doc: any) => ({
+              id: doc.kId,
+              name: doc.originalFileName,
+              type: (doc.documentType || 'other').toLowerCase() as KnowledgeDocument['type'],
+              description: "", // Description not currently stored in backend
+              uploadDate: new Date(doc.uploadedAt).toISOString().split('T')[0],
+              fileSize: "Unknown", // Size not currently stored in backend
+              fileType: doc.originalFileName.split('.').pop()?.toUpperCase() || 'DOCX'
+            }));
+
+            setKnowledgeDocuments([...dbDocs, ...(shouldShowMocks ? mockKnowledgeDocuments : [])]);
+          }
         }
+      } catch (e) {
+        console.error("Failed to fetch knowledge documents", e);
+      }
 
-        // 3. Fetch Reports (NEW)
-        try {
-            const response = await fetch(`/api/project/${project.id}/reports`);
-            if (response.ok) {
-                const data = await response.json();
-                if (data.reports && Array.isArray(data.reports)) {
-                    console.log("Fetched reports from DB:", data.reports);
-                    
-                    const normalizeStatus = (status: string) => {
-                        if (!status) return "Draft";
-                        const s = status.toUpperCase();
-                        if (s === "DRAFT") return "Draft";
-                        if (s === "UNDER_REVIEW" || s === "UNDER REVIEW") return "Under Review";
-                        if (s === "COMPLETED" || s === "COMPLETE") return "Completed";
-                        return status;
-                    };
+      // 3. Fetch Reports (NEW)
+      try {
+        const response = await fetch(`/api/project/${project.id}/reports`);
+        if (response.ok) {
+          const data = await response.json();
+          if (data.reports && Array.isArray(data.reports)) {
+            console.log("Fetched reports from DB:", data.reports);
 
-                    const dbReports: Report[] = data.reports.map((r: any) => ({
-                        id: r.reportId,
-                        title: r.title || "Untitled Report",
-                        date: new Date(r.updatedAt).toISOString().split('T')[0],
-                        status: normalizeStatus(r.status),
-                        engineer: "AI Assistant",
-                        inspector: "Current User", 
-                        reviewer: "Pending",
-                        photos: r.sections?.reduce((acc: number, s: any) => acc + (s.images?.length || 0), 0) || 0,
-                        observations: r.sections?.length || 0,
-                        project: project.name,
-                        projectId: project.id
-                    }));
+            const normalizeStatus = (status: string) => {
+              if (!status) return "Draft";
+              const s = status.toUpperCase();
+              if (s === "DRAFT") return "Draft";
+              if (s === "UNDER_REVIEW" || s === "UNDER REVIEW") return "Under Review";
+              if (s === "COMPLETED" || s === "COMPLETE") return "Completed";
+              return status;
+            };
 
-                    setReports([...dbReports, ...(shouldShowMocks ? mockReports : [])]);
-                }
-            }
-        } catch (e) {
-            console.error("Failed to fetch reports", e);
-        } finally {
-            setIsLoadingReports(false);
+            const dbReports: Report[] = data.reports.map((r: any) => ({
+              id: r.reportId,
+              title: r.title || "Untitled Report",
+              date: new Date(r.updatedAt).toISOString().split('T')[0],
+              status: normalizeStatus(r.status),
+              engineer: "AI Assistant",
+              inspector: "Current User",
+              reviewer: "Pending",
+              photos: r.sections?.reduce((acc: number, s: any) => acc + (s.images?.length || 0), 0) || 0,
+              observations: r.sections?.length || 0,
+              project: project.name,
+              projectId: project.id
+            }));
+
+            setReports([...dbReports, ...(shouldShowMocks ? mockReports : [])]);
+          }
         }
+      } catch (e) {
+        console.error("Failed to fetch reports", e);
+      } finally {
+        setIsLoadingReports(false);
+      }
     };
 
     fetchProjectData();
@@ -1200,13 +1213,13 @@ export function ProjectDetailPage({
 
   return (
     <div className="min-h-screen bg-slate-50">
-      <AppHeader 
-        currentPage="project" 
-        onNavigate={onNavigate} 
+      <AppHeader
+        currentPage="project"
+        onNavigate={onNavigate}
         onLogout={onLogout}
         pageTitle="Project"
       />
-      
+
       <main className="container mx-auto px-4 sm:px-6 py-4 sm:py-8 max-w-7xl">
         {/* Page Header */}
         <div className="mb-6 sm:mb-8">
@@ -1340,85 +1353,85 @@ export function ProjectDetailPage({
                   </div>
                 ) : (
                   <>
-                {/* Draft Reports */}
-                {reports.filter(r => r.status === "Draft").length > 0 && (
-                  <div>
-                    <div className="flex items-center gap-2 mb-3">
-                      <Clock className="w-4 h-4 text-theme-status-draft" />
-                      <h3 className="text-slate-900">Draft</h3>
-                      <Badge variant="secondary" className="rounded-md ml-auto">
-                        {reports.filter(r => r.status === "Draft").length}
-                      </Badge>
-                    </div>
-                    <div className="space-y-1.5 sm:space-y-2 max-h-[500px] overflow-y-auto">
-                      {reports.filter(r => r.status === "Draft").map((report) => (
-                        <ReportCard 
-                          key={report.id} 
-                          report={report}
-                          onClick={() => onSelectReport(report.id)}
-                        />
-                      ))}
-                    </div>
-                  </div>
-                )}
+                    {/* Draft Reports */}
+                    {reports.filter(r => r.status === "Draft").length > 0 && (
+                      <div>
+                        <div className="flex items-center gap-2 mb-3">
+                          <Clock className="w-4 h-4 text-theme-status-draft" />
+                          <h3 className="text-slate-900">Draft</h3>
+                          <Badge variant="secondary" className="rounded-md ml-auto">
+                            {reports.filter(r => r.status === "Draft").length}
+                          </Badge>
+                        </div>
+                        <div className="space-y-1.5 sm:space-y-2 max-h-[500px] overflow-y-auto">
+                          {reports.filter(r => r.status === "Draft").map((report) => (
+                            <ReportCard
+                              key={report.id}
+                              report={report}
+                              onClick={() => onSelectReport(report.id)}
+                            />
+                          ))}
+                        </div>
+                      </div>
+                    )}
 
-                {/* Under Review Reports */}
-                {reports.filter(r => r.status === "Under Review").length > 0 && (
-                  <div>
-                    <div className="flex items-center gap-2 mb-3">
-                      <AlertCircle className="w-4 h-4 text-theme-status-review" />
-                      <h3 className="text-slate-900">Under Review</h3>
-                      <Badge variant="secondary" className="rounded-md ml-auto">
-                        {reports.filter(r => r.status === "Under Review").length}
-                      </Badge>
-                    </div>
-                    <div className="space-y-1.5 sm:space-y-2 max-h-[500px] overflow-y-auto">
-                      {reports.filter(r => r.status === "Under Review").map((report) => (
-                        <ReportCard 
-                          key={report.id} 
-                          report={report}
-                          onClick={() => onSelectReport(report.id)}
-                        />
-                      ))}
-                    </div>
-                  </div>
-                )}
+                    {/* Under Review Reports */}
+                    {reports.filter(r => r.status === "Under Review").length > 0 && (
+                      <div>
+                        <div className="flex items-center gap-2 mb-3">
+                          <AlertCircle className="w-4 h-4 text-theme-status-review" />
+                          <h3 className="text-slate-900">Under Review</h3>
+                          <Badge variant="secondary" className="rounded-md ml-auto">
+                            {reports.filter(r => r.status === "Under Review").length}
+                          </Badge>
+                        </div>
+                        <div className="space-y-1.5 sm:space-y-2 max-h-[500px] overflow-y-auto">
+                          {reports.filter(r => r.status === "Under Review").map((report) => (
+                            <ReportCard
+                              key={report.id}
+                              report={report}
+                              onClick={() => onSelectReport(report.id)}
+                            />
+                          ))}
+                        </div>
+                      </div>
+                    )}
 
-                {/* Completed Reports */}
-                {reports.filter(r => r.status === "Completed").length > 0 && (
-                  <div>
-                    <div className="flex items-center gap-2 mb-3">
-                      <CheckCircle2 className="w-4 h-4 text-theme-status-complete" />
-                      <h3 className="text-slate-900">Completed</h3>
-                      <Badge variant="secondary" className="rounded-md ml-auto">
-                        {reports.filter(r => r.status === "Completed").length}
-                      </Badge>
-                    </div>
-                    <div className="space-y-1.5 sm:space-y-2 max-h-[500px] overflow-y-auto">
-                      {reports.filter(r => r.status === "Completed").map((report) => (
-                        <ReportCard 
-                          key={report.id} 
-                          report={report}
-                          onClick={() => onSelectReport(report.id)}
-                        />
-                      ))}
-                    </div>
-                  </div>
-                )}
+                    {/* Completed Reports */}
+                    {reports.filter(r => r.status === "Completed").length > 0 && (
+                      <div>
+                        <div className="flex items-center gap-2 mb-3">
+                          <CheckCircle2 className="w-4 h-4 text-theme-status-complete" />
+                          <h3 className="text-slate-900">Completed</h3>
+                          <Badge variant="secondary" className="rounded-md ml-auto">
+                            {reports.filter(r => r.status === "Completed").length}
+                          </Badge>
+                        </div>
+                        <div className="space-y-1.5 sm:space-y-2 max-h-[500px] overflow-y-auto">
+                          {reports.filter(r => r.status === "Completed").map((report) => (
+                            <ReportCard
+                              key={report.id}
+                              report={report}
+                              onClick={() => onSelectReport(report.id)}
+                            />
+                          ))}
+                        </div>
+                      </div>
+                    )}
 
-                {reports.length === 0 && (
-                  <div className="text-center py-12">
-                    <FileText className="w-12 h-12 text-slate-300 mx-auto mb-4" />
-                    <p className="text-slate-600 mb-4">No reports yet</p>
-                    <Button 
-                      onClick={() => setIsNewReportModalOpen(true)}
-                      className="bg-theme-action-primary hover:bg-theme-action-primary-hover text-white rounded-lg"
-                    >
-                      <Plus className="w-4 h-4 mr-2" />
-                      Create First Report
-                    </Button>
-                  </div>
-                )}
+                    {reports.length === 0 && (
+                      <div className="text-center py-12">
+                        <FileText className="w-12 h-12 text-slate-300 mx-auto mb-4" />
+                        <p className="text-slate-600 mb-4">No reports yet</p>
+                        <Button
+                          onClick={() => setIsNewReportModalOpen(true)}
+                          className="bg-theme-action-primary hover:bg-theme-action-primary-hover text-white rounded-lg"
+                        >
+                          <Plus className="w-4 h-4 mr-2" />
+                          Create First Report
+                        </Button>
+                      </div>
+                    )}
                   </>
                 )}
               </CardContent>
@@ -1564,12 +1577,12 @@ export function ProjectDetailPage({
                 )}
 
                 {/* Upload Progress Indicator */}
-                <UploadProgress 
-                    progress={uploadProgress} 
-                    label="Uploading photos..." 
-                    isUploading={isUploading} 
+                <UploadProgress
+                  progress={uploadProgress}
+                  label="Uploading photos..."
+                  isUploading={isUploading}
                 />
-                
+
                 {photoFolders.length > 0 ? (
                   <PhotoFolderView
                     folders={filteredFolders}
@@ -1621,12 +1634,12 @@ export function ProjectDetailPage({
                 </Button>
               </CardHeader>
               <CardContent>
-                <UploadProgress 
-                    progress={knowledgeUploadProgress} 
-                    label="Processing document (chunking & embedding)..." 
-                    isUploading={isKnowledgeUploading} 
+                <UploadProgress
+                  progress={knowledgeUploadProgress}
+                  label="Processing document (chunking & embedding)..."
+                  isUploading={isKnowledgeUploading}
                 />
-                
+
                 {knowledgeDocuments.length > 0 ? (
                   <div className="space-y-3">
                     {knowledgeDocuments.map((doc) => (

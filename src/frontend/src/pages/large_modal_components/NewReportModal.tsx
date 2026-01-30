@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { Button } from "../ui_components/button";
 import { Input } from "../ui_components/input";
 import { Label } from "../ui_components/label";
@@ -26,11 +26,12 @@ import { Separator } from "../ui_components/separator";
 import { SecureImage } from "../smart_components/SecureImage";
 import { PhotoFolderView } from "../smart_components/PhotoFolderView";
 import { Photo, PhotoFolder, ReportTemplate } from "@/frontend/types";
-import { 
-  Camera, 
-  ChevronRight, 
-  ChevronLeft, 
-  Sparkles, 
+import { REPORT_TEMPLATES } from "@/frontend/types/report_template_types";
+import {
+  Camera,
+  ChevronRight,
+  ChevronLeft,
+  Sparkles,
   Plus,
   X,
   GripVertical,
@@ -45,7 +46,7 @@ import {
   AlertTriangle,
   Briefcase,
   FlaskConical,
-  TrendingUp
+  TrendingUp,
 } from "lucide-react";
 
 
@@ -67,12 +68,12 @@ interface NewReportModalProps {
 }
 
 // ============================================================================
-// REPORT TEMPLATES - Fetched from Backend
+// REPORT TEMPLATES - From frontend types (report_template_types.ts)
 // ============================================================================
 
 export function NewReportModal({ open, onOpenChange, projectName, onCreateReport, photos, folders }: NewReportModalProps) {
   const [step, setStep] = useState(1);
-  const [templates, setTemplates] = useState<ReportTemplate[]>([]);
+  const [templates] = useState<ReportTemplate[]>(REPORT_TEMPLATES);
   const [selectedTemplate, setSelectedTemplate] = useState<string | null>(null);
   const [title, setTitle] = useState("");
   const [selectedPhotoIds, setSelectedPhotoIds] = useState<string[]>([]);
@@ -82,27 +83,6 @@ export function NewReportModal({ open, onOpenChange, projectName, onCreateReport
   const [reportWorkflow, setReportWorkflow] = useState("AUTHOR");
   const [processingMode, setProcessingMode] = useState<"TEXT_ONLY" | "IMAGE_AND_TEXT">("IMAGE_AND_TEXT");
   const [draggedPhoto, setDraggedPhoto] = useState<string | null>(null);
-
-  // Fetch templates on mount
-  useEffect(() => {
-    async function fetchTemplates() {
-      try {
-        const response = await fetch("/api/report/templates");
-        if (response.ok) {
-          const data = await response.json();
-          // Map string icons back to components if needed, or update Type
-          const mappedTemplates = data.map((t: any) => ({
-            ...t,
-            icon: t.icon === "ClipboardList" ? ClipboardList : FileText // Simple mapper for now
-          }));
-          setTemplates(mappedTemplates);
-        }
-      } catch (error) {
-        console.error("Failed to fetch templates:", error);
-      }
-    }
-    fetchTemplates();
-  }, []);
 
   // Get the selected template object
   const template = templates.find(t => t.id === selectedTemplate);

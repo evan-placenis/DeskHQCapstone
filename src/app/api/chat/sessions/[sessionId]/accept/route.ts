@@ -1,7 +1,7 @@
 //POST (Accept Suggestion)
 
 import { NextResponse } from 'next/server';
-import {Container} from '@/backend/config/container'
+import { Container } from '@/backend/config/container'
 import { createAuthenticatedClient } from "@/app/api/utils";
 
 export async function POST(
@@ -11,7 +11,7 @@ export async function POST(
     try {
         // We expect the messageId in the body so we know WHICH suggestion to accept
         const { messageId } = await req.json();
-        
+
         const chatService = Container.chatService
 
         // Authenticate

@@ -1,294 +1,322 @@
 import { ReportRepository } from "../domain/interfaces/ReportRepository";
 import { ProjectRepository } from "../domain/interfaces/ProjectRepository";
-import { AgentFactory } from "../AI_Strategies/factory/AgentFactory";
+import { ReportOrchestrator } from "../AI_Skills/orchestrators/ReportOrchestrator";
 import { Report } from "../domain/reports/report.types";
-import { DataSerializer } from "../AI_Strategies/ChatSystem/adapter/serializer"; // 🟢 Imported DataSerializer
-import { StreamEvent } from "../AI_Strategies/strategies/interfaces";
-
 import { SupabaseClient } from "@supabase/supabase-js";
 import { v4 as uuidv4 } from 'uuid';
+
+/**
+ * 🆕 NEW ReportService using AI-SDK with Skills
+ * 
+ * This version uses the AI-SDK ReportOrchestrator which leverages:
+ * - streamText from 'ai' package
+ * - Skills-based tools (reportSkills, visionSkills, researchSkills)
+ * - ModelStrategy for provider selection
+ * 
+ * Key differences from old version:
+ * - Uses AI-SDK streamText instead of custom workflow classes
+ * - Returns streaming result instead of completed Report
+ * - Integrates with skills for report generation
+ */
 export class ReportService {
 
     private reportRepo: ReportRepository;
     private projectRepo: ProjectRepository;
-    private agentFactory: AgentFactory;
+    private reportOrchestrator: ReportOrchestrator;
 
-    constructor(reportRepo: ReportRepository, projectRepo: ProjectRepository, agentFactory: AgentFactory) {
+    constructor(
+        reportRepo: ReportRepository,
+        projectRepo: ProjectRepository,
+        reportOrchestrator: ReportOrchestrator
+    ) {
         this.reportRepo = reportRepo;
         this.projectRepo = projectRepo;
-        this.agentFactory = agentFactory;
+        this.reportOrchestrator = reportOrchestrator;
     }
 
     /**
-     * 🚀 GENERATE: The "Magic Button" function.
-     * Orchestrates: DB Fetch -> AI Workflow -> DB Save
+     * 🚀 GENERATE: The "Magic Button" function using AI-SDK
+     * 
+     * This method:
+     * 1. Fetches project data
+     * 2. Builds initial messages for report generation
+     * 3. Calls AI-SDK orchestrator with report skills
+     * 4. Returns streaming result (caller handles saving)
+     * 
+     * Note: The caller (route handler) should:
+     * - Stream the response to the frontend
+     * - Collect the final report structure
+     * - Save it using saveReport method
      */
-    public async generateNewReport(
+    public async generateReportStream(
         projectId: string,
-        input: {
-            reportType: string;    // 'OBSERVATION'
-            reportWorkflow: string; // 'DISPATCHER', "AUTHOR", "BLACKBOARD", "ASSEMBLY", "BASIC"
-            modelName: string;     // 'GPT'
-            modeName: string;      // 'IMAGE_AND_TEXT'
-            selectedImageIds: string[];
-            templateId: string;
-            sections?: any[];      // Custom sections from frontend
-        },
+        input: any, // normalized input
         client: SupabaseClient,
-        onStream?: (event: StreamEvent) => void // 🟢 Added Streaming Callback
-    ): Promise<Report> {
+        userId: string
+    ) {
+        console.log(`⚙️ Service: Starting AI-SDK generation for Project ${projectId}`);
 
-        console.log(`⚙️ Service: Starting generation for Project ${projectId}`);
+        // 1. Fetch Template from DB (No more hardcoded strings!)
+        const template = await this.reportRepo.getTemplateById(input.reportType, client);
+        if (!template) throw new Error(`Template ${input.reportType} not found.`);
 
-        // 1. Fetch the Project Data (The Context)
-        const project = await this.projectRepo.getById(projectId, client);
-        if (!project) throw new Error("Project not found");
-
-        // 2. Build the Workflow using our Factory INSTANCE
-        const workflow = this.agentFactory.createWorkflow(
-            input.reportWorkflow,
-            input.modelName,
-            input.modeName
+        // 2. Create the "Parent" Report Header (The Draft)
+        const draftReport = await this.createDraftReport(
+            projectId,
+            userId,
+            input.reportType,
+            input.templateId || '',
+            client
         );
 
-        // 3. Run the AI Workflow
-        // (This runs: Collect -> RAG -> Agent -> Builder)
-        const newReport = await workflow.generateReport(project, {
-            selectedImageIds: input.selectedImageIds,
-            templateId: input.templateId,
-            userDefinedGroups: input.sections, // Pass custom sections here
-            writingMode: input.sections && input.sections.length > 0 ? 'USER_DEFINED' : 'AI_DESIGNED',
-            userId: (await client.auth.getUser()).data.user?.id,
-            onStream: onStream // 🟢 Pass callback to workflow
+       // 1. Prepare the Dynamic Context from DB
+        const dbContext = `
+        ${template.system_prompt}
+
+        REPORT STRUCTURE RULES:
+        ${template.structure_instructions}
+
+        Project ID: ${projectId}
+        Draft Report ID: ${draftReport.reportId}
+        `;
+
+        // 2. Prepare the User Goal
+        const userMessage = {
+        role: 'user' as const,
+        content: template.user_prompt
+        };
+
+
+        // Normalize input - ensure arrays are defined
+        const normalizedInput = {
+            ...input,
+            selectedImageIds: input.selectedImageIds || [],
+            sections: input.sections || [],
+            templateId: input.templateId || ''
+        };
+// Filter out any messages with empty/undefined content
+
+        // 3. Call AI-SDK Orchestrator
+        const provider = (normalizedInput.modelName?.toLowerCase() || 'grok') as 'grok' | 'gemini' | 'claude';
+
+        const streamResult = await this.reportOrchestrator.generateStream({
+            messages: [userMessage], // Only User message here
+            context: dbContext,      // Pass DB prompt as a separate param
+            projectId,
+            userId,
+            reportType: normalizedInput.reportType,
+            provider,
+            draftReportId: draftReport.reportId, // Pass draft report ID to orchestrator
+            selectedImageIds: normalizedInput.selectedImageIds,
+            client
         });
 
-        // 4. Save the result to the Database
-        await this.reportRepo.save(newReport, client);
-
-        console.log(`✅ Service: Report ${newReport.reportId} saved.`);
-        return newReport;
+        // Return the stream result AND draft report ID - the route handler will process it
+        return { streamResult, draftReportId: draftReport.reportId };
     }
 
-    public async getReportById(reportId: string, client: SupabaseClient): Promise<Report | null> {
-        const report = await this.reportRepo.getById(reportId, client);
-        if (!report) return null;
+    /**
+      * saveReport (Finalize)
+      * Call this when the AI 'submit_report' tool is triggered or the user clicks "Save".
+      */
+    public async saveReport(reportId: string, client: SupabaseClient): Promise<Report> {
+        console.log(`🏁 Finalizing Report: ${reportId}`);
 
-        // 🟢 Ensure all sections have IDs (for backward compatibility with old reports)
-        let idsAdded = false;
-        const ensureSectionIds = (sections: any[]): void => {
-            sections.forEach(section => {
-                if (!section.id) {
-                    section.id = uuidv4();
-                    idsAdded = true;
-                }
-                if (section.children && Array.isArray(section.children)) {
-                    ensureSectionIds(section.children);
-                }
-            });
-        };
-        ensureSectionIds(report.reportContent);
+        // 1. Fetch all the "Chunks" (Markdown rows) we've been saving
+        const sections = await this.reportRepo.getSectionsByReportId(reportId, client);
 
-        // If we added IDs, save the report to persist them
-        if (idsAdded) {
-            await this.reportRepo.update(report, client);
-            console.log(`🆔 Added missing IDs to report ${reportId} and saved`);
+        if (!sections || sections.length === 0) {
+            throw new Error("Cannot save report: No sections found.");
         }
 
-        // Hydrate images
-        const imageIds = new Set<string>();
+        // 2. Stitch the chunks into the final Markdown for Tiptap
+        const finalMarkdown = this.compileMarkdown(sections);
 
-        // Helper to collect IDs from nested structure
-        const collectIds = (items: any[]) => {
-            items.forEach(item => {
-                if (item.images && Array.isArray(item.images)) {
-                    item.images.forEach((ref: any) => {
-                        const id = typeof ref === 'string' ? ref : ref.imageId;
-                        if (id) imageIds.add(id);
-                    });
-                }
-                if (item.children && Array.isArray(item.children)) {
-                    collectIds(item.children);
-                }
-            });
+        // 3. Update the main 'reports' header table
+        const report = await this.reportRepo.getById(reportId, client);
+        if (!report) throw new Error("Report header not found");
+
+        report.tiptapContent = finalMarkdown;
+        report.updatedAt = new Date();
+        report.versionNumber++;
+
+        // 4. Save the finalized header back to the DB
+        await this.reportRepo.update(report, client);
+
+        // // 5. Create a version snapshot for history
+        // await this.createVersionSnapshot(report, client);
+
+        console.log(`✅ Report ${reportId} is now FINAL and searchable.`);
+        return report;
+    }
+
+
+    /**
+     * Create a draft report early in the generation process (the header)
+     * This allows the AI to write sections incrementally and reference them
+     */
+    public async createDraftReport(
+        projectId: string,
+        userId: string,
+        reportType: string,
+        templateId: string,
+        client: SupabaseClient
+    ): Promise<Report> {
+        const draftReport: Report = {
+            reportId: uuidv4(),
+            projectId,
+            title: `${reportType} Report (Draft)`,
+            reportContent: [],
+            status: 'DRAFT',
+            createdAt: new Date(),
+            updatedAt: new Date(),
+            templateId: templateId || '',
+            versionNumber: 1,
+            createdBy: userId,
+            tiptapContent: undefined,
+            isReviewRequired: true
         };
-        collectIds(report.reportContent);
 
-        if (imageIds.size > 0) {
-            // 1. Fetch Referenced Project Images (Base Data for URLs)
-            const { data: projectImages, error: piError } = await client
-                .from('project_images')
-                .select('id, public_url, storage_path, description')
-                .in('id', Array.from(imageIds));
+        await this.reportRepo.save(draftReport, client);
+        console.log(`📝 Service: Draft report ${draftReport.reportId} created.`);
+        return draftReport;
+    }
 
-            // 2. Fetch Report Images (Metadata/Overrides)
-            const { data: reportImages, error: riError } = await client
-                .from('report_images')
-                .select('image_id, caption, sort_order')
-                .eq('report_id', reportId)
-                .in('image_id', Array.from(imageIds));
+    /**
+     * Update a section in an existing report
+     * Used by updateSection skill for incremental writing
+     */
+    public async updateSectionInReport(
+        reportId: string,
+        sectionId: string,
+        heading: string,
+        content: string,
+        order: number,
+        client: SupabaseClient,
+        metadata: any = {},
+    ): Promise<void> {
+        // 1. Delegate DB work to the Infrastructure layer
+        await this.reportRepo.upsertSection(
+            reportId,
+            sectionId,
+            {
+                heading,
+                content: content || "", // Prioritize MD content
+                order,
+                metadata: metadata // Future-proofing for severity/tags
+            },
+            client
+        );
 
-            if (!piError && projectImages) {
-                const projectImageMap = new Map(projectImages.map(img => [img.id, img]));
-                const reportImageMap = new Map();
-                if (reportImages) {
-                    reportImages.forEach((row: any) => reportImageMap.set(row.image_id, row));
-                }
+        // 2. Keep the report header timestamp fresh
+        await this.reportRepo.touchReport(reportId, client);
 
-                // Helper to hydrate images in nested structure
-                const hydrateItems = (items: any[]) => {
-                    items.forEach(item => {
-                        if (item.images && Array.isArray(item.images)) {
-                            item.images = item.images.map((ref: any) => {
-                                const id = typeof ref === 'string' ? ref : ref.imageId;
-                                const pImg = projectImageMap.get(id);
-                                const rImg = reportImageMap.get(id);
+        console.log(`✅ Service: Section [${sectionId}] synced via Repository.`);
+    }
 
-                                if (pImg) {
-                                    return {
-                                        imageId: id,
-                                        caption: rImg?.caption || (typeof ref === 'object' ? ref.caption : "") || pImg.description,
-                                        orderIndex: rImg?.sort_order || (typeof ref === 'object' ? ref.orderIndex : 0),
-                                        url: pImg.public_url,
-                                        storagePath: pImg.storage_path,
-                                        description: pImg.description
-                                    };
-                                }
-                                return ref;
-                            });
-                        }
-                        if (item.children && Array.isArray(item.children)) {
-                            hydrateItems(item.children);
-                        }
-                    });
-                };
-                hydrateItems(report.reportContent);
-            }
+
+    // /**
+    //  * The "Stitcher": Compiles chunks into the final Markdown for Tiptap.
+    //  */
+    // public async finalizeReportMarkdown(reportId: string, client: SupabaseClient): Promise<string> {
+    //     // 1. Get structured chunks from Repo
+    //     const sections = await this.reportRepo.getSectionsByReportId(reportId, client);
+
+    //     // 2. Stitch them together (The "Hybrid" logic)
+    //     const markdown = sections.map((s: any) => {
+    //         const heading = `# ${s.heading}\n\n`;
+    //         // Clean up those literal \n issues during the stitch
+    //         const body = s.content?.replace(/\\n/g, '\n') || "";
+    //         return heading + body;
+    //     }).join('\n\n---\n\n');
+
+    //     // 3. Update the report header with the final compiled content
+    //     const report = await this.reportRepo.getById(reportId, client);
+    //     if (report) {
+    //         report.tiptapContent = markdown;
+    //         await this.reportRepo.update(report, client);
+    //     }
+
+    //     return markdown;
+    // }
+
+    /**
+     * 🟢 GET BY ID
+     * We now fetch the 'header' from the reports table 
+     * and the 'sections' from the new report_sections table.
+     */
+    public async getReportById(reportId: string, client: SupabaseClient): Promise<Report | null> {
+        // 1. Get the main report data from Repository
+        const report = await this.reportRepo.getById(reportId, client); //header
+        if (!report) return null;
+
+        // 2. Get the structured sections (The "Hybrid" Chunks)
+        const sections = await this.reportRepo.getSectionsByReportId(reportId, client); //sections/content
+
+        // 3. Map sections to the domain model
+        report.reportContent = sections.map((s: any) => ({
+            id: s.section_id,
+            title: s.heading,
+            description: s.content, // This is your Markdown!
+            order: s.order,
+            metadata: s.metadata
+        }));
+
+        // 4. If we have a Tiptap view already saved, use it. 
+        // Otherwise, stitch it on the fly.
+        if (!report.tiptapContent) {
+            report.tiptapContent = this.compileMarkdown(sections);
         }
 
         return report;
     }
+
+    /**
+     * 🤖 AI CONTEXT HELPER
+     * Chatbot can now find a specific section instantly without loading the whole report.
+     */
+    public async getSectionContextForAI(
+        reportId: string,
+        sectionId: string,
+        client: SupabaseClient
+    ): Promise<any> {
+        const section = await this.reportRepo.getSection(reportId, sectionId, client);
+        if (!section) throw new Error(`Section ${sectionId} not found.`);
+        return section;
+    }
+
+
 
     public async getReportsByProject(projectId: string, client: SupabaseClient): Promise<Report[]> {
         return await this.reportRepo.getByProject(projectId, client);
     }
 
     /**
-     * ✏️ EDIT: Called by User manually OR by ChatSystem (acceptSuggestion)
+     * 🛠️ PRIVATE HELPER: The "Stitcher"
      */
-    public async updateSectionContent(
-        projectId: string,
-        reportId: string,
-        sectionId: string,
-        newContent: string,
-        client: SupabaseClient
-    ): Promise<void> {
-        // 1. Fetch Report and section
-        const report = await this.reportRepo.getById(reportId, client);
-        if (!report) throw new Error("Report not found");
-        const section = report.reportContent.find(s => s.id === sectionId);
-        if (!section) throw new Error("Section not found");
+    private compileMarkdown(sections: any[]): string {
+        return sections.map(s => {
+            let md = "";
 
-        // 2. Snapshot (Version N)
-        await this.createVersionSnapshot(report, client);
-
-
-        // 3 Parse Markdown -> JSON
-        const updatedStructure = DataSerializer.markdownToSectionStructure(newContent);
-
-        // Update the section fields
-        if (updatedStructure) {
-            // 1. Update Title if present and changed
-            if (updatedStructure.title && updatedStructure.title !== section.title) {
-                section.title = updatedStructure.title; // Optional: Decide if AI can rename sections
+            // If you still want the Metadata/Severity badge, keep it here:
+            if (s.metadata?.severity) {
+                md += `> **Severity:** ${s.metadata.severity.toUpperCase()}\n\n`;
             }
 
-            // 2. Update Description (The main text)
-            if (updatedStructure.description !== undefined) {
-                section.description = updatedStructure.description;
-            }
+            const body = s.content?.replace(/\\n/g, '\n') || "";
+            md += s.heading + "\n\n" + body; //should not be hard coded (probably better to let Ai control)
 
-            // 3. Update Children/Subsections
-            if (updatedStructure.children) {
-                section.children = this.assignIdsToStructure(updatedStructure.children);
-            }
-        } else {
-            // Fallback if parser fails
-            section.description = newContent;
-        }
-
-        // section.isReviewRequired = false; // Property removed from MainSectionBlueprint
-
-        // 4. Save the new version
-        await this.reportRepo.update(report, client);
-
-        console.log(`📝 Saved Version ${report.versionNumber - 1} and updated report.`);
-    }
-
-    /**
-     * 🛡️ Helper: Walks the tree and ensures every node has an ID.
-     * Use this when accepting structure from AI/Markdown parsers.
-     */
-    private assignIdsToStructure(items: any[]): any[] {
-        return items.map(item => {
-            return {
-                ...item,
-                // If ID exists (from previous state), keep it. If new, generate it.
-                id: item.id || uuidv4(),
-                // Recursively handle grandchildren
-                children: item.children ? this.assignIdsToStructure(item.children) : []
-            };
-        });
-    }
-
-    /**
-     * 🤖 AI READ: Helper for Chatbot to "See" the section
-     * Call this BEFORE sending the prompt to the LLM.
-     */
-    public async getSectionContextForAI( //Not in chat service because ReportService owns the Data (fetching, parsing, serializing).
-        reportId: string,
-        sectionId: string,
-        client: SupabaseClient
-    ): Promise<any> {
-        const report = await this.reportRepo.getById(reportId, client);
-        if (!report) throw new Error("Report not found");
-
-        // Helper function to recursively search for section by ID
-        const findSectionById = (sections: any[], targetId: string): any => {
-            for (const section of sections) {
-                // Check if this section matches
-                if (section.id === targetId) {
-                    return section;
-                }
-                // Recursively search children (subsections)
-                if (section.children && Array.isArray(section.children)) {
-                    const found = findSectionById(section.children, targetId);
-                    if (found) return found;
-                }
-            }
-            return null;
-        };
-
-        const section = findSectionById(report.reportContent, sectionId);
-
-        if (!section) {
-            // Enhanced error message with debugging info
-            const availableIds = report.reportContent.map(s => s.id || '(no id)').join(', ');
-            console.error(`❌ Section not found. Looking for: ${sectionId}`);
-            console.error(`📋 Available section IDs: [${availableIds}]`);
-            console.error(`📊 Total sections: ${report.reportContent.length}`);
-            throw new Error(`Section not found. Section ID: ${sectionId}. Available IDs: [${availableIds}]`);
-        }
-
-        // 🟢 Return the full section object so the Serializer can process it
-        return section;
+            return md;
+        }).join('\n\n');
     }
 
 
+
+
     /**
-     * Helper to save a history snapshot
+     * Helper to save a history snapshot TODO
      */
     private async createVersionSnapshot(report: Report, client: SupabaseClient) {
-        // Snapshot the current state before changes
         try {
             const snapshot = JSON.stringify(report);
             await this.reportRepo.saveVersion(
@@ -297,11 +325,10 @@ export class ReportService {
                 snapshot,
                 client
             );
-            report.versionNumber++; // Increment current version
+            report.versionNumber++;
         } catch (error) {
             console.error("Error creating version snapshot:", error);
             throw error;
         }
-
     }
 }

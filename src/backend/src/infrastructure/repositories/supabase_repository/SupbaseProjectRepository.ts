@@ -11,7 +11,7 @@ export class SupabaseProjectRepository implements ProjectRepository {
      */
     async getById(projectId: string, client: SupabaseClient): Promise<Project | null> {
         const supabase = client;
-        
+
         // 1. Fetch Project
         const { data: projectData, error: projectError } = await supabase
             .from('projects')
@@ -26,10 +26,10 @@ export class SupabaseProjectRepository implements ProjectRepository {
             .from('project_images')
             .select('*')
             .eq('project_id', projectId);
-            
+
         // Map project first
         const project = this.mapToDomain(projectData);
-        
+
         // 3. Attach Images if found
         if (imageData && !imageError) {
             project.images = imageData.map(img => ({
@@ -85,7 +85,7 @@ export class SupabaseProjectRepository implements ProjectRepository {
                 created_by_user_id: project.metadata.createdByUserId,
                 created_date: project.metadata.createdDate,
                 // last_modified_date is auto-handled by DB Trigger, but we can force it if needed:
-                last_modified_date: project.metadata.lastModifiedDate, 
+                last_modified_date: project.metadata.lastModifiedDate,
 
                 // 3. Job Info (Flattened)
                 client_name: project.jobInfo.clientName,
@@ -143,7 +143,7 @@ export class SupabaseProjectRepository implements ProjectRepository {
             updatedAt: new Date(row.last_modified_date),
             metadata: metadata,
             jobInfo: jobInfo,
-            
+
             // Note: We initialize these as empty arrays.
             // If you need them, you would usually fetch them in separate repositories
             // (e.g. imageRepo.getByProject(id)) or use a Supabase join here.

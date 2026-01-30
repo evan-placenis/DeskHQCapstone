@@ -1,44 +1,23 @@
-import { defineConfig } from "@trigger.dev/sdk/v3";
-import dotenv from 'dotenv';
-import path from 'path';
-import fs from 'fs';
+import { defineConfig } from "@trigger.dev/sdk";
+import dotenv from "dotenv";
+import path from "path";
+import { fileURLToPath } from "url";
 
-// Robustly find .env file
-// We assume the command is run from 'capstone/src/backend' or 'capstone'
-// We look for the .env in the 'capstone' root.
-
-const findEnvFile = () => {
-  // 1. Try relative to __dirname (original approach, good for source)
-  let attempt = path.resolve(__dirname, '../../.env');
-  if (fs.existsSync(attempt)) return attempt;
-
-  // 2. Try relative to process.cwd() (good for when running the CLI)
-  // If cwd is capstone/src/backend -> ../../.env
-  attempt = path.resolve(process.cwd(), '../../.env');
-  if (fs.existsSync(attempt)) return attempt;
-  
-  // 3. Try relative to process.cwd() assuming cwd is root
-  attempt = path.resolve(process.cwd(), '.env');
-  if (fs.existsSync(attempt)) return attempt;
-
-  return null;
+// Load environment variables from .env file
+// Find .env file relative to the project root (capstone folder)
+let envPath: string;
+try {
+  // Try ES module approach first
+  const __filename = fileURLToPath(import.meta.url);
+  const __dirname = path.dirname(__filename);
+  envPath = path.resolve(__dirname, "../../.env");
+} catch {
+  // Fallback to CommonJS approach
+  envPath = path.resolve(process.cwd(), ".env");
 }
 
-const envPath = findEnvFile();
+dotenv.config({ path: envPath });
 
-if (envPath) {
-  console.log(`🔍 Loading .env from: ${envPath}`);
-  const result = dotenv.config({ path: envPath });
-  if (result.error) {
-    console.error(`❌ Error parsing .env file:`, result.error);
-  } else {
-    // Verify key variable
-    const hasKey = !!process.env.NEXT_PUBLIC_SUPABASE_URL;
-    console.log(`✅ Loaded .env. SUPABASE_URL present: ${hasKey}`);
-  }
-} else {
-  console.warn(`⚠️ .env file NOT found. Checked common locations relative to ${__dirname} and ${process.cwd()}`);
-}
 
 export default defineConfig({
   project: "proj_ayfhjrhjwghurkiagzvh",

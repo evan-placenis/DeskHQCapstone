@@ -72,6 +72,19 @@ export class SupabaseChatRepository implements ChatRepository {
         if (error) throw new Error(`Create Session Failed: ${error.message}`);
     }
 
+    // --- 2b. GET SESSION BY REPORT ID (find-or-create: avoid duplicate session when trigger already created one)
+    async getSessionByReportId(reportId: string, client: SupabaseClient): Promise<ChatSession | null> {
+        const { data, error } = await client
+            .from('chat_sessions')
+            .select('id')
+            .eq('report_id', reportId)
+            .limit(1)
+            .maybeSingle();
+
+        if (error || !data?.id) return null;
+        return this.getSessionById(data.id, client);
+    }
+
     // --- 3. ADD MESSAGE ---
     // Note: Your ChatRepository interface asks for (message: ChatMessage)
     async addMessage(sessionId: string, message: ChatMessage, client: SupabaseClient): Promise<void> {

@@ -8,7 +8,7 @@ export async function GET(
 ) {
     try {
         const { projectId } = await params;
-        
+
         // Authenticate
         const { user, supabase } = await createAuthenticatedClient();
         if (!user) {

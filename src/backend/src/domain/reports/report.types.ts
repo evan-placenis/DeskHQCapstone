@@ -2,79 +2,55 @@
 export interface Report {
     reportId: string;
     projectId: string;
-    templateId: string;      // Which structure did we use?
-    
+    templateId: string;
+
     title: string;
     status: 'DRAFT' | 'REVIEW' | 'FINAL';
     versionNumber: number;
-    
-    // The Core Content
-    reportContent: MainSectionBlueprint[]; // Legacy JSON structure
-    
-    // Tiptap-compatible content (Markdown string stored in JSONB)
-    tiptapContent?: string; // Markdown text that Tiptap can hydrate
-    
+
+    // ✅ NEW: The Hybrid Section Array
+    // Instead of deep nesting, this is a flat list of "Chunks"
+    reportContent: ReportSection[];
+
+    // Tiptap-compatible content (The stitched Markdown)
+    tiptapContent?: string;
+
     // Audit Trail
-    history?: ReportVersion[]; // Previous snapshots
-    createdBy: string;       // User ID who created this report
+    history?: ReportVersion[];
+    createdBy: string;
     createdAt: Date;
     updatedAt: Date;
     isReviewRequired: boolean;
-    
-}
-export type MainSectionBlueprint = {
-    id?: string; // 🟢 Added ID for editing stability
-    title: string;
-    description: string; 
-    required: boolean;
-    order: number;
-    children: SubSectionBlueprint[]; // Added optional images array for compatibility
-    _reasoning?: string,
-};
-
-export type SubSectionBlueprint = {
-    title: string;
-    description: string; 
-    required: boolean;
-    order: number;
-    children: bulletpointBlueprint[];
-    _reasoning?: string,
-};
-
-export type bulletpointBlueprint = {
-    point: string;
-    images: ReportImageReference[];
-};
-
-// // --- SECTIONS ---
-// export interface ReportSection {
-//     id?: string;             // Useful for React keys
-//     sectionTitle: string;    // e.g., "3.1 Site Observations"
-//     content: string;         // Markdown or HTML text from AI (Legacy/Simple)
-//     isReviewRequired: boolean;
-//     order: number;
-    
-//     // Images specifically referenced in THIS paragraph
-//     images: ReportImageReference[]; 
-// }
-
-export interface ReportImageReference {
-    imageId: string;         // Links back to the Image in Project domain
-    caption: string;         // AI generated caption specific to this context
-    orderIndex: number;      // 0, 1, 2... for layout ordering
-    // Hydrated fields
-    url?: string;
-    description?: string;
-    storagePath?: string;
 }
 
+// --- ✅ NEW: The "Hybrid" Section Type ---
+// This perfectly matches your 'report_sections' table
+export interface ReportSection {
+    id: string;              // Matches section_id
+    title: string;           // Matches heading
+    description: string;     // Matches content (The Markdown body)
+    order: number;
 
+    // 🛡️ The field your Service was complaining about
+    metadata?: ReportSectionMetadata;
+
+    // Optional: Keep for UI state if you have "expand/collapse" in the sidebar
+    // But we don't store data here anymore.
+    isExpanded?: boolean;
+}
+
+// Flexible metadata for your "Business Logic"
+export interface ReportSectionMetadata {
+    severity?: 'critical' | 'major' | 'minor' | 'info';
+    status?: 'compliant' | 'non-compliant' | 'not-inspected';
+    tags?: string[];
+    [key: string]: any; // Allow any other custom fields
+}
 
 // --- HISTORY / VERSIONING ---
 export interface ReportVersion {
     versionNumber: number;
     savedAt: Date;
     savedByUserId: string;
-    // A full JSON string of the 'Report' object at that time
-    snapshotJson: string;    
+    snapshotJson: string;
 }
