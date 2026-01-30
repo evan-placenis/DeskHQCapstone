@@ -1,43 +1,59 @@
 import { ChatRepository } from "../domain/interfaces/ChatRepository";
-import { ChatOrchestrator } from "../AI_Strategies/ChatSystem/core/ChatOrchestrator";
+import { ChatOrchestrator } from "../AI_Skills/orchestrators/ChatOrchestrator";
 import { ChatSession, ChatMessage } from "../domain/chat/chat.types";
 import { v4 as uuidv4 } from 'uuid';
 import { ReportService } from "./ReportService";
-
 import { SupabaseClient } from "@supabase/supabase-js";
 
+/**
+ * 🆕 NEW ChatService using AI-SDK with Skills
+ * 
+ * This version uses the AI-SDK ChatOrchestrator which leverages:
+ * - streamText from 'ai' package
+ * - Skills-based tools (knowledgeSkills, researchSkills)
+ * - ModelStrategy for provider selection
+ * 
+ * Key differences from old version:
+ * - Uses AI-SDK streamText instead of custom agent chain
+ * - Handles streaming responses
+ * - Integrates with reportSkills when report context is available
+ */
 export class ChatService {
 
     // Dependencies
     private repo: ChatRepository;
-    private ChatOrchestrator: ChatOrchestrator;
+    private chatOrchestrator: ChatOrchestrator;
     private reportService: ReportService;
 
-    constructor(repo: ChatRepository, reportService: ReportService, ChatOrchestrator: ChatOrchestrator) {
+    constructor(repo: ChatRepository, reportService: ReportService, chatOrchestrator: ChatOrchestrator) {
         this.repo = repo;
-        this.ChatOrchestrator = ChatOrchestrator;
+        this.chatOrchestrator = chatOrchestrator;
         this.reportService = reportService;
     }
 
     /**
-     * The Main Function: Handles the full loop
+     * The Main Function: Handles the full loop using AI-SDK
+     * 
+     * This method:
+     * 1. Saves user message
+     * 2. Fetches report context if available
+     * 3. Calls AI-SDK orchestrator with skills
+     * 4. Processes streaming response
+     * 5. Saves AI message
      */
     public async handleUserMessage(
         sessionId: string,
         userText: string,
         client: SupabaseClient,
-        activeSectionId?: string, // 👈 New Optional Param: Is the user looking at a specific section?
-        reportId?: string // 🟢 New Optional Param: Fallback if session doesn't have it
+        activeSectionId?: string,
+        reportId?: string,
+        provider: 'grok' | 'gemini' | 'claude' = 'grok'
     ): Promise<ChatMessage> {
 
-        // console.log(`🤖 ChatService: Handling message for session ${sessionId}`);
-        // console.log(`📍 Active Section ID:`, activeSectionId || "None");
-
-        // 1. Fetch Session
+        // 1. Fetch Session and Save USER Message
         const session = await this.repo.getSessionById(sessionId, client);
         if (!session) throw new Error("Session not found");
 
-        // 2. Save USER Message
         const userMsg: ChatMessage = {
             messageId: uuidv4(),
             sessionId: sessionId,
@@ -48,15 +64,11 @@ export class ChatService {
         await this.repo.addMessage(sessionId, userMsg, client);
         await this.repo.updateSessionTimestamp(sessionId, new Date(), client);
 
-        // 3. 🔍 FETCH CONTEXT (The "Glue")
-        // If the user is currently editing a specific section, the AI needs to "see" it.
-        let reportContext = "";
-
-        // Use session.reportId OR the passed reportId
+        // 2. 🔍 FETCH HYBRID CONTEXT
+        let reportContext: any = null;
         const targetReportId = session.reportId || reportId;
 
         if (targetReportId && activeSectionId) {
-            // Fetch section context when both reportId and sectionId are available
             try {
                 reportContext = await this.reportService.getSectionContextForAI(
                     targetReportId,
@@ -66,56 +78,99 @@ export class ChatService {
             } catch (error) {
                 console.error(`⚠️ Failed to fetch section context:`, error);
             }
-        } else {
-            console.log(`⚠️ No context fetched. ReportId: ${targetReportId}, SectionId: ${activeSectionId}`);
         }
 
-        // 4. Ask the AI 🧠
-        // We pass the new 'reportContext' string to the Agent
-        const aiMsg = await this.ChatOrchestrator.processUserMessage(
-            session,
-            userText,
-            reportContext
-        );
+        // 3. Build System Message
+        let systemMessage: string | undefined = undefined;
+        if (reportContext) {
+            const contextText = this.sectionToText(reportContext);
+            systemMessage = `You are helping edit a report section titled "${reportContext.heading}". 
+            Current content:\n\n${contextText}\n\n
+            If the user asks for changes, use the 'updateSection' tool to suggest the new Markdown.`;
+        }
 
-        // 5. Save AI Message
+        // 4. Call Orchestrator
+        const streamResult = await this.chatOrchestrator.generateStream({
+            messages: session.messages.slice(-10).map(m => ({
+                role: m.sender === 'USER' ? 'user' : 'assistant',
+                content: m.content
+            })).concat([{ role: 'user', content: userText }]),
+            provider,
+            projectId: session.projectId,
+            userId: session.userId,
+            systemMessage,
+            client
+        });
+
+        /// 5. Process Stream
+        let fullText = '';
+        for await (const chunk of streamResult.textStream) {
+            fullText += chunk;
+        }
+
+        // 6. Check for Suggestions (Tool Calls)
+        const result = await streamResult;
+        let suggestion: any = undefined;
+
+
+        if (result.toolCalls && activeSectionId) {
+            const toolCalls = await result.toolCalls;
+
+            const updateCall = toolCalls.find((c: any) => c.toolName === 'updateSection') as any;
+            if (updateCall && updateCall.args) {
+                suggestion = {
+                    targetSectionId: activeSectionId,
+                    originalText: this.sectionToText(reportContext),
+                    suggestedText: updateCall.args.content, // Use content from hybrid schema
+                    reason: "AI suggested edit",
+                    status: 'PENDING'
+                };
+            }
+        }
+
+        // 7. Save AI Message
+        const aiMsg: ChatMessage = {
+            messageId: uuidv4(),
+            sessionId: sessionId,
+            sender: 'AI',
+            content: fullText,
+            suggestion,
+            timestamp: new Date()
+        };
         await this.repo.addMessage(sessionId, aiMsg, client);
-
         return aiMsg;
     }
 
-
-
     /**
-     * LOGIC: User clicked "Accept" on the UI. 
-     * We must apply the AI's fix to the real Report.
+     * ✅ UPDATED: Apply AI suggestion to the Hybrid database
      */
     public async acceptSuggestion(sessionId: string, messageId: string, client: SupabaseClient): Promise<void> {
-
-        // 1. Validation Logic
         const session = await this.repo.getSessionById(sessionId, client);
-        if (!session) throw new Error("Session not found");
-        if (!session.reportId) throw new Error("No report linked to this chat");
+        if (!session?.reportId) throw new Error("Context missing");
 
         const message = session.messages.find(m => m.messageId === messageId);
-        if (!message || !message.suggestion) throw new Error("Suggestion not found");
+        if (!message?.suggestion) throw new Error("No suggestion found");
 
-        // 2. 📞 CALL THE REPORT SERVICE
-        // "Hey ReportService, please update this section for me."
-        await this.reportService.updateSectionContent(
-            session.projectId,
+        // 1. Fetch current section to preserve 'order' and 'metadata'
+        const existing = await this.reportService.getSectionContextForAI(
             session.reportId,
             message.suggestion.targetSectionId,
-            message.suggestion.suggestedText,
             client
         );
 
-        // 3. Update Chat Status
-        message.suggestion.status = 'ACCEPTED';
-        // await this.repo.updateMessage(message); (Implement this in your repo)
+        // 2. Apply the update using the new 7-argument signature
+        await this.reportService.updateSectionInReport(
+            session.reportId,                 // 1. reportId
+            message.suggestion.targetSectionId, // 2. sectionId
+            existing.heading,                 // 3. heading (preserve original)
+            message.suggestion.suggestedText,  // 4. content (the AI fix)
+            existing.order || 0,              // 5. order
+            client,                           // 6. client
+            existing.metadata || {}           // 7. metadata (preserve severity/status)
+        );
 
-        // 3. CRITICAL: Persist the status change to the DB
-        // You need to implement updateMessage in your repo
+        // 3. Update status in chat history
+        message.suggestion.status = 'ACCEPTED';
         await this.repo.updateMessage(message, client);
     }
 
@@ -135,5 +190,21 @@ export class ChatService {
 
         await this.repo.createSession(newSession, client);
         return newSession;
+    }
+
+    /*
+     * ✅ HYBRID SIMPLIFIED: Extracts raw markdown for the AI to read.
+     * We no longer need to loop through 'children' because the 
+     * Markdown string in 'content' already contains the full text.
+     */
+    private sectionToText(section: any): string {
+        if (!section) return '';
+
+        // In the new schema, 'content' is the source of truth for the text
+        const body = section.content || '';
+
+        // We provide the heading as a reference so the AI knows the context,
+        // but we label it clearly so the AI doesn't think it's part of the editable body
+        return `SECTION TITLE: ${section.heading}\n\n${body}`.trim();
     }
 }

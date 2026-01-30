@@ -1,6 +1,6 @@
 import { grokClient } from '../infrastructure/llm/grokClient'; // The "Phone Line"
 import { GrokAgent } from '../AI_Strategies/strategies/LLM/Grok'; // The "Conversation" Logic
-import { AgentExecutionContext } from '../AI_Strategies/strategies/interfaces'
+import { AgentExecutionContext } from '../AI_Skills/llm/interfaces'
 import { Project } from '../domain/core/project.types';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -19,7 +19,7 @@ async function testGrokStrategy() {
         const mockProject: Project = {
             projectId: "proj-skylark-7",
             organizationId: "org-001",
-            name: "Project Skylark-7", 
+            name: "Project Skylark-7",
             status: "ACTIVE",
             metadata: {
                 createdDate: new Date(),
@@ -54,7 +54,7 @@ async function testGrokStrategy() {
 
         // 3. Execute
         const response = await strategy.generateContent(systemPrompt, userMessage, mockContext);
-        
+
         // 4. Output
         console.log(`\n${GREEN}✔ SUCCESS! Grok Strategy replied:${RESET}`);
         console.log("---------------------------------------------------");

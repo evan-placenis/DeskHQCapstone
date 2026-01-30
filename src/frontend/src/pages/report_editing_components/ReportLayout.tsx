@@ -87,6 +87,7 @@ export function ReportLayout({
   useTiptap = false,
 }: ReportLayoutProps) {
   const [sessionId, setSessionId] = useState<string | null>(null);
+  const [initialChatMessages, setInitialChatMessages] = useState<Array<{ sender: string; content: string }>>([]);
   const [pendingChange, setPendingChange] = useState<PendingChange | null>(null);
   const [diffContent, setDiffContent] = useState<string | null>(null); // For inline diff in TiptapEditor
   const [isSelectionMode, setIsSelectionMode] = useState(false);
@@ -119,6 +120,9 @@ export function ReportLayout({
           if (res.ok) {
             const sessionData = await res.json();
             setSessionId(sessionData.sessionId || sessionData.session?.sessionId);
+            if (Array.isArray(sessionData.messages) && sessionData.messages.length > 0) {
+              setInitialChatMessages(sessionData.messages.map((m: { sender: string; content: string }) => ({ sender: m.sender, content: m.content })));
+            }
           } else {
             const errorData = await res.json().catch(() => ({ error: "Unknown error" }));
             console.error("Failed to create session:", errorData);
@@ -234,6 +238,7 @@ export function ReportLayout({
         projectId={projectId != null ? String(projectId) : undefined}
         reportId={reportId != null ? String(reportId) : undefined}
         sessionId={sessionId}
+        initialMessages={initialChatMessages}
         activeSectionId={activeSectionId ? String(activeSectionId) : undefined}
         isCollapsed={isChatCollapsed}
         width={chatWidth}

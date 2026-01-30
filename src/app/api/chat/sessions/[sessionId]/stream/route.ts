@@ -20,13 +20,13 @@ export async function POST(
 
         // Ensure session exists - use repo directly to avoid initializing old system
         let session = await Container.chatRepo.getSessionById(sessionId, supabase);
-        
+
         if (!session) {
             // Create session if it doesn't exist using ChatServiceNew from Container
             if (!projectId) {
                 return new Response('Project ID required', { status: 400 });
             }
-            session = await Container.chatServiceNew.startSession(user.id, projectId, supabase, reportId);
+            session = await Container.chatService.startSession(user.id, projectId, supabase, reportId);
         }
 
         // Get report context if available
@@ -47,14 +47,14 @@ export async function POST(
         let systemMessage: string | undefined = undefined;
         if (reportContext) {
             // Simple text extraction from section
-            const contextText = reportContext.title 
+            const contextText = reportContext.title
                 ? `# ${reportContext.title}\n\n${reportContext.description || ''}`
                 : reportContext.description || '';
             systemMessage = `You are helping edit a report section. Current section content:\n\n${contextText}\n\nWhen the user asks to edit this section, use the updateSection tool.`;
         }
 
         // Generate stream using the orchestrator from Container
-        const streamResult = await Container.chatOrchestratorNew.generateStream({
+        const streamResult = await Container.chatOrchestrator.generateStream({
             messages: messages || [],
             provider: provider as 'grok' | 'gemini' | 'claude',
             context: reportContext,

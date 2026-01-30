@@ -14,4 +14,25 @@ export interface ReportRepository {
     
     // Versioning (Snapshotting)
     saveVersion(reportId: string, version: number, snapshot: string, client: SupabaseClient): Promise<void>;
+    
+    // Template methods
+    getTemplateById(reportType: string, client: SupabaseClient): Promise<any | null>;
+    
+    // Section methods
+    getSectionsByReportId(reportId: string, client: SupabaseClient): Promise<any[]>;
+    upsertSection(
+        reportId: string,
+        sectionId: string,
+        data: {
+            heading: string;
+            content: string;
+            order: number;
+            metadata?: any;
+        },
+        client: SupabaseClient
+    ): Promise<void>;
+    getSection(reportId: string, sectionId: string, client: SupabaseClient): Promise<any | null>;
+    
+    // Utility methods
+    touchReport(reportId: string, client: SupabaseClient): Promise<void>;
 }

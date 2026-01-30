@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import {Container} from '@/backend/config/container'
+import { Container } from '@/backend/config/container'
 import { createAuthenticatedClient } from "@/app/api/utils";
 
 export async function PUT(request: Request) {
@@ -11,7 +11,7 @@ export async function PUT(request: Request) {
     // Authenticate
     const { supabase, user } = await createAuthenticatedClient();
     if (!user) {
-        return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
     // Validation

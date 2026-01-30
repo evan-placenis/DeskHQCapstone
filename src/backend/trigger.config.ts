@@ -1,8 +1,22 @@
-import { defineConfig } from "@trigger.dev/sdk";;
+import { defineConfig } from "@trigger.dev/sdk";
+import dotenv from "dotenv";
+import path from "path";
+import { fileURLToPath } from "url";
 
-// Robustly find .env file
-// We assume the command is run from 'capstone/src/backend' or 'capstone'
-// We look for the .env in the 'capstone' root.
+// Load environment variables from .env file
+// Find .env file relative to the project root (capstone folder)
+let envPath: string;
+try {
+  // Try ES module approach first
+  const __filename = fileURLToPath(import.meta.url);
+  const __dirname = path.dirname(__filename);
+  envPath = path.resolve(__dirname, "../../.env");
+} catch {
+  // Fallback to CommonJS approach
+  envPath = path.resolve(process.cwd(), ".env");
+}
+
+dotenv.config({ path: envPath });
 
 
 export default defineConfig({

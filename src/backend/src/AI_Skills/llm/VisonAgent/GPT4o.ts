@@ -1,6 +1,6 @@
 import OpenAI from "openai";
 import { VisionAnalysis } from "../interfaces";
-import { IMAGE_ANALYSIS_SYSTEM_PROMPT } from "../../prompts/image/imageAnalysisPrompt";
+import { IMAGE_ANALYSIS_SYSTEM_PROMPT } from "../prompts/image/imageAnalysisPrompt";
 import pLimit from 'p-limit'; // Import the queue manager
 
 
@@ -19,7 +19,7 @@ export class VisionAgent {
       // Now this runs ONLY when you call analyzeImage()
       // By this time, environment variables are guaranteed to be loaded.
       this._client = new OpenAI({
-        apiKey: process.env.OPENAI_API_KEY, 
+        apiKey: process.env.OPENAI_API_KEY,
       });
     }
     return this._client;
@@ -83,9 +83,9 @@ export class VisionAgent {
   async analyzeBatch(images: { id: string; url: string }[]): Promise<VisionAnalysis[]> {
     // Limit to 5 images at a time. 
     // If you get 429 errors, lower this to 3.
-    const limit = pLimit(5); 
+    const limit = pLimit(5);
 
-    const promises = images.map((img) => 
+    const promises = images.map((img) =>
       // Wrap your call in the limit function
       limit(() => this.analyzeImage(img.url, img.id))
     );

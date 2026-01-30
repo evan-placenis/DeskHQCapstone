@@ -13,6 +13,7 @@ export const researchSkills = {
     inputSchema: z.object({
       query: z.string().describe('The question or topic to search for'),
       projectId: z.string(),
+      reasoning: z.string().optional().describe('A "scratchpad" to think out loud and let the user know what you are thinking.'),
     }),
     execute: async ({ query, projectId }) => {
       try {
@@ -40,7 +41,8 @@ export const researchSkills = {
     description: 'Search the live web using Exa. Use this if Internal Memory fails.',
     inputSchema: z.object({
       query: z.string().describe('The search query optimized for a search engine'),
-      projectId: z.string().describe('Required to save new findings to memory'), // Added for the "Learning" feature
+      projectId: z.string().describe('Required to save new findings to memory'),
+      reasoning: z.string().optional().describe('Brief note for the user (e.g. "Searching web for additional context")'),
     }),
     execute: async ({ query, projectId }) => {
       try {

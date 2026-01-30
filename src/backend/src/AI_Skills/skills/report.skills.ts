@@ -1,89 +1,253 @@
 import { tool } from 'ai';
 import { z } from 'zod/v3';
 import { Container } from '../../config/container';
-
-
+import { SupabaseClient } from '@supabase/supabase-js';
 // Factory function to inject context (like projectId) into tools
-export const reportSkills = (projectId: string, userId: string) => ({
+export const reportSkills = (projectId: string, userId: string, client: SupabaseClient, selectedImageIds: string[] = []) => ({
+//using both "client" and "adminClient" is sus?
 
-  // TOOL: Write or Generate a Section
-  generateSectionContent: tool({
-    description: 'Generate detailed technical content for a specific report section. This tool retrieves project context and writes the text.',
+// // 🛡️ SECURITY CHECK:
+//   // Before returning any tools, ensure the user actually owns this project.
+//   // We use the STANDARD client (with RLS) for this check.
+//   const validateAccess = async () => {
+//     const { data, error } = await client
+//       .from('projects')
+//       .select('id')
+//       .eq('id', projectId)
+//       .single();
+    
+//     if (error || !data) {
+//        throw new Error("SECURITY ALERT: User attempting to access unauthorized project.");
+//     }
+//  };
+
+
+//  // Run this check immediately when the skills are initialized
+//  // (Note: Since this is a factory, you might need to run this inside the execute function of the tools 
+//  // OR rely on your API route having done it already).
+
+//  return {
+//    getProjectImageURLsWithIDS: tool({
+//        // ...
+//        execute: async ({ imageIds }) => {
+//            // ✅ 1. Input Validation
+//            // We trust 'projectId' because it came from our verified factory context,
+//            // NOT from the AI guessing a random ID.
+           
+//            // ✅ 2. Use Admin Client for the heavy lifting
+//            const adminClient = await Container.adminClient;
+           
+//            // ... fetch and sign ...
+//        }
+//    })
+//   },
+
+
+
+// 🟢 NEW TOOL: The Missing Link
+getProjectImageIDS: tool({
+  description: 'List all available images IDS for this project. Call this FIRST to get the Image IDs needed for other tools.',
+  inputSchema: z.object({
+     unused: z.string().optional(),
+     reasoning: z.string().optional().describe('A "scratchpad" to think out loud and let the user know what you are thinking.'),
+  }),
+  execute: async () => {
+    try {
+      console.log(`📂 [Tool: ListImages] Listing images for project ${projectId}`);
+
+      const adminClient = await Container.adminClient; // NEED TO CHANGE THIS FOR SECURITY LATER
+
+      let query = adminClient
+        .from('project_images')
+        .select('id, file_name, description, created_at')
+        .eq('project_id', projectId);
+
+      // 2. Apply the Filter (Mutation)
+      // If the user passed specific IDs, narrow the query down
+      if (selectedImageIds && selectedImageIds.length > 0) {
+        query = query.in('id', selectedImageIds);
+      }
+
+      // 3. EXECUTE the query
+      const { data, error } = await query;
+
+      if (error) {
+        console.error("❌ [Tool: ListImages] DB Error:", error.message);
+        return { status: "ERROR", message: error.message };
+      }
+
+      if (!data || data.length === 0) {
+        return { status: "EMPTY", message: "No images found." };
+      }
+      // Return a clean list for the AI to read
+      return {
+        status: "SUCCESS",
+        count: data.length,
+        images: data.map(img => ({
+          id: img.id,
+          filename: img.file_name,
+          description: img.description || "No description"
+        }))
+      };
+    } catch (error) {
+      console.error("💥 [Tool: ListImages] Critical Exception:", error);
+      return { status: "ERROR", message: error instanceof Error ? error.message : "Failed to list project images." };
+    }
+  },
+}),
+
+  // TOOL: Get Project Images (for vision analysis)
+  getProjectImageURLsWithIDS: tool({
+    description: 'Get signed, accessible image URLs for selected images. Mandatory step before vision analysis.',
     inputSchema: z.object({
-      sectionTitle: z.string().describe('The title of the section (e.g., "Executive Summary")'),
-      topic: z.string().describe('The specific topic or question to cover in this section'),
-      tone: z.enum(['technical', 'business', 'academic']).optional().default('technical'),
+      imageIds: z.array(z.string()).describe('Array of image IDs to get URLs for'),
+      reasoning: z.string().optional().describe('A "scratchpad" to think out loud and let the user know what you are thinking.'),
     }),
-    execute: async ({ sectionTitle, topic, tone }) => {
-      console.log(`✍️ [Skill: Write] Generating content for "${sectionTitle}"...`);
-
+    execute: async ({ imageIds}) => {
+      
       try {
-        // 1. Retrieve RAG Context first (Critical for quality)
-        const contextDocs = await Container.knowledgeService.search(topic, projectId);
+        const adminClient = await Container.adminClient; // NEED TO CHANGE THIS FOR SECURITY LATER
+    
 
-        // 2. Format context for the LLM
-        // (Note: We don't call another LLM here; we return the data so the Main Agent can write it)
+        // STEP 1: Self-Fetch the Organization ID (turn into a service function?)
+        // We look up the project to find who owns it
+        const { data: projectData, error: projError } = await adminClient
+          .from('projects') // or your specific table name
+          .select('organization_id')
+          .eq('id', projectId)
+          .single();
+
+          if (projError || !projectData?.organization_id) {
+            console.error("❌ [Tool: GetImages] Could not find Organization ID for project:", projError);
+            return { status: "ERROR", message: "Failed to resolve Organization ID internally." };
+        }
+
+        const organizationId = projectData.organization_id;
+        console.log(`🔍 [Tool: GetImages] Fetching ${imageIds.length} images. Path Structure: ${organizationId}/${projectId}/...`);
+
+
+        // STEP 2: Fetch Image Records
+        const { data: images, error } = await adminClient
+          .from('project_images')
+          .select('id, file_name, storage_path, description') 
+          .in('id', imageIds)
+          .eq('project_id', projectId);
+
+        if (error) {
+          console.error("❌ [Tool: GetImages] DB Error:", error);
+          return { status: 'ERROR', message: `Database error: ${error.message}` };
+        }
+
+        if (!images || images.length === 0) {
+          return { status: 'NOT_FOUND', message: 'No images found in database for provided IDs.' };
+        }
+
+        // 2. Generate Signed URLs
+        const imagesWithSignedUrls = await Promise.all(images.map(async (img) => {
+          
+          // PATH CONSTRUCTION:
+          // Target: organization_id/project_id/filename
+          let finalPath = img.storage_path;
+
+          // If storage_path is just a filename (no slashes), build the full path
+          if (finalPath && !finalPath.includes('/')) {
+             // 🟢 UPDATED LOGIC HERE:
+             finalPath = `${organizationId}/${projectId}/${finalPath}`;
+          }
+          
+          if (!finalPath) {
+             return { id: img.id, url: null, error: "Missing storage path" };
+          }
+
+          console.log(`🔑 [Tool: GetImages] Signing path: ${finalPath}`);
+
+          const BUCKET_NAME = 'project-images'; // Check exact name in Supabase
+          
+          // STEP 3: Sign the URL
+          const { data: signedData, error: signError } = await adminClient
+            .storage
+            .from(BUCKET_NAME) 
+            .createSignedUrl(finalPath, 3600); // 1 hour access
+
+          if (signError || !signedData?.signedUrl) {
+            console.error(`❌ [Tool: GetImages] Signing failed for ${finalPath}:`, signError);
+            return { 
+                id: img.id, 
+                url: null, 
+                error: "Could not generate signed URL. Check bucket permissions." 
+            };
+          }
+
+          return {
+            id: img.id,
+            url: signedData.signedUrl, 
+            description: img.description || ''
+          };
+        }));
+
+        const validImages = imagesWithSignedUrls.filter(i => i.url !== null);
+
+        if (validImages.length === 0) {
+            return { status: "ERROR", message: "Found image records but failed to generate access URLs (Check bucket paths)." };
+        }
+
         return {
-          status: 'CONTEXT_RETRIEVED',
-          instruction: `Use the following context to write the "${sectionTitle}" section.`,
-          context: contextDocs.map(d => d.content).join('\n\n').substring(0, 3000), // Limit context size
-          targetSection: sectionTitle
+          status: 'SUCCESS',
+          images: validImages
         };
 
       } catch (error) {
-        console.error("❌ Generation failed:", error);
-        return { status: 'ERROR', message: 'Failed to retrieve context.' };
+        console.error("💥 [Tool: GetImages] Critical Exception:", error);
+        return { status: 'ERROR', message: 'Internal server error while fetching images' };
       }
     },
   }),
 
-  // TOOL: Save/Update Section to Database
-  updateSection: tool({
-    description: 'Save written content to a specific section in the report database. Use this AFTER generating content.',
+  // TOOL: Get Project Details
+  getProjectSpecs: tool({
+    description: 'Get project details, specifications, and context. Use this to understand the project before writing the report.',
     inputSchema: z.object({
-      reportId: z.string(),
-      sectionId: z.string().optional().describe('If updating an existing section'),
-      title: z.string(),
-      content: z.string().describe('The full markdown content to save'),
+      reasoning: z.string().optional().describe('A "scratchpad" to think out loud and let the user know what you are thinking.'),
     }),
-    execute: async ({ reportId, sectionId, title, content }) => {
-      console.log(`💾 [Skill: Save] Saving "${title}"...`);
-
+    execute: async () => {
       try {
-        // If we have an ID, update it. If not, create a new one.
-        const savedSection = await Container.reportService.upsertSection(
-          {
-            report_id: reportId,
-            id: sectionId, // optional
-            title: title,
-            description: content, // We store the body text in 'description' or 'content' column
-            order_index: 0 // You might want to add logic to calculate this
-          },
-          Container.adminClient
-        );
+        const project = await Container.projectRepo.getById(projectId, client);
+        if (!project) {
+          return { status: 'NOT_FOUND', message: 'Project not found' };
+        }
 
         return {
-          status: 'SAVED',
-          sectionId: savedSection.id,
-          message: `Successfully saved section "${title}".`
+          status: 'SUCCESS',
+          project: {
+            id: project.projectId,
+            name: project.name || 'Unnamed Project',
+            status: project.status,
+            siteAddress: project.jobInfo?.siteAddress || '',
+            clientName: project.jobInfo?.clientName || '',
+            metadata: project.metadata || {},
+            // Include any parsed data from job info sheet
+            additionalInfo: project.jobInfo?.parsedData || {}
+          }
         };
       } catch (error) {
-        return { status: 'ERROR', message: 'Database save failed.' };
+        console.error("Error fetching project specs:", error);
+        return { status: 'ERROR', message: 'Failed to fetch project details' };
       }
     },
   }),
 
-  // TOOL: Get Report Structure
+  // TOOL: Get Report
   getReportStructure: tool({
     description: 'Get the current report structure and sections. Use this to understand what sections already exist.',
     inputSchema: z.object({
       reportId: z.string().optional().describe('The report ID if available'),
+      reasoning: z.string().optional().describe('A "scratchpad" to think out loud and let the user know what you are thinking.'),
     }),
     execute: async ({ reportId }) => {
       try {
         // If we have a reportId, fetch it
         if (reportId) {
-          const report = await Container.reportService.getReportById(reportId, Container.adminClient);
+          const report = await Container.reportService.getReportById(reportId, client);
           if (report) {
             return {
               status: 'FOUND',
@@ -105,6 +269,51 @@ export const reportSkills = (projectId: string, userId: string) => ({
         return {
           status: 'ERROR',
           message: `Error getting report structure: ${error instanceof Error ? error.message : 'Unknown error'}`
+        };
+      }
+    },
+  }),
+
+  // TOOL: Write/Update Report Section (for incremental writing)
+  updateSection: tool({
+    description: 'Write or update a report section with markdown content. Use this to build sections incrementally as you write the report. The section will be saved to the database immediately so you can reference it later. You can call this multiple times for different sections.',
+    inputSchema: z.object({
+      reportId: z.string().describe('The report ID (get it from getReportStructure or it was provided in context)'),
+      sectionId: z.string().describe('Unique ID for this section (e.g., "executive-summary", "observations-1")'),
+      heading: z.string().describe('The section heading/title'),
+      description: z.string().optional().describe('Optional description or intro text for the section'),
+      content: z.string().describe('The markdown content for this section'),
+      order: z.number().optional().describe('Order/position of this section (0-based)'),
+      reasoning: z.string().optional().describe('A "scratchpad" to think out loud and let the user know what you are thinking.'),
+    }),
+    execute: async ({ reportId, sectionId, heading, content, order }) => {
+      try {
+        console.log(`📝 [Report Skill] Writing section: ${sectionId} (${heading}) to report ${reportId}`);
+
+        // Save section to database immediately
+        await Container.reportService.updateSectionInReport(
+          reportId,
+          sectionId,
+          heading,
+          content,
+          order ?? 0,
+          client
+        );
+
+        return {
+          status: 'SUCCESS',
+          reportId,
+          sectionId,
+          heading,
+          message: `Section "${heading}" written and saved to database. You can reference it later using getReportStructure.`,
+          preview: content.substring(0, 200) + (content.length > 200 ? '...' : ''),
+          order: order ?? 0
+        };
+      } catch (error) {
+        console.error("Error writing section:", error);
+        return {
+          status: 'ERROR',
+          message: `Failed to write section: ${error instanceof Error ? error.message : 'Unknown error'}`
         };
       }
     },

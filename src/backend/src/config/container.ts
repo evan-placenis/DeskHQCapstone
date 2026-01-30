@@ -8,24 +8,25 @@ import { SupabaseStatsRepository } from '../infrastructure/repositories/supabase
 //import { supabaseAdmin } from '../infrastructure/supabase/supabaseClient';
 
 import { PineconeVectorStore } from '../infrastructure/vector_store/PineconeVectorStore';
-import { AgentFactory } from '../AI_Strategies/factory/AgentFactory';
 import { DocumentStrategyFactory } from '../Document_Strategies/factory/DocumentFactory';
 import { ReportService } from '../Services/ReportService';
 import { ChatService } from '../Services/ChatService';
-import { ChatOrchestrator } from '../AI_Strategies/ChatSystem/core/ChatOrchestrator';
-import { ChatServiceNew } from '../Services/ChatService.new';
-import { ChatOrchestrator as ChatOrchestratorNew } from '../AI_Skills/orchestrators/ChatOrchestrator';
-import { ReportServiceNew } from '../Services/ReportService.new';
+import { ChatOrchestrator } from '../AI_Skills/orchestrators/ChatOrchestrator';
+import { ReportOrchestrator } from '../AI_Skills/orchestrators/ReportOrchestrator';
 import { KnowledgeService } from '../Services/KnowledgeServivce';
 import { UserService } from '../Services/UserService';
 import { StorageService } from '../Services/StorageService';
 import { StatsService } from '../Services/StatsService';
 import Exa from "exa-js";
-
+import { VisionAgent } from '../AI_Skills/llm/VisonAgent/GPT4o';
 
 import { TriggerJobQueue } from '../infrastructure/job/trigger/TriggerJobQueue';
 import { createClient, SupabaseClient } from "@supabase/supabase-js";
 
+// 🛑 ADD THIS DEBUG CHECK
+if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
+  console.error("🚨 CRITICAL: SUPABASE_SERVICE_ROLE_KEY is missing from process.env!");
+}
 
 export class Container {
   // --- Private Cache (Singletons) ---
@@ -37,11 +38,9 @@ export class Container {
   private static _knowledgeRepo: SupabaseKnowledgeRepository;
   private static _vectorStore: PineconeVectorStore;
   private static _documentFactory: DocumentStrategyFactory;
-
   private static _knowledgeService: KnowledgeService;
-  private static _agentFactory: AgentFactory;
+
   private static _jobQueue: TriggerJobQueue;
-  private static _chatAgent: ChatOrchestrator;
 
   private static _reportService: ReportService;
   private static _chatService: ChatService;
@@ -52,9 +51,10 @@ export class Container {
 
   private static _exa: Exa;
 
-  private static _chatOrchestratorNew: ChatOrchestratorNew;
-  private static _chatServiceNew: ChatServiceNew;
-  private static _reportServiceNew: ReportServiceNew;
+  private static _chatOrchestrator: ChatOrchestrator;
+  private static _reportOrchestrator: ReportOrchestrator;
+
+  private static _visionAgent: VisionAgent;
 
   static get exa() {
     if (!this._exa) this._exa = new Exa(process.env.EXA_API_KEY!);
@@ -123,76 +123,47 @@ export class Container {
     return this._knowledgeService;
   }
 
-  static get agentFactory() {
-    if (!this._agentFactory) {
-      this._agentFactory = new AgentFactory(this.knowledgeService, this.exa);
-    }
-    return this._agentFactory;
-  }
-
-  static get chatAgent() {
-    if (!this._chatAgent) {
-      this._chatAgent = this.agentFactory.createChatAgent("GROK");
-    }
-    return this._chatAgent;
-  }
-
   static get jobQueue() {
     if (!this._jobQueue) this._jobQueue = new TriggerJobQueue();
     return this._jobQueue;
   }
 
-  // --- 4. Services (The Chefs) ---
-  static get reportService() {
-    if (!this._reportService) {
-      this._reportService = new ReportService(
-        this.reportRepo,
-        this.projectRepo,
-        this.agentFactory
-      );
+
+  // 🆕 NEW AI-SDK Chat Orchestrator (singleton)
+  static get chatOrchestrator() {
+    if (!this._chatOrchestrator) {
+      this._chatOrchestrator = new ChatOrchestrator();
     }
-    return this._reportService;
+    return this._chatOrchestrator;
   }
 
+  // 🆕 NEW AI-SDK Chat Service (singleton)
   static get chatService() {
     if (!this._chatService) {
       this._chatService = new ChatService(
         this.chatRepo,
         this.reportService,
-        this.chatAgent
+        this.chatOrchestrator
       );
     }
     return this._chatService;
   }
 
-  // 🆕 NEW AI-SDK Chat Orchestrator (singleton)
-  static get chatOrchestratorNew() {
-    if (!this._chatOrchestratorNew) {
-      this._chatOrchestratorNew = new ChatOrchestratorNew();
+  static get reportOrchestrator() {
+    if (!this._reportOrchestrator) {
+      this._reportOrchestrator = new ReportOrchestrator();
     }
-    return this._chatOrchestratorNew;
+    return this._reportOrchestrator;
   }
-
-  // 🆕 NEW AI-SDK Chat Service (singleton)
-  static get chatServiceNew() {
-    if (!this._chatServiceNew) {
-      this._chatServiceNew = new ChatServiceNew(
-        this.chatRepo,
-        this.reportService,
-        this.chatOrchestratorNew
-      );
-    }
-    return this._chatServiceNew;
-  }
-  static get reportServiceNew() {
-    if (!this._reportServiceNew) {
-      this._reportServiceNew = new ReportServiceNew(
+  static get reportService() {
+    if (!this._reportService) {
+      this._reportService = new ReportService(
         this.reportRepo,
         this.projectRepo,
-        this.chatOrchestratorNew
+        this.reportOrchestrator
       );
     }
-    return this._reportServiceNew;
+    return this._reportService;
   }
 
   static get userService() {
@@ -220,5 +191,13 @@ export class Container {
       this._statsService = new StatsService(this.statsRepo);
     }
     return this._statsService;
+  }
+
+  // --- 6. Vision Agent ---
+  static get visionAgent() {
+    if (!this._visionAgent) {
+      this._visionAgent = new VisionAgent();
+    }
+    return this._visionAgent;
   }
 }

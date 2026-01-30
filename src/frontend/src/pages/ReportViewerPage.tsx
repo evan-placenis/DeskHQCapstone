@@ -10,46 +10,148 @@ import { RatingModal } from "@/frontend/pages/large_modal_components/RatingModal
 import { ReportLayout } from "@/src/frontend/src/pages/report_editing_components/ReportLayout";
 import { ROUTES, getRoute } from "@/app/pages/config/routes";
 import { supabase } from "@/frontend/lib/supabaseClient";
-import { Loader2 } from "lucide-react";
+import { Loader2, FileText, CheckCircle2 } from "lucide-react";
 import { Card, CardContent } from "@/frontend/pages/ui_components/card";
-import { TiptapEditor } from "@/frontend/pages/smart_components/TiptapEditor";
+import { useReportStreaming } from "@/frontend/pages/hooks/useReportStreaming";
 
-// 🟢 NEW: Component for showing generation progress
-const GeneratingReportCard = ({ status, reasoningText }: { status: string, reasoningText: string }) => (
-  <Card className="rounded-xl shadow-md border-2 border-theme-primary bg-blue-50/50 mb-6 animate-in fade-in slide-in-from-top-4 duration-500 mx-auto max-w-4xl mt-8">
-    <CardContent className="p-6">
-      <div className="flex flex-col gap-4">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="relative">
-              <div className="absolute inset-0 bg-theme-primary/20 rounded-full animate-ping"></div>
-              <div className="relative w-10 h-10 bg-theme-primary/10 rounded-full flex items-center justify-center">
-                <Loader2 className="w-5 h-5 text-theme-primary animate-spin" />
-              </div>
-            </div>
-            <div>
-              <h3 className="font-semibold text-slate-900">Generating Report</h3>
-              <p className="text-sm text-theme-primary font-medium">{status || "Initializing..."}</p>
-            </div>
+import { memo } from 'react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
+
+// 1. CONSTANTS
+const MARKDOWN_PLUGINS = [remarkGfm];
+
+// 2. THE RENDERER (Memoized for performance)
+const StreamRenderer = memo(({ content }: { content: string }) => (
+  <div className="prose prose-sm max-w-none text-slate-700 leading-relaxed
+    prose-p:my-2 prose-ul:my-2 prose-li:my-0 
+    prose-headings:font-semibold prose-headings:text-slate-900 prose-headings:mt-4 prose-headings:mb-2
+    prose-strong:text-slate-900 prose-strong:font-bold
+    prose-pre:bg-slate-100 prose-pre:p-3 prose-pre:rounded-lg">
+
+    <ReactMarkdown remarkPlugins={MARKDOWN_PLUGINS}>
+      {content}
+    </ReactMarkdown>
+
+    {/* The "Ghost Cursor" Effect */}
+    <span className="inline-block w-1.5 h-4 ml-1 bg-theme-primary animate-pulse align-middle translate-y-[2px]" />
+  </div>
+));
+
+// 3. STATUS INDICATOR
+const StatusFooter = memo(({ status }: { status: string }) => {
+  if (!status || status === 'Idle') return null;
+
+  return (
+    <div className="flex items-center gap-2 mt-4 pt-4 border-t border-slate-100 text-slate-400 animate-in fade-in">
+      <Loader2 className="w-3.5 h-3.5 animate-spin text-theme-primary" />
+      <span className="text-xs font-mono uppercase tracking-wider">{status}</span>
+    </div>
+  );
+});
+
+// 4. MAIN COMPONENT
+export const ReportLiveStream = ({
+  reasoningText,
+  status,
+  isComplete
+}: {
+  reasoningText: string;
+  status: string;
+  isComplete?: boolean;
+}) => {
+
+  return (
+    <Card className="max-w-4xl mx-auto mt-8 border-2 border-theme-primary/10 shadow-lg bg-white overflow-hidden animate-in fade-in slide-in-from-bottom-4 duration-500">
+
+      {/* HEADER: Looks like a Document Toolbar */}
+      <div className="bg-slate-50/80 border-b border-slate-100 p-4 flex items-center justify-between backdrop-blur-sm">
+        <div className="flex items-center gap-3">
+          <div className={`p-2 rounded-lg ${isComplete ? 'bg-green-100 text-green-600' : 'bg-blue-100 text-blue-600'}`}>
+            {isComplete ? <CheckCircle2 className="w-5 h-5" /> : <FileText className="w-5 h-5 animate-pulse" />}
+          </div>
+          <div>
+            <h3 className="font-semibold text-slate-900 text-sm">
+              {isComplete ? 'Report Generated' : 'Drafting Report...'}
+            </h3>
+            <p className="text-xs text-slate-500">
+              {isComplete ? 'Ready for review' : 'AI Agent Active'}
+            </p>
           </div>
         </div>
 
-        {reasoning && (
-          <div className="bg-white rounded-lg p-4 border border-slate-200 shadow-sm">
-            <div className="flex items-center gap-2 mb-2 text-xs font-semibold text-slate-500 uppercase tracking-wider">
-              <span className="w-1.5 h-1.5 rounded-full bg-theme-primary"></span>
-              AI Thinking Process
-            </div>
-            <p className="text-sm text-slate-700 font-mono whitespace-pre-wrap leading-relaxed max-h-[60vh] overflow-y-auto">
-              {reasoning}
-              <span className="inline-block w-2 h-4 ml-1 bg-theme-primary animate-pulse align-middle"></span>
-            </p>
+        {/* Live Badge */}
+        {!isComplete && (
+          <div className="flex items-center gap-1.5 px-2.5 py-1 bg-theme-primary/10 text-theme-primary rounded-full">
+            <span className="relative flex h-2 w-2">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-theme-primary opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-theme-primary"></span>
+            </span>
+            <span className="text-[10px] font-bold uppercase tracking-wide">Live Stream</span>
           </div>
         )}
       </div>
-    </CardContent>
-  </Card>
-);
+
+      {/* BODY: The "Paper" */}
+      <CardContent className="p-8 min-h-[300px] max-h-[70vh] overflow-y-auto scroll-smooth bg-white">
+
+        {/* If empty, show a nice empty state */}
+        {!reasoningText ? (
+          <div className="h-full flex flex-col items-center justify-center text-slate-300 gap-2 py-12">
+            <Loader2 className="w-8 h-8 animate-spin opacity-50" />
+            <p className="text-sm font-medium">Initializing Report Strategy...</p>
+          </div>
+        ) : (
+          <StreamRenderer content={reasoningText} />
+        )}
+
+        {/* Footer Status (e.g., "Using tool: Search Specs...") */}
+        <StatusFooter status={status} />
+
+      </CardContent>
+    </Card>
+  );
+};
+
+
+// // 🟢 NEW: Component for showing generation progress
+// const GeneratingReportCard = ({ status, reasoningText }: { status: string, reasoningText: string }) => (
+//   <Card className="rounded-xl shadow-md border-2 border-theme-primary bg-blue-50/50 mb-6 animate-in fade-in slide-in-from-top-4 duration-500 mx-auto max-w-4xl mt-8">
+//     <CardContent className="p-6">
+//       <div className="flex flex-col gap-4">
+//         <div className="flex items-center justify-between">
+//           <div className="flex items-center gap-3">
+//             <div className="relative">
+//               <div className="absolute inset-0 bg-theme-primary/20 rounded-full animate-ping"></div>
+//               <div className="relative w-10 h-10 bg-theme-primary/10 rounded-full flex items-center justify-center">
+//                 <Loader2 className="w-5 h-5 text-theme-primary animate-spin" />
+//               </div>
+//             </div>
+//             <div>
+//               <h3 className="font-semibold text-slate-900">Generating Report</h3>
+//               <p className="text-sm text-theme-primary font-medium">{status || "Initializing..."}</p>
+//             </div>
+//           </div>
+//         </div>
+
+//         {reasoningText && (
+//           <div className="bg-white rounded-lg p-4 border border-slate-200 shadow-sm">
+//             <div className="flex items-center gap-2 mb-2 text-xs font-semibold text-slate-500 uppercase tracking-wider">
+//               <span className="w-1.5 h-1.5 rounded-full bg-theme-primary"></span>
+//               AI Thinking Process
+//             </div>
+//             <p className="text-sm text-slate-700 font-mono whitespace-pre-wrap leading-relaxed max-h-[60vh] overflow-y-auto">
+//               {reasoningText}
+//               <span className="inline-block w-2 h-4 ml-1 bg-theme-primary animate-pulse align-middle"></span>
+//             </p>
+//           </div>
+//         )}
+//       </div>
+//     </CardContent>
+//   </Card>
+// );
+
+
 
 function ReportViewerContent() {
   const router = useRouter();
@@ -63,8 +165,10 @@ function ReportViewerContent() {
 
   // Generation State
   const [isGenerating, setIsGenerating] = useState(generatingParam);
-  const [generationStatus, setGenerationStatus] = useState("Initializing...");
-  const [generationReasoning, setGenerationReasoning] = useState("");
+  
+  // Use custom hook for streaming
+  const { reasoningText: generationReasoning, status: generationStatus, reportId: streamedReportId, isComplete } = useReportStreaming(projectIdParam, isGenerating);
+
 
   const [isLoading, setIsLoading] = useState(false);
 
@@ -160,40 +264,17 @@ function ReportViewerContent() {
     }
   }, [reportId, isGenerating]);
 
-  // 🟢 NEW: Supabase Realtime Subscription for Report Generation
+  // Handle report completion from streaming hook
   useEffect(() => {
-    if (!isGenerating || !projectIdParam) return;
-
-    console.log(`🔌 Subscribing to channel: project-${projectIdParam}`);
-
-    const channel = supabase.channel(`project-${projectIdParam}`)
-      .on('broadcast', { event: 'status' }, (payload: any) => {
-        setGenerationStatus(payload.payload.chunk);
-      })
-      .on('broadcast', { event: 'reasoning' }, (payload: any) => {
-        setGenerationReasoning(prev => prev + payload.payload.chunk);
-      })
-      .on('broadcast', { event: 'review_reasoning' }, (payload: any) => {
-        setGenerationReasoning(prev => prev + payload.payload.chunk);
-      })
-      .on('broadcast', { event: 'report_complete' }, (payload: any) => {
-        console.log("✅ Report Complete! Loading report...", payload);
-        if (payload.payload.reportId) {
-          // Update URL without reloading page
-          const newUrl = `/pages/report?id=${payload.payload.reportId}`;
-          window.history.replaceState({ ...window.history.state, as: newUrl, url: newUrl }, '', newUrl);
-
-          setReportId(payload.payload.reportId);
-          setIsGenerating(false);
-        }
-      })
-      .subscribe();
-
-    return () => {
-      console.log("🔌 Unsubscribing from channel");
-      supabase.removeChannel(channel);
-    };
-  }, [isGenerating, projectIdParam]);
+    if (isComplete && streamedReportId) {
+      // Update URL without reloading page
+      const newUrl = `/pages/report?id=${streamedReportId}`;
+      window.history.replaceState({ ...window.history.state, as: newUrl, url: newUrl }, '', newUrl);
+      
+      setReportId(streamedReportId);
+      setIsGenerating(false);
+    }
+  }, [isComplete, streamedReportId]);
 
   const handleNavigate = (page: Page) => {
     router.push(getRoute(page));
@@ -359,9 +440,10 @@ function ReportViewerContent() {
           pageTitle="Generating Report..."
         />
         <div className="container mx-auto px-4 py-8">
-          <GeneratingReportCard
+          <ReportLiveStream
+            reasoningText={generationReasoning}
             status={generationStatus}
-            reasoning={generationReasoning}
+            isComplete={isComplete}
           />
         </div>
       </div>

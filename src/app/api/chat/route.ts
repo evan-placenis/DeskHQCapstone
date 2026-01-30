@@ -3,12 +3,11 @@ import { NextResponse } from 'next/server';
 import { Container } from '@/backend/config/container'
 import { createAuthenticatedClient } from "@/app/api/utils";
 
-// 1. CREATE A NEW SESSION
+// 1. CREATE OR GET SESSION (find-or-create by reportId so we reuse the session the trigger created)
 export async function POST(req: Request) {
     try {
         const { projectId, reportId } = await req.json();
 
-        // Authenticate first to get user
         const { supabase, user } = await createAuthenticatedClient();
         if (!user) {
             return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -18,11 +17,19 @@ export async function POST(req: Request) {
             return NextResponse.json({ error: "Project ID required" }, { status: 400 });
         }
 
-        // Use ChatServiceNew from Container (singleton)
-        const session = await Container.chatServiceNew.startSession(user.id, projectId, supabase, reportId);
+        // If opening a report: reuse existing session if the trigger already created one (with "Report Complete" message)
+        if (reportId) {
+            const existing = await Container.chatRepo.getSessionByReportId(reportId, supabase);
+            if (existing) {
+                return NextResponse.json(existing);
+            }
+        }
 
-        // Return session with sessionId (session already contains sessionId, so no need to duplicate)
-        return NextResponse.json(session);
+        // No existing session for this report: create new one
+        const session = await Container.chatService.startSession(user.id, projectId, supabase, reportId);
+        // Return full session with messages (empty for new) so frontend always gets same shape
+        const fullSession = await Container.chatRepo.getSessionById(session.sessionId, supabase);
+        return NextResponse.json(fullSession ?? session);
     } catch (error: any) {
         return NextResponse.json({ error: error.message }, { status: 500 });
     }

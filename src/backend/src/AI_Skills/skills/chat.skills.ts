@@ -40,3 +40,5 @@ export const chatSkills = (projectId: string, userId: string) => ({
     },
   }),
 });
+
+//NEED A SKILL FOR GETTING PREVIOUS USER MESSAGES

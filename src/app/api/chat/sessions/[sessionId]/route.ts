@@ -21,7 +21,7 @@ export async function POST(
         }
 
         // Use ChatServiceNew from Container (singleton)
-        const aiResponse = await Container.chatServiceNew.handleUserMessage(
+        const aiResponse = await Container.chatService.handleUserMessage(
             sessionId,
             message,
             supabase,

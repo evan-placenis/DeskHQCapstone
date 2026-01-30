@@ -8,25 +8,22 @@ export class SupabaseReportRepository implements ReportRepository {
 
     // --- 1. SAVE (Create) ---
     async save(report: Report, client: SupabaseClient): Promise<void> {
-        // 1. Fetch Org ID (Required by DB Security)
         const orgId = await this.getOrgIdFromProject(report.projectId, client);
 
-        // 2. Insert Report
-        // We rely on Postgres to store the 'sections' array as JSONB automatically
         const insertData: any = {
-            id: report.reportId, // Map Domain 'reportId' -> DB 'id'
+            id: report.reportId,
             project_id: report.projectId,
             organization_id: orgId,
             template_id: report.templateId,
             title: report.title,
             status: report.status,
             version_number: report.versionNumber,
-            sections: report.reportContent, // Map Domain 'reportContent' -> DB 'sections' (legacy)
-            created_by: report.createdBy,   // Track who created the report
+            created_by: report.createdBy,
             updated_at: report.updatedAt
+
         };
 
-        // Add tiptap_content if present (Step 2: Markdown migration)
+        // We still keep tiptap_content here for when a user manually saves/edits
         if (report.tiptapContent !== undefined) {
             insertData.tiptap_content = report.tiptapContent;
         }
@@ -35,7 +32,7 @@ export class SupabaseReportRepository implements ReportRepository {
             .from('reports')
             .insert(insertData);
 
-        if (error) throw new Error(`Save Report Failed: ${error.message}`);
+        if (error) throw new Error(`Save Report Header Failed: ${error.message}`);
     }
 
     // --- 2. GET BY ID (Read) ---
@@ -59,66 +56,99 @@ export class SupabaseReportRepository implements ReportRepository {
             createdBy: data.created_by,
             updatedAt: new Date(data.updated_at),
             createdAt: new Date(data.created_at || data.updated_at), // Map created_at
-            
+
             // JSONB columns come back as objects/arrays automatically
-            reportContent: data.sections || [], 
+            reportContent: [],
             tiptapContent: data.tiptap_content || undefined, // Step 2: Markdown content
             isReviewRequired: true,
-            
+
             // We usually load history lazily (separately) to keep this fast.
             // If you really need it here, you'd do a second query.
-            history: [] 
+            history: []
         };
     }
 
-    // --- 3. UPDATE ---
-    async update(report: Report, client: SupabaseClient): Promise<void> {
-        const updateData: any = {
-            title: report.title,
-            status: report.status,
-            version_number: report.versionNumber,
-            sections: report.reportContent, // Updates the JSON content (legacy)
-            updated_at: new Date()
-        };
-
-        // Update tiptap_content if present (Step 2: Markdown migration)
-        if (report.tiptapContent !== undefined) {
-            updateData.tiptap_content = report.tiptapContent;
-        }
-
-        const { error } = await client
-            .from('reports')
-            .update(updateData)
-            .eq('id', report.reportId);
-
-        if (error) throw new Error(`Update Report Failed: ${error.message}`);
-    }
-
-    // --- 4. VERSIONING ---
-    async saveVersion(reportId: string, version: number, snapshot: string, client: SupabaseClient): Promise<void> {
-        // We need the organization ID for the version table too
-        // (Expensive check, but necessary for RLS if not passed in)
-        const { data: report } = await client
-            .from('reports')
-            .select('organization_id')
-            .eq('id', reportId)
+    async getSection(reportId: string, sectionId: string, client: SupabaseClient): Promise<any | null> {
+        const { data, error } = await client
+            .from('report_sections')
+            .select('*')
+            .eq('report_id', reportId)
+            .eq('section_id', sectionId)
             .single();
 
-        if (!report) throw new Error("Cannot version report: Report not found");
+        if (error || !data) return null;
+        return data;
+    }
 
+    async getTemplateById(reportType: string, client: SupabaseClient): Promise<any | null> { // TODO: Add Template type
+        const { data: template } = await client
+            .from('report_templates')
+            .select('*')
+            .eq('id', reportType)
+            .single();
+
+        if (!template) throw new Error(`Template for ${reportType} not found.`);
+
+        return template;
+    }
+
+    /**
+     * UPSERT a single section. 
+     * This is the "Engine" for incremental AI writing.
+     */
+    async upsertSection(
+        reportId: string,
+        sectionId: string,
+        data: {
+            heading: string;
+            content: string;
+            order: number;
+            metadata?: any
+        },
+        client: SupabaseClient
+    ): Promise<void> {
         const { error } = await client
-            .from('report_versions')
-            .insert({
+            .from('report_sections')
+            .upsert({
                 report_id: reportId,
-                organization_id: report.organization_id,
-                version_number: version,
-                snapshot_json: JSON.parse(snapshot), // Store as proper JSONB
-                saved_at: new Date()
-                // saved_by_user_id: You might want to pass userId to this method later
+                section_id: sectionId,
+                heading: data.heading,
+                content: data.content,
+                metadata: data.metadata || {},
+                order: data.order
+            }, {
+                onConflict: 'report_id, section_id'
             });
 
-        if (error) throw new Error(`Save Version Failed: ${error.message}`);
+        if (error) throw new Error(`Section Sync Failed: ${error.message}`);
     }
+
+    /**
+     * FETCH all sections for a report.
+     * Used by the flattener to build the final Tiptap view.
+     */
+    async getSectionsByReportId(reportId: string, client: SupabaseClient): Promise<any[]> {
+        const { data, error } = await client
+            .from('report_sections')
+            .select('*')
+            .eq('report_id', reportId)
+            .order('order', { ascending: true });
+
+        if (error) throw new Error(`Fetch Sections Failed: ${error.message}`);
+        return data || [];
+    }
+
+    /**
+     * Update the main report header's timestamp 
+     * (Called whenever a section is updated)
+     */
+    async touchReport(reportId: string, client: SupabaseClient): Promise<void> {
+        await client
+            .from('reports')
+            .update({ updated_at: new Date() })
+            .eq('id', reportId);
+    }
+
 
     // --- 5. LIST BY PROJECT ---
     async getByProject(projectId: string, client: SupabaseClient): Promise<Report[]> {
@@ -157,4 +187,29 @@ export class SupabaseReportRepository implements ReportRepository {
 
         return data?.organization_id || '';
     }
+
+    // --- UPDATE ---
+    async update(report: Report, client: SupabaseClient): Promise<void> {
+        const updateData: any = {
+            title: report.title,
+            status: report.status,
+            version_number: report.versionNumber,
+            tiptap_content: report.tiptapContent,
+            updated_at: new Date()
+        };
+
+        const { error } = await client
+            .from('reports')
+            .update(updateData)
+            .eq('id', report.reportId);
+
+        if (error) throw new Error(`Update Report Failed: ${error.message}`);
+    }
+
+    // --- 4. VERSIONING --- TODO: Implement this
+    async saveVersion(reportId: string, version: number, snapshot: string, client: SupabaseClient): Promise<void> {
+        //TODO
+    }
+
+
 }

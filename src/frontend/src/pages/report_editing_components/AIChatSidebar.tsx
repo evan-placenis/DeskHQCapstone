@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { AIChatInput } from "./AIChatInput";
 import { useChatRuntime, AssistantChatTransport } from '@assistant-ui/react-ai-sdk';
 import {
@@ -53,8 +53,6 @@ const StatusIndicator = memo(({ label }: { label: string }) => (
 const COMPONENT_CONFIG = {
   Text: AI_Text_Renderer,
 };
-
-
 
 const CustomMessage = () => {
   // Ignore the deprecation warning for now; it is safe to use.
@@ -147,6 +145,7 @@ interface AIChatSidebarProps {
   projectId?: string;
   reportId?: string;
   sessionId: string | null;
+  initialMessages?: Array<{ sender: string; content: string }>;
   activeSectionId?: string;
   isCollapsed: boolean;
   width: number;
@@ -166,6 +165,7 @@ export function AIChatSidebar({
   projectId,
   reportId,
   sessionId,
+  initialMessages = [],
   activeSectionId,
   isCollapsed,
   width,
@@ -182,6 +182,11 @@ export function AIChatSidebar({
 }: AIChatSidebarProps) {
   const [isResizing, setIsResizing] = useState(false);
   const [windowWidth, setWindowWidth] = useState(0);
+  const hasHydratedRef = useRef(false);
+
+  useEffect(() => {
+    hasHydratedRef.current = false;
+  }, [sessionId]);
 
   // Set window width on mount and handle resize
   useEffect(() => {
@@ -247,6 +252,21 @@ export function AIChatSidebar({
   const runtime = useChatRuntime({
     transport
   });
+
+  // Hydrate thread with existing messages (e.g. "Report Complete" from trigger) so they show in the chat
+  useEffect(() => {
+    if (!runtime || initialMessages.length === 0 || hasHydratedRef.current) return;
+    hasHydratedRef.current = true;
+    (async () => {
+      for (const msg of initialMessages) {
+        const role = msg.sender === 'USER' ? 'user' : 'assistant';
+        await runtime.thread.append({
+          role: role as 'user' | 'assistant',
+          content: [{ type: 'text' as const, text: msg.content || '' }],
+        });
+      }
+    })();
+  }, [runtime, initialMessages]);
 
   // Listen for message completion to handle tool calls and suggestions
   useEffect(() => {

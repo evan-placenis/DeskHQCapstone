@@ -2,25 +2,35 @@
 import { NextResponse } from "next/server";
 import { Container } from "@/backend/config/container";
 import { createAuthenticatedClient } from "@/app/api/utils";
-import { ReportServiceNew } from '@/backend/Services/ReportService.new';
-import { ReportOrchestrator } from '@/backend/AI_Skills/orchestrators/ReportOrchestrator';
 import { v4 as uuidv4 } from 'uuid';
 import { Report } from '@/backend/domain/reports/report.types';
 
 export async function POST(
-    request: Request,
-    { params }: { params: Promise<{ projectId: string }> }
+    request: Request
 ) {
     try {
-        const { projectId } = await params;
         const body = await request.json();
+
+        // Normalize arrays to ensure they're never undefined
+        const photoIds = body.photoIds || [];
+        const selectedImageIds = Array.isArray(body.selectedImageIds)
+            ? body.selectedImageIds
+            : (Array.isArray(photoIds) ? photoIds : []);
+        const sections = Array.isArray(body.sections) ? body.sections : [];
+
         const {
+            projectId,
             reportType = 'OBSERVATION',
             modelName = 'grok',
-            selectedImageIds = [],
-            templateId,
-            sections = []
+            templateId
         } = body;
+
+        if (!projectId) {
+            return NextResponse.json(
+                { error: "projectId is required" },
+                { status: 400 }
+            );
+        }
 
         // Authenticate
         const { supabase, user } = await createAuthenticatedClient();
@@ -28,36 +38,51 @@ export async function POST(
             return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
         }
 
-        // Create new service instance with AI-SDK orchestrator
-        const reportOrchestrator = new ReportOrchestrator();
-        const reportService = new ReportServiceNew(
-            Container.reportRepo,
-            Container.projectRepo,
-            reportOrchestrator
-        );
-
-        // Generate report stream
-        const streamResult = await reportService.generateReportStream(
+        console.log("📤 Queuing report generation with:", {
             projectId,
+            reportType,
+            modelName,
+            selectedImageIdsCount: selectedImageIds.length,
+            sectionsCount: sections.length,
+            templateId
+        });
+
+        // Queue the report generation task in Trigger.dev
+        // The Trigger.dev task will handle streaming and broadcast updates via Supabase Realtime
+        await Container.jobQueue.enqueueReportGeneration(
+            projectId,
+            user.id,
             {
                 reportType,
-                modelName,
-                selectedImageIds,
-                templateId,
-                sections
-            },
-            supabase,
-            user.id
+                modelName: modelName || 'grok',
+                selectedImageIds: selectedImageIds,
+                templateId: templateId || '',
+                sections: sections
+            }
         );
 
-        // Return the streaming response
-        // The frontend will handle the stream and collect the final report structure
-        return streamResult.toUIMessageStreamResponse();
+        console.log("✅ Report generation queued successfully");
+
+        // Return immediately - the frontend will listen to Supabase Realtime for updates
+        return NextResponse.json({
+            message: "Report generation started in background",
+            status: "QUEUED",
+            projectId
+        }, { status: 202 });
 
     } catch (error: any) {
         console.error("❌ Report Generation Error:", error);
+        console.error("❌ Error stack:", error.stack);
+        console.error("❌ Error details:", {
+            message: error.message,
+            name: error.name,
+            cause: error.cause
+        });
         return NextResponse.json(
-            { error: error.message || "Failed to generate report" },
+            {
+                error: error.message || "Failed to generate report",
+                stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+            },
             { status: 500 }
         );
     }
@@ -68,13 +93,18 @@ export async function POST(
  * Call this from the frontend after collecting the final report structure
  */
 export async function PUT(
-    request: Request,
-    { params }: { params: Promise<{ projectId: string }> }
+    request: Request
 ) {
     try {
-        const { projectId } = await params;
         const body = await request.json();
-        const { report } = body;
+        const { projectId, report } = body;
+
+        if (!projectId) {
+            return NextResponse.json(
+                { error: "projectId is required" },
+                { status: 400 }
+            );
+        }
 
         // Authenticate
         const { supabase, user } = await createAuthenticatedClient();
@@ -82,13 +112,8 @@ export async function PUT(
             return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
         }
 
-        // Create new service instance
-        const reportOrchestrator = new ReportOrchestrator();
-        const reportService = new ReportServiceNew(
-            Container.reportRepo,
-            Container.projectRepo,
-            reportOrchestrator
-        );
+        // Use the service from Container
+        const reportService = Container.reportService;
 
         // Ensure report has required fields
         const reportToSave: Report = {
