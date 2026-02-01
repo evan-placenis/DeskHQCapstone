@@ -60,7 +60,8 @@ export async function POST(
             context: reportContext,
             projectId: session.projectId,
             userId: session.userId,
-            systemMessage
+            systemMessage,
+            client: supabase
         });
 
         // Return streaming response

@@ -546,8 +546,7 @@ export function ProjectDetailPage({
         selectedImageIds: reportData.photoIds,
         sections: reportData.sections,
         style: reportData.style,
-        reportWorkflow: reportData.reportWorkflow,
-        // Additional fields that might be needed
+        modelName: reportData.modelName || 'gemini-cheap',
         reportType: reportData.reportType
       };
 
