@@ -38,6 +38,7 @@ export interface TriggerPayload {
   projectId: string;
   userId: string;
   input: {
+    title?: string; // User-selected report title
     reportType: string;
     modelName: string; // 'grok', 'gemini', 'claude'
     selectedImageIds: string[];
@@ -76,8 +77,9 @@ export const generateReportTask = task({
       const result = await reportService.generateReportStream(
         payload.projectId,
         {
+          title: payload.input.title,
           reportType: payload.input.reportType,
-          modelName: payload.input.modelName || 'grok',
+          modelName: payload.input.modelName,
           selectedImageIds: payload.input.selectedImageIds,
           templateId: payload.input.templateId,
           sections: payload.input.sections
@@ -105,14 +107,19 @@ export const generateReportTask = task({
             // Use 'input' property for AI SDK streamText
             const toolInput = 'input' in part ? part.input : undefined;
             const inputObj = toolInput as Record<string, unknown> | undefined;
+
+
+            const friendlyStatus = getFriendlyStatus(part.toolName, toolInput);
+            const headerChunk = `\n\n### 🛠️ ${friendlyStatus}\n`;
+            await broadcast(supabase, payload.projectId, 'reasoning', { chunk: headerChunk });
+
             // Stream the agent's reasoning note for this tool call (scratchpad) if provided
             if (inputObj?.reasoning && typeof inputObj.reasoning === 'string') {
-              await broadcast(supabase, payload.projectId, 'reasoning', {
-                chunk: (inputObj.reasoning as string).trim() + '\n',
-              });
+              const reasoningChunk = `> *${(inputObj.reasoning as string).trim()}*\n\n`;
+              await broadcast(supabase, payload.projectId, 'reasoning', {chunk: reasoningChunk});
             }
-            const status = getFriendlyStatus(part.toolName, toolInput);
-            await broadcast(supabase, payload.projectId, 'status', { chunk: status });
+
+            await broadcast(supabase, payload.projectId, 'status', { chunk: friendlyStatus });
             break;
 
           case 'tool-result':
@@ -129,6 +136,17 @@ export const generateReportTask = task({
       // Flush remaining text
       if (textBuffer.length > 0) {
         await broadcast(supabase, payload.projectId, 'reasoning', { chunk: textBuffer });
+      }
+
+      // Finalize report: compile report_sections into reports.tiptap_content so the DB column is filled
+      if (draftReportId) {
+        try {
+          await reportService.saveReport(draftReportId, supabase);
+          console.log(`✅ Report ${draftReportId} finalized: tiptap_content updated from report_sections`);
+        } catch (saveErr) {
+          console.error(`⚠️ Failed to finalize report (tiptap_content not updated):`, saveErr);
+          // Don't throw - sections are saved; UI can still display via getReportById fallback
+        }
       }
 
       // Add the final message to the chat session so the user sees it in chat (instead of only in the stream)
@@ -218,5 +236,6 @@ async function addFinalMessageToChatSession(
     console.error('Failed to add final message to chat session:', err);
     // Don't throw - report generation succeeded; chat message is best-effort
   }
+
 }
 

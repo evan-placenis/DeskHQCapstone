@@ -66,7 +66,8 @@ export class ReportService {
             userId,
             input.reportType,
             input.templateId || '',
-            client
+            client,
+            input.title
         );
 
        // 1. Prepare the Dynamic Context from DB
@@ -160,12 +161,13 @@ export class ReportService {
         userId: string,
         reportType: string,
         templateId: string,
-        client: SupabaseClient
+        client: SupabaseClient,
+        title: string
     ): Promise<Report> {
         const draftReport: Report = {
             reportId: uuidv4(),
             projectId,
-            title: `${reportType} Report (Draft)`,
+            title: (title && title.trim()) ? title.trim() : `${reportType} Report (Draft)`,
             reportContent: [],
             status: 'DRAFT',
             createdAt: new Date(),

@@ -13,7 +13,7 @@ export class ReportOrchestrator {
     projectId: string;
     userId: string;
     reportType: string;
-    provider: 'grok' | 'gemini' | 'claude';
+    provider: 'grok' | 'gemini-pro' | 'claude'| 'gemini-cheap';
     draftReportId?: string; // Draft report ID for incremental writing
     selectedImageIds?: string[]; // User-selected image IDs to limit analysis
     client: SupabaseClient;

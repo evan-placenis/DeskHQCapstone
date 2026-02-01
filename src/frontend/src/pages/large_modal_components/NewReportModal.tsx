@@ -80,8 +80,8 @@ export function NewReportModal({ open, onOpenChange, projectName, onCreateReport
   const [reportMode, setReportMode] = useState<"auto" | "manual">("auto");
   const [sections, setSections] = useState<Section[]>([]);
   const [reportStyle, setReportStyle] = useState("comprehensive");
-  const [reportWorkflow, setReportWorkflow] = useState("AUTHOR");
   const [processingMode, setProcessingMode] = useState<"TEXT_ONLY" | "IMAGE_AND_TEXT">("IMAGE_AND_TEXT");
+  const [modelProvider, setModelProvider] = useState<'grok' | 'claude' | 'gemini-pro' | 'gemini-cheap'>('gemini-cheap');
   const [draggedPhoto, setDraggedPhoto] = useState<string | null>(null);
 
   // Get the selected template object
@@ -220,8 +220,8 @@ export function NewReportModal({ open, onOpenChange, projectName, onCreateReport
       mode: reportMode,
       sections: reportMode === "manual" ? sections : undefined,
       style: reportStyle,
-      reportWorkflow, // Replaces tone
       processingMode: processingMode,
+      modelName: modelProvider,
       reportType: selectedTemplate ? selectedTemplate.toUpperCase() : "OBSERVATION" 
     };
     
@@ -235,8 +235,8 @@ export function NewReportModal({ open, onOpenChange, projectName, onCreateReport
     setReportMode("auto");
     setSections([]);
     setReportStyle("comprehensive");
-    setReportWorkflow("AUTHOR");
     setProcessingMode("IMAGE_AND_TEXT");
+    setModelProvider("gemini-cheap");
   };
 
   const selectedPhotos = photos.filter(p => selectedPhotoIds.includes(String(p.id)));
@@ -650,6 +650,41 @@ export function NewReportModal({ open, onOpenChange, projectName, onCreateReport
           {step === 4 && (
             <div className="space-y-6">
               <div className="space-y-3">
+                <Label>AI Model</Label>
+                <Select value={modelProvider} onValueChange={(v) => setModelProvider(v as 'grok' | 'gemini-pro' | 'gemini-cheap' | 'claude')}>
+                  <SelectTrigger className="rounded-lg">
+                    <SelectValue placeholder="Select model" />
+                  </SelectTrigger>
+                  <SelectContent className="rounded-lg">
+                    <SelectItem value="grok" className="rounded-md">
+                      <div>
+                        <p>Grok (xAI)</p>
+                        <p className="text-xs text-slate-500">grok-4-fast — fast and capable</p>
+                      </div>
+                    </SelectItem>
+                    <SelectItem value="gemini-pro" className="rounded-md">
+                      <div>
+                        <p>Gemini-Pro(Google)</p>
+                        <p className="text-xs text-slate-500">gemini-3-pro — strong reasoning</p>
+                      </div>
+                    </SelectItem>
+                    <SelectItem value="claude" className="rounded-md">
+                      <div>
+                        <p>Claude (Anthropic)</p>
+                        <p className="text-xs text-slate-500">claude-4.5-sonnet — strong agentic capabilities</p>
+                      </div>
+                    </SelectItem>
+                    <SelectItem value="gemini-cheap" className="rounded-md">
+                      <div>
+                        <p>Gemini-Cheap(Google)</p>
+                        <p className="text-xs text-slate-500">gemini-3-flash — fast and cheap</p>
+                      </div>
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-3">
                 <Label>Report Style</Label>
                 <Select value={reportStyle} onValueChange={setReportStyle}>
                   <SelectTrigger className="rounded-lg">
@@ -707,47 +742,6 @@ export function NewReportModal({ open, onOpenChange, projectName, onCreateReport
                 </Select>
               </div>
 
-              <div className="space-y-3">
-                <Label>Generation Strategy</Label>
-                <Select value={reportWorkflow} onValueChange={setReportWorkflow}>
-                  <SelectTrigger className="rounded-lg">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent className="rounded-lg">
-                    <SelectItem value="AUTHOR" className="rounded-md">
-                      <div>
-                        <p>Sequential Author</p>
-                        <p className="text-xs text-slate-500">Writes one section at a time (Higher Quality)</p>
-                      </div>
-                    </SelectItem>
-                    <SelectItem value="DISPATCHER" className="rounded-md">
-                      <div>
-                        <p>Parallel Dispatcher</p>
-                        <p className="text-xs text-slate-500">Generates all sections at once (Faster)</p>
-                      </div>
-                    </SelectItem>
-                    <SelectItem value="BLACKBOARD" className="rounded-md">
-                      <div>
-                        <p>Blackboard Architecture</p>
-                        <p className="text-xs text-slate-500">Collaborative agents refining sections</p>
-                      </div>
-                    </SelectItem>
-                    <SelectItem value="ASSEMBLY" className="rounded-md">
-                      <div>
-                        <p>Assembly Line</p>
-                        <p className="text-xs text-slate-500">Step-by-step processing pipeline</p>
-                      </div>
-                    </SelectItem>
-                    <SelectItem value="BASIC" className="rounded-md">
-                      <div>
-                        <p>Basic Generator</p>
-                        <p className="text-xs text-slate-500">Simple one-shot generation</p>
-                      </div>
-                    </SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
               <Separator />
 
               <div className="bg-slate-50 rounded-lg p-4 space-y-3">
@@ -776,12 +770,12 @@ export function NewReportModal({ open, onOpenChange, projectName, onCreateReport
                     <span className="text-slate-900 capitalize">{reportStyle}</span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-slate-600">Workflow:</span>
-                    <span className="text-slate-900 capitalize">{reportWorkflow === "AUTHOR" ? "Sequential" : "Parallel"}</span>
-                  </div>
-                  <div className="flex justify-between">
                     <span className="text-slate-600">Processing:</span>
                     <span className="text-slate-900">{processingMode === "IMAGE_AND_TEXT" ? "Image & Text" : "Text Only"}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-slate-600">AI Model:</span>
+                    <span className="text-slate-900 capitalize">{modelProvider}</span>
                   </div>
                 </div>
               </div>

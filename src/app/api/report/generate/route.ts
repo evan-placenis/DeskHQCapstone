@@ -20,8 +20,9 @@ export async function POST(
 
         const {
             projectId,
-            reportType = 'OBSERVATION',
-            modelName = 'grok',
+            title,
+            reportType,
+            modelName,
             templateId
         } = body;
 
@@ -40,6 +41,7 @@ export async function POST(
 
         console.log("📤 Queuing report generation with:", {
             projectId,
+            title: title ?? '(default)',
             reportType,
             modelName,
             selectedImageIdsCount: selectedImageIds.length,
@@ -53,8 +55,9 @@ export async function POST(
             projectId,
             user.id,
             {
+                title: title || undefined,
                 reportType,
-                modelName: modelName || 'grok',
+                modelName: modelName,
                 selectedImageIds: selectedImageIds,
                 templateId: templateId || '',
                 sections: sections
@@ -119,7 +122,7 @@ export async function PUT(
         const reportToSave: Report = {
             reportId: report.reportId || uuidv4(),
             projectId: projectId,
-            title: report.title || `Report ${new Date().toLocaleDateString()}`,
+            title: report.title,
             reportContent: report.reportContent || [],
             status: report.status || 'DRAFT',
             createdAt: report.createdAt ? new Date(report.createdAt) : new Date(),
@@ -131,8 +134,8 @@ export async function PUT(
             isReviewRequired: true
         };
 
-        // Save the report
-        const savedReport = await reportService.saveReport(reportToSave, supabase);
+        // Save the report (saveReport takes reportId and client, not the full report object)
+        const savedReport = await reportService.saveReport(reportToSave.reportId, supabase);
 
         return NextResponse.json({
             success: true,

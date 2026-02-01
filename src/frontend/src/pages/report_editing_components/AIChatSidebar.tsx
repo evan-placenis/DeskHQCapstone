@@ -11,9 +11,16 @@ import {
 } from '@assistant-ui/react';
 import { Button } from "../ui_components/button";
 import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "../ui_components/dropdown-menu";
+import {
   Sparkles,
   ChevronLeft,
   ChevronRight,
+  ChevronDown,
   FileText,
   X,
   Loader2,
@@ -57,17 +64,30 @@ const COMPONENT_CONFIG = {
 const CustomMessage = () => {
   // Ignore the deprecation warning for now; it is safe to use.
   const message = useMessage();
-  const isUser = message?.role === 'user';
+  const [mounted, setMounted] = useState(false);
+
+  // Avoid "Resource updated before mount" when chat is closed and reopened: only render
+  // MessagePrimitive.Root after this component has committed, and skip if message is missing.
+  useEffect(() => {
+    setMounted(true);
+    return () => setMounted(false);
+  }, []);
+
+  if (!message || !mounted) {
+    return null;
+  }
+
+  const isUser = message.role === 'user';
 
   // --- RAW CHECKS (Fast enough to run every render, safer than memo) ---
   // 1. Status Check
-  const statusType = typeof message?.status === 'string'
+  const statusType = typeof message.status === 'string'
     ? message.status
-    : message?.status?.type;
+    : message.status?.type;
   const isRunning = statusType === 'running';
 
   // 2. Content Checks
-  const contentParts = message?.content || [];
+  const contentParts = message.content || [];
 
   // Check for ANY visible text
   const hasText = contentParts.some((c: any) => c.type === 'text' && c.text.length > 0);
@@ -182,7 +202,15 @@ export function AIChatSidebar({
 }: AIChatSidebarProps) {
   const [isResizing, setIsResizing] = useState(false);
   const [windowWidth, setWindowWidth] = useState(0);
+  const [chatProvider, setChatProvider] = useState<'grok' | 'gemini-pro' | 'claude' | 'gemini-cheap'>('gemini-cheap');
   const hasHydratedRef = useRef(false);
+
+  const modelLabel: Record<typeof chatProvider, string> = {
+    grok: 'Grok',
+    'gemini-pro': 'Gemini Pro',
+    'gemini-cheap': 'Gemini (fast)',
+    claude: 'Claude',
+  };
 
   useEffect(() => {
     hasHydratedRef.current = false;
@@ -244,9 +272,9 @@ export function AIChatSidebar({
     if (!sessionId) return undefined;
     return new AssistantChatTransport({
       api: `/api/chat/sessions/${sessionId}/stream`,
-      body: { activeSectionId, reportId, projectId, provider: 'grok' }
+      body: { activeSectionId, reportId, projectId, provider: chatProvider }
     });
-  }, [sessionId, activeSectionId, reportId, projectId]);
+  }, [sessionId, activeSectionId, reportId, projectId, chatProvider]);
 
   // Create runtime with stable transport
   const runtime = useChatRuntime({
@@ -360,22 +388,42 @@ export function AIChatSidebar({
           </Button>
         ) : (
           <div className="p-4 border-b border-slate-200 bg-gradient-to-r from-theme-primary/5 to-theme-primary/10">
-            <div className="flex items-center justify-between mb-2">
-              <div className="flex items-center gap-2">
-                <div className="relative">
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2 min-w-0">
+                <div className="relative flex-shrink-0">
                   <div className="absolute inset-0 bg-theme-primary/20 rounded-full blur-md animate-pulse" />
                   <div className="relative p-2 rounded-full bg-theme-primary flex items-center justify-center">
                     <Sparkles className="w-4 h-4 text-white" />
                   </div>
                 </div>
-                <div>
+                <div className="min-w-0">
                   <h3 className="text-slate-900 font-medium">AI Assistant</h3>
                   <p className="text-xs text-slate-500">Always here to help</p>
                 </div>
               </div>
-              <Button variant="ghost" size="icon" onClick={onToggleCollapse}>
-                <ChevronRight className="w-4 h-4" />
-              </Button>
+              <div className="flex items-center gap-1 flex-shrink-0">
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 px-2 text-xs text-slate-500 hover:text-slate-700 hover:bg-slate-100"
+                    >
+                      {modelLabel[chatProvider]}
+                      <ChevronDown className="ml-1 h-3 w-3 opacity-60" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="min-w-[140px]">
+                    <DropdownMenuItem onClick={() => setChatProvider('grok')}>Grok (xAI)</DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => setChatProvider('gemini-pro')}>Gemini Pro</DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => setChatProvider('gemini-cheap')}>Gemini (fast)</DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => setChatProvider('claude')}>Claude</DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+                <Button variant="ghost" size="icon" className="h-8 w-8" onClick={onToggleCollapse}>
+                  <ChevronRight className="w-4 h-4" />
+                </Button>
+              </div>
             </div>
           </div>
         )}
