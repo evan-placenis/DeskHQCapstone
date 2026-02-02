@@ -1,6 +1,6 @@
-import { useState } from "react";
-import { Input } from "../ui_components/input";
+import { useState, useRef, useEffect } from "react";
 import { Button } from "../ui_components/button";
+import { cn } from "../ui_components/utils";
 import { Send, Mic, MicOff, Plus, Paperclip } from "lucide-react";
 import {
   DropdownMenu,
@@ -23,6 +23,20 @@ export function AIChatInput({
   const [chatInput, setChatInput] = useState("");
   const [isRecording, setIsRecording] = useState(false);
   const [micPermissionDenied, setMicPermissionDenied] = useState(false);
+  const [canScroll, setCanScroll] = useState(false);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  const MIN_TEXTAREA_HEIGHT_PX = 36;  // one line (h-9)
+  const MAX_TEXTAREA_HEIGHT_PX = 120; // ~5 lines
+
+  useEffect(() => {
+    const ta = textareaRef.current;
+    if (!ta) return;
+    ta.style.height = "auto";
+    const capped = Math.max(MIN_TEXTAREA_HEIGHT_PX, Math.min(ta.scrollHeight, MAX_TEXTAREA_HEIGHT_PX));
+    ta.style.height = `${capped}px`;
+    setCanScroll(ta.scrollHeight > MAX_TEXTAREA_HEIGHT_PX);
+  }, [chatInput]);
 
   const handleSend = () => {
     if (!chatInput.trim()) return;
@@ -49,8 +63,9 @@ export function AIChatInput({
     input.click();
   };
 
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter") {
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
       handleSend();
     }
   };
@@ -146,13 +161,22 @@ export function AIChatInput({
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
-      <Input
+      <textarea
+        ref={textareaRef}
         placeholder={placeholder}
         value={chatInput}
         onChange={(e) => setChatInput(e.target.value)}
         onKeyDown={handleKeyDown}
-        className="rounded-lg flex-1"
         disabled={disabled}
+        rows={1}
+        className={cn(
+          "flex-1 min-h-9 w-full rounded-lg border border-input bg-input-background px-3 py-2 text-sm placeholder:text-muted-foreground",
+          "focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] focus-visible:outline-none",
+          "disabled:pointer-events-none disabled:opacity-50 disabled:cursor-not-allowed",
+          "resize-none",
+          canScroll ? "overflow-y-auto" : "overflow-y-hidden"
+        )}
+        style={{ maxHeight: MAX_TEXTAREA_HEIGHT_PX }}
       />
       <Button 
         size="icon" 

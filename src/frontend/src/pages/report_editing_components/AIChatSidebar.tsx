@@ -2,7 +2,8 @@
 
 import { useState, useEffect, useMemo, useRef } from "react";
 import { AIChatInput } from "./AIChatInput";
-import { useChatRuntime, AssistantChatTransport } from '@assistant-ui/react-ai-sdk';
+import { useChat } from '@ai-sdk/react';
+import { useAISDKRuntime, AssistantChatTransport} from '@assistant-ui/react-ai-sdk';
 import {
   AssistantRuntimeProvider,
   ThreadPrimitive,
@@ -165,7 +166,7 @@ interface AIChatSidebarProps {
   projectId?: string;
   reportId?: string;
   sessionId: string | null;
-  initialMessages?: Array<{ sender: string; content: string }>;
+  initialMessages?: Array<{ role: string; content: string; messageId?: string }>;
   activeSectionId?: string;
   isCollapsed: boolean;
   width: number;
@@ -203,7 +204,6 @@ export function AIChatSidebar({
   const [isResizing, setIsResizing] = useState(false);
   const [windowWidth, setWindowWidth] = useState(0);
   const [chatProvider, setChatProvider] = useState<'grok' | 'gemini-pro' | 'claude' | 'gemini-cheap'>('gemini-cheap');
-  const hasHydratedRef = useRef(false);
 
   const modelLabel: Record<typeof chatProvider, string> = {
     grok: 'Grok',
@@ -211,10 +211,6 @@ export function AIChatSidebar({
     'gemini-cheap': 'Gemini (fast)',
     claude: 'Claude',
   };
-
-  useEffect(() => {
-    hasHydratedRef.current = false;
-  }, [sessionId]);
 
   // Set window width on mount and handle resize
   useEffect(() => {
@@ -267,34 +263,53 @@ export function AIChatSidebar({
     };
   }, [isResizing, windowWidth, onResize]);
 
-  // Create stable transport to avoid recreating on every render
-  const transport = useMemo(() => {
-    if (!sessionId) return undefined;
-    return new AssistantChatTransport({
-      api: `/api/chat/sessions/${sessionId}/stream`,
-      body: { activeSectionId, reportId, projectId, provider: chatProvider }
-    });
-  }, [sessionId, activeSectionId, reportId, projectId, chatProvider]);
+  // Vercel useChat + assistant-ui adapter (useAISDKRuntime = "useVercelUseChatRuntime" pattern)
+  const transport = useMemo(
+    () =>
+      new AssistantChatTransport({
+        api: sessionId ? `/api/chat/sessions/${sessionId}/stream` : '',
+        body: { activeSectionId, reportId, projectId, provider: chatProvider },
+      }),
+    [sessionId, activeSectionId, reportId, projectId, chatProvider]
+  );
+  const chat = useChat({ id: sessionId ?? 'pending', transport });
+  const runtime = useAISDKRuntime(chat);
 
-  // Create runtime with stable transport
-  const runtime = useChatRuntime({
-    transport
-  });
+  // Hydrate once when sessionId is set: fetch history from /stream and inject into chat.
+  // Only depend on sessionId so we don't refetch on every chat state update (chat reference changes often).
+  const setMessagesRef = useRef(chat?.setMessages);
+  setMessagesRef.current = chat?.setMessages;
 
-  // Hydrate thread with existing messages (e.g. "Report Complete" from trigger) so they show in the chat
   useEffect(() => {
-    if (!runtime || initialMessages.length === 0 || hasHydratedRef.current) return;
-    hasHydratedRef.current = true;
-    (async () => {
-      for (const msg of initialMessages) {
-        const role = msg.sender === 'USER' ? 'user' : 'assistant';
-        await runtime.thread.append({
-          role: role as 'user' | 'assistant',
-          content: [{ type: 'text' as const, text: msg.content || '' }],
-        });
+    if (!sessionId) return;
+
+    let cancelled = false;
+    const fetchHistory = async () => {
+      try {
+        const response = await fetch(`/api/chat/sessions/${sessionId}/stream`);
+        if (cancelled) return;
+        if (!response.ok) return;
+        const history = await response.json();
+        if (cancelled) return;
+        if (!Array.isArray(history) || history.length === 0) return;
+
+        const setMessages = setMessagesRef.current;
+        if (typeof setMessages !== "function") return;
+
+        const uiMessages = history.map((msg: { id?: string; role?: string; content?: string }, i: number) => ({
+          id: msg.id ?? `load-${sessionId}-${i}`,
+          role: (msg.role === "assistant" ? "assistant" : "user") as "user" | "assistant",
+          parts: [{ type: "text" as const, text: msg.content ?? "" }]
+        }));
+        setMessages(uiMessages);
+      } catch (err) {
+        if (!cancelled) console.error("fetchHistory error:", err);
       }
-    })();
-  }, [runtime, initialMessages]);
+    };
+
+    fetchHistory();
+    return () => { cancelled = true; };
+  }, [sessionId]);
 
   // Listen for message completion to handle tool calls and suggestions
   useEffect(() => {

@@ -10,17 +10,14 @@ export interface ChatSession {
     lastActiveAt: Date;
 }
 
-// A single message bubble
+// A single message bubble (sender matches DB column: user | assistant)
 export interface ChatMessage {
     messageId: string;
     sessionId: string;
-    sender: 'USER' | 'AI';
-    content: string;         // The text displayed
-    
-    // AI Metadata (Only present if sender === 'AI')
-    citations?: string[];    // IDs of RAG chunks used to answer
-    suggestion?: EditSuggestion; // If the AI is proposing a text change
-    
+    sender: 'user' | 'assistant';
+    content: string;
+    citations?: string[];
+    suggestion?: EditSuggestion;
     timestamp: Date;
 }
 

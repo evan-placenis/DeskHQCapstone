@@ -25,30 +25,37 @@ export class PineconeVectorStore implements VectorStore {
         this.indexName = process.env.PINECONE_INDEX_NAME || 'capstone-docs';
     }
 
+    /** Max texts per embed request for llama-text-embed-v2 (Pinecone batch limit). */
+    private static readonly EMBED_BATCH_SIZE = 96;
+
     /**
      * Takes raw text, asks Pinecone to embed it, then saves it.
+     * Batches embed calls to respect Pinecone's 96-input limit per request.
      */
     // --- 1. UPSERT (Save Text -> Pinecone Embeds It -> Save Vectors) ---
     async upsertChunks(chunks: DocumentChunk[], namespace?: string): Promise<void> {
         const index = this.client.index(this.indexName);
-
-        // Extract just the text strings to send to the AI
         const textToEmbed = chunks.map(c => c.textSegment);
 
-        // 1. Ask Pinecone to calculate the vectors for us
-        const embeddings = await this.client.inference.embed(
-            this.modelName,
-            textToEmbed,
-            { inputType: 'passage', truncate: 'END' }
-        );
+        // Batch embed calls (Pinecone llama-text-embed-v2 allows max 96 inputs per request)
+        const allValues: number[][] = [];
+        for (let i = 0; i < textToEmbed.length; i += PineconeVectorStore.EMBED_BATCH_SIZE) {
+            const batch = textToEmbed.slice(i, i + PineconeVectorStore.EMBED_BATCH_SIZE);
+            const embeddings = await this.client.inference.embed(
+                this.modelName,
+                batch,
+                { inputType: 'passage', truncate: 'END' }
+            );
+            for (let j = 0; j < (embeddings.data?.length ?? 0); j++) {
+                allValues.push((embeddings.data![j] as any).values);
+            }
+        }
 
-        // Target specific namespace if provided (Organization ID)
         const targetIndex = namespace ? index.namespace(namespace) : index;
 
-        // 2. Merge the new vectors back with your existing chunk data
         const records = chunks.map((chunk, i) => ({
             id: chunk.chunkId,
-            values: (embeddings.data[i] as any).values,
+            values: allValues[i],
             metadata: {
                 kId: chunk.kId,
                 text: chunk.textSegment,
@@ -59,7 +66,6 @@ export class PineconeVectorStore implements VectorStore {
             }
         }));
 
-        // 3. Save to Database
         await targetIndex.upsert(records);
         console.log(`✅ Pinecone: Upserted ${chunks.length} chunks via Inference API (Namespace: ${namespace || 'default'}).`);
     }

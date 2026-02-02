@@ -134,16 +134,14 @@ export class KnowledgeService {
     public async search(queries: string[], projectId: string): Promise<string[]> {
         const uniqueSpecs = new Set<string>();
 
-        // We need the orgNamespace to search the correct Pinecone index
-        // We use the ADMIN CLIENT here because this is a system-level RAG lookup
-        const orgNamespace = await this.repo.getOrgNamespace(projectId, this.adminClient);
-
-        if (!orgNamespace) {
-            console.warn(`No namespace found for project ${projectId}, skipping RAG search.`);
+        // Use projectId as namespace so search matches saveWebDataToDatabase (and doc uploads if aligned)
+        const searchNamespace = projectId;
+        if (!searchNamespace) {
+            console.warn(`No projectId provided, skipping RAG search.`);
             return [];
         }
 
-        console.log(`🔍 Searching Knowledge Base for Project ${projectId} (Org: ${orgNamespace})`);
+        console.log(`🔍 Searching Knowledge Base for Project ${projectId} (namespace: ${searchNamespace})`);
 
         for (const query of queries) {
             if (!query || query.trim() === "") continue;
@@ -151,7 +149,7 @@ export class KnowledgeService {
             // Basic logic: Search for each description
             // Limit to top 2 results per image description to avoid context bloat
             try {
-                const results = await this.vectorStore.similaritySearch(query, 2, orgNamespace);
+                const results = await this.vectorStore.similaritySearch(query, 2, searchNamespace);
                 results.forEach(doc => {
                     uniqueSpecs.add(doc.textSegment);
                 });

@@ -18,7 +18,7 @@ import { SupabaseClient } from '@supabase/supabase-js';
 export class ChatOrchestrator {
     async generateStream(params: {
         messages: any[],
-        provider: 'grok' | 'gemini' | 'claude',
+        provider: 'grok' | 'gemini-pro' | 'claude' | 'gemini-cheap',
         context?: any,
         projectId?: string,
         userId?: string,
@@ -29,7 +29,7 @@ export class ChatOrchestrator {
 
         // Build tools - include report skills if we have context
         const tools: any = {
-            ...researchSkills,
+            ...researchSkills(projectId ?? ''),
             ...chatSkills,
             ...visionSkills
         };

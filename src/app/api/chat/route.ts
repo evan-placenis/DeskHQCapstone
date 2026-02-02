@@ -5,9 +5,20 @@ import { createAuthenticatedClient } from "@/app/api/utils";
 
 // 1. CREATE OR GET SESSION (find-or-create by reportId so we reuse the session the trigger created)
 export async function POST(req: Request) {
+    let body: { projectId?: unknown; reportId?: unknown; message?: unknown };
     try {
-        const { projectId, reportId } = await req.json();
+        body = await req.json();
+    } catch {
+        return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+    }
 
+    //ensure the projectId and reportId are strings
+    const rawProjectId = body?.projectId;
+    const rawReportId = body?.reportId;
+    const projectId = rawProjectId != null && rawProjectId !== '' ? String(rawProjectId) : undefined;
+    const reportId = rawReportId != null && rawReportId !== '' ? String(rawReportId) : undefined;
+
+    try {
         const { supabase, user } = await createAuthenticatedClient();
         if (!user) {
             return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -17,7 +28,7 @@ export async function POST(req: Request) {
             return NextResponse.json({ error: "Project ID required" }, { status: 400 });
         }
 
-        // If opening a report: reuse existing session if the trigger already created one (with "Report Complete" message)
+        // 1. Try to find existing session first (optimization + avoid duplicate)
         if (reportId) {
             const existing = await Container.chatRepo.getSessionByReportId(reportId, supabase);
             if (existing) {
@@ -25,13 +36,35 @@ export async function POST(req: Request) {
             }
         }
 
-        // No existing session for this report: create new one
-        const session = await Container.chatService.startSession(user.id, projectId, supabase, reportId);
-        // Return full session with messages (empty for new) so frontend always gets same shape
-        const fullSession = await Container.chatRepo.getSessionById(session.sessionId, supabase);
-        return NextResponse.json(fullSession ?? session);
+        // 2. Not found: try to create one (no session yet for this report is normal)
+        try {
+            const newSession = await Container.chatService.startSession(user.id, projectId, supabase, reportId ?? undefined);
+            const fullSession = await Container.chatRepo.getSessionById(newSession.sessionId, supabase);
+            return NextResponse.json(fullSession ?? newSession);
+        } catch (createError: any) {
+            // Optimistic concurrency: if DB raises unique constraint, another request created the session — return it
+            const msg = createError?.message ?? '';
+            const code = createError?.code;
+            const isDuplicate =
+                code === '23505' ||
+                msg.includes('23505') ||
+                msg.includes('unique_report_session') ||
+                msg.toLowerCase().includes('unique constraint');
+
+            if (isDuplicate && reportId) {
+                const session = await Container.chatRepo.getSessionByReportId(reportId, supabase);
+                if (session) {
+                    return NextResponse.json(session);
+                }
+            }
+            const errMsg = createError?.message ?? 'Create session failed';
+            console.error("[POST /api/chat] Create session failed:", errMsg);
+            return NextResponse.json({ error: errMsg }, { status: 500 });
+        }
     } catch (error: any) {
-        return NextResponse.json({ error: error.message }, { status: 500 });
+        const errMsg = error?.message ?? "Internal server error";
+        console.error("[POST /api/chat] Error:", errMsg);
+        return NextResponse.json({ error: errMsg }, { status: 500 });
     }
 }
 
