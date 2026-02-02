@@ -87,7 +87,7 @@ export function ReportLayout({
   useTiptap = false,
 }: ReportLayoutProps) {
   const [sessionId, setSessionId] = useState<string | null>(null);
-  const [initialChatMessages, setInitialChatMessages] = useState<Array<{ sender: string; content: string }>>([]);
+  const [initialChatMessages, setInitialChatMessages] = useState<Array<{ role: string; content: string; messageId?: string }>>([]);
   const [pendingChange, setPendingChange] = useState<PendingChange | null>(null);
   const [diffContent, setDiffContent] = useState<string | null>(null); // For inline diff in TiptapEditor
   const [isSelectionMode, setIsSelectionMode] = useState(false);
@@ -109,26 +109,49 @@ export function ReportLayout({
     const ensureSession = async () => {
       if (!sessionId && projectId) {
         try {
+          // STEP 1: Get or Create the Session ID
+          // We use a simplified call or the existing POST to get the ID
           const res = await fetch("/api/chat", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              projectId,
-              reportId
-            })
+            body: JSON.stringify({ projectId, reportId, message: null })
           });
+
+          let newSessionId = null;
           if (res.ok) {
-            const sessionData = await res.json();
-            setSessionId(sessionData.sessionId || sessionData.session?.sessionId);
-            if (Array.isArray(sessionData.messages) && sessionData.messages.length > 0) {
-              setInitialChatMessages(sessionData.messages.map((m: { sender: string; content: string }) => ({ sender: m.sender, content: m.content })));
+            const data = await res.json();
+            newSessionId = data.sessionId || data.session?.sessionId || data.id;
+            setSessionId(newSessionId);
+            if (Array.isArray(data.messages) && data.messages.length > 0) {
+              setInitialChatMessages(data.messages.map((m: { role?: string; content?: string; messageId?: string }) => ({
+                role: m.role ?? "user",
+                content: m.content ?? "",
+                messageId: m.messageId
+              })));
             }
           } else {
-            const errorData = await res.json().catch(() => ({ error: "Unknown error" }));
-            console.error("Failed to create session:", errorData);
+            const errBody = await res.json().catch(() => ({}));
+            const errMsg = (errBody as { error?: string })?.error ?? res.statusText;
+            console.error("ensureSession: POST /api/chat failed", res.status, errMsg);
+          }
+  
+          // STEP 2: Fetch the History using GET /api/chat/sessions/[sessionId]
+          // This ensures we get the correctly formatted 'user'/'assistant' array
+          if (newSessionId) {
+            const historyRes = await fetch(`/api/chat/sessions/${newSessionId}/stream`);
+            if (historyRes.ok) {
+              const historyMessages = await historyRes.json();
+              if (Array.isArray(historyMessages) && historyMessages.length > 0) {
+                setInitialChatMessages(historyMessages.map((m: { id?: string; role?: string; content?: string }) => ({
+                  role: m.role ?? "user",
+                  content: m.content ?? "",
+                  messageId: m.id
+                })));
+              }
+            }
           }
         } catch (error) {
-          console.error("Failed to create session:", error);
+          console.error("ensureSession error:", error);
         }
       }
     };

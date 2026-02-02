@@ -110,12 +110,12 @@ export const generateReportTask = task({
 
 
             const friendlyStatus = getFriendlyStatus(part.toolName, toolInput);
-            const headerChunk = `\n\n### 🛠️ ${friendlyStatus}\n`;
+            const headerChunk = `### ${friendlyStatus}\n`;
             await broadcast(supabase, payload.projectId, 'reasoning', { chunk: headerChunk });
 
             // Stream the agent's reasoning note for this tool call (scratchpad) if provided
             if (inputObj?.reasoning && typeof inputObj.reasoning === 'string') {
-              const reasoningChunk = `> *${(inputObj.reasoning as string).trim()}*\n\n`;
+              const reasoningChunk = `${(inputObj.reasoning as string).trim()}\n\n`;
               await broadcast(supabase, payload.projectId, 'reasoning', {chunk: reasoningChunk});
             }
 
@@ -224,7 +224,7 @@ async function addFinalMessageToChatSession(
     const assistantMsg: ChatMessage = {
       messageId: uuidv4(),
       sessionId,
-      sender: 'AI',
+      sender: 'assistant',
       content: finalMessage,
       timestamp: new Date(),
     };

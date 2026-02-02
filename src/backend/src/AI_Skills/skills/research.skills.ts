@@ -2,7 +2,9 @@ import { tool } from 'ai';
 import { z } from 'zod/v3';
 import { Container } from '../../config/container'; // Assuming your container is here
 
-export const researchSkills = {
+export const researchSkills = (
+  projectId: string, 
+) => ({
 
   /**
    * Skill 1: Internal Memory Search
@@ -12,10 +14,9 @@ export const researchSkills = {
     description: 'Search the internal project memory/database for information. ALWAYS try this first as it is the quickest and cheapest way to get information.',
     inputSchema: z.object({
       query: z.string().describe('The question or topic to search for'),
-      projectId: z.string(),
-      reasoning: z.string().optional().describe('A "scratchpad" to think out loud and let the user know what you are thinking.'),
+      // reasoning: z.string().optional().describe('A "scratchpad" to think out loud and let the user know what you are thinking.'),
     }),
-    execute: async ({ query, projectId }) => {
+    execute: async ({ query }) => {
       try {
         console.log(`🧠 [Research Skill] Searching Internal Memory: "${query}"`);
         // KnowledgeService.search takes string[] and returns string[]
@@ -41,10 +42,9 @@ export const researchSkills = {
     description: 'Search the live web using Exa. Use this if Internal Memory fails.',
     inputSchema: z.object({
       query: z.string().describe('The search query optimized for a search engine'),
-      projectId: z.string().describe('Required to save new findings to memory'),
-      reasoning: z.string().optional().describe('Brief note for the user (e.g. "Searching web for additional context")'),
+      // reasoning: z.string().optional().describe('Brief note for the user (e.g. "Searching web for additional context")'),
     }),
-    execute: async ({ query, projectId }) => {
+    execute: async ({ query}) => {
       try {
         console.log(`🌎 [Skill] Searching Web (Exa): "${query}"`);
 
@@ -79,4 +79,4 @@ export const researchSkills = {
       }
     },
   })
-};
+});

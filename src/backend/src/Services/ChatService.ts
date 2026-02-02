@@ -47,7 +47,7 @@ export class ChatService {
         client: SupabaseClient,
         activeSectionId?: string,
         reportId?: string,
-        provider: 'grok' | 'gemini' | 'claude' = 'grok'
+        provider: 'grok' | 'gemini-pro' | 'gemini-cheap' | 'claude' = 'gemini-cheap'
     ): Promise<ChatMessage> {
 
         // 1. Fetch Session and Save USER Message
@@ -57,7 +57,7 @@ export class ChatService {
         const userMsg: ChatMessage = {
             messageId: uuidv4(),
             sessionId: sessionId,
-            sender: 'USER',
+            sender: 'user',
             content: userText,
             timestamp: new Date()
         };
@@ -92,7 +92,7 @@ export class ChatService {
         // 4. Call Orchestrator
         const streamResult = await this.chatOrchestrator.generateStream({
             messages: session.messages.slice(-10).map(m => ({
-                role: m.sender === 'USER' ? 'user' : 'assistant',
+                role: m.sender,
                 content: m.content
             })).concat([{ role: 'user', content: userText }]),
             provider,
@@ -128,11 +128,11 @@ export class ChatService {
             }
         }
 
-        // 7. Save AI Message
+        // 7. Save assistant message
         const aiMsg: ChatMessage = {
             messageId: uuidv4(),
             sessionId: sessionId,
-            sender: 'AI',
+            sender: 'assistant',
             content: fullText,
             suggestion,
             timestamp: new Date()
@@ -172,6 +172,63 @@ export class ChatService {
         // 3. Update status in chat history
         message.suggestion.status = 'ACCEPTED';
         await this.repo.updateMessage(message, client);
+    }
+
+    /**
+     * Persist a single chat message to the database.
+     * Call from the stream route to save the user message before streaming and the assistant message after the stream completes.
+     */
+    public async addMessageToDatabase(
+        sessionId: string,
+        sender: 'user' | 'assistant',
+        content: string,
+        client: SupabaseClient
+    ): Promise<void> {
+        if (!content?.trim()) return;
+        const message: ChatMessage = {
+            messageId: uuidv4(),
+            sessionId,
+            sender,
+            content: content.trim(),
+            timestamp: new Date()
+        };
+        await this.repo.addMessage(sessionId, message, client);
+        if (sender === 'user') {
+            await this.repo.updateSessionTimestamp(sessionId, new Date(), client);
+        }
+    }
+
+    /**
+     * Extract the latest user message text from a stream request body (messages array or message/content fields).
+     * Returns null if none found.
+     */
+    public getLastUserMessageTextFromBody(body: {
+        messages?: Array<{ role?: string; sender?: string; content?: string; parts?: Array<{ type?: string; text?: string }> }>;
+        message?: string;
+        input?: string;
+        prompt?: string;
+    }): string | null {
+        const messages = body?.messages;
+        if (Array.isArray(messages) && messages.length > 0) {
+            for (let i = messages.length - 1; i >= 0; i--) {
+                const m = messages[i];
+                const who = (m?.sender ?? m?.role ?? '').toString().toLowerCase();
+                if (who === 'user') {
+                    const content = m.content ?? m.parts;
+                    if (typeof content === 'string') return content.trim() || null;
+                    if (Array.isArray(content)) {
+                        for (const p of content) {
+                            if (p?.type === 'text' && p?.text) return String(p.text).trim() || null;
+                        }
+                    }
+                    return null;
+                }
+            }
+        }
+        if (body?.message && typeof body.message === 'string') return body.message.trim() || null;
+        if (body?.input && typeof body.input === 'string') return body.input.trim() || null;
+        if (body?.prompt && typeof body.prompt === 'string') return body.prompt.trim() || null;
+        return null;
     }
 
     /**

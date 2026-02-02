@@ -52,9 +52,9 @@ export class ReportOrchestrator {
     // 1. Sanitize Messages
     // Ensure we strictly follow the OpenAI message format { role, content }
     const sanitizedMessages = messages
-      .filter(msg => msg && msg.role && msg.content !== undefined)
+      .filter(msg => msg && (msg.role ?? msg.sender) && msg.content !== undefined)
       .map(msg => ({
-        role: msg.role as 'user' | 'assistant' | 'system',
+        role: (msg.role ?? msg.sender) as 'user' | 'assistant' | 'system',
         content: typeof msg.content === 'string' ? msg.content : String(msg.content || '')
       }));
 

@@ -7,47 +7,49 @@ export class SupabaseChatRepository implements ChatRepository {
     // No constructor needed anymore
     // constructor(private supabase: SupabaseClient) {}
 
-    // --- 1. GET SESSION (With Messages) ---
+    // --- 0. GET MESSAGES BY SESSION (from chat_messages table) ---
+    // DB sender is 'user' | 'assistant'; domain uses same.
+    private async getMessagesBySessionId(sessionId: string, client: SupabaseClient): Promise<ChatMessage[]> {
+        const { data, error } = await client
+            .from('chat_messages')
+            .select('*')
+            .eq('session_id', sessionId)
+            .order('timestamp', { ascending: true })
+            .limit(20);
+
+        if (error) return [];
+        const messages: ChatMessage[] = (data || []).map((msg: any) => ({
+            messageId: msg.id,
+            sessionId: msg.session_id,
+            sender: (msg.sender === 'assistant' ? 'assistant' : 'user') as 'user' | 'assistant',
+            content: msg.content,
+            citations: msg.citations,
+            suggestion: msg.suggestion,
+            timestamp: msg.timestamp ? new Date(msg.timestamp) : new Date()
+        }));
+        return messages;
+    }
+
+    // --- 1. GET SESSION (session row + messages from chat_messages) ---
     async getSessionById(sessionId: string, client: SupabaseClient): Promise<ChatSession | null> {
-        // Fetch Session + Messages
         const { data, error } = await client
             .from('chat_sessions')
-            .select(`
-                *,
-                chat_messages (*)
-            `)
+            .select('*')
             .eq('id', sessionId)
             .single();
 
         if (error || !data) return null;
 
-        // Map DB Messages -> Domain Messages
-        // DB: id, session_id, sender, content, citations, suggestion, timestamp
-        // Domain: messageId, sessionId, sender, content, citations, suggestion, timestamp
-        const messages: ChatMessage[] = (data.chat_messages || []).map((msg: any) => ({
-            messageId: msg.id,
-            sessionId: msg.session_id,
-            sender: msg.sender, // 'USER' | 'AI' (Direct match)
-            content: msg.content,
-            citations: msg.citations,
-            suggestion: msg.suggestion,
-            timestamp: new Date(msg.timestamp)
-        }));
+        const messages = await this.getMessagesBySessionId(sessionId, client);
 
-        // Sort by time
-        messages.sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
-
-        // Map DB Session -> Domain Session
-        // DB: id, project_id, user_id, report_id, started_at, last_active_at
-        // Domain: sessionId, projectId, userId, reportId, startedAt, lastActiveAt
         return {
             sessionId: data.id,
             projectId: data.project_id,
             reportId: data.report_id,
             userId: data.user_id,
-            messages: messages,
-            startedAt: new Date(data.started_at),
-            lastActiveAt: new Date(data.last_active_at)
+            messages,
+            startedAt: new Date(data.started_at ?? data.created_at),
+            lastActiveAt: new Date(data.last_active_at ?? data.created_at)
         };
     }
 
@@ -91,13 +93,10 @@ export class SupabaseChatRepository implements ChatRepository {
         const { error } = await client
             .from('chat_messages')
             .insert({
-                id: message.messageId, // Map messageId -> id
+                id: message.messageId,
                 session_id: sessionId,
-                sender: message.sender, // 'USER' | 'AI'
-                content: message.content,
-                citations: message.citations,
-                suggestion: message.suggestion,
-                timestamp: message.timestamp
+                sender: message.sender,
+                content: message.content
             });
 
         if (error) throw new Error(`Add Message Failed: ${error.message}`);
@@ -135,7 +134,7 @@ export class SupabaseChatRepository implements ChatRepository {
 
         if (error || !data) {
             // Fallback: This should only happen if data is corrupt
-            console.error("CRITICAL: Project has no Organization ID", projectId);
+            console.error("CRITICAL: Project has npm no Organization ID", projectId);
             throw new Error("Cannot create chat: Project not found or invalid.");
         }
         return data.organization_id;
@@ -143,15 +142,11 @@ export class SupabaseChatRepository implements ChatRepository {
 
 
     // --- 5. UPDATE MESSAGE ---
-    // Critical for saving the "ACCEPTED" status on suggestions
+    // Schema has id, session_id, sender, content
     async updateMessage(message: ChatMessage, client: SupabaseClient): Promise<void> {
         const { error } = await client
             .from('chat_messages')
-            .update({
-                content: message.content,     // In case content was edited
-                suggestion: message.suggestion, // This saves the 'status' change
-                citations: message.citations
-            })
+            .update({ content: message.content })
             .eq('id', message.messageId);
 
         if (error) throw new Error(`Update Message Failed: ${error.message}`);
