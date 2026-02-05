@@ -10,6 +10,10 @@ import path from "path";
 import { createClient } from "@supabase/supabase-js";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
+// 👇 IMPORT WORKFLOW REGISTRY
+import { getWorkflow } from "../../../AI_Skills/langGraph/workflow"; 
+import { HumanMessage } from "@langchain/core/messages";
+
 // Load environment variables - ensure they're available for Trigger.dev workers
 // Try multiple paths to find .env file (relative to where Trigger.dev runs from)
 const envPaths = [
@@ -44,6 +48,7 @@ export interface TriggerPayload {
     selectedImageIds: string[];
     templateId: string;
     sections?: any[]; // Custom sections from frontend
+    workflowType?: string; // Workflow type: 'simple', 'advanced', etc. 
   };
 }
 
@@ -55,6 +60,7 @@ export const generateReportTask = task({
     factor: 2,
   },
   run: async (payload: TriggerPayload, { ctx }) => {
+    // 1. Setup Clients
     // Create a fresh Supabase client to avoid Container singleton issues in Trigger.dev
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
     const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
@@ -68,93 +74,118 @@ export const generateReportTask = task({
     const chatRepo = Container.chatRepo;
     const chatService = Container.chatService;
 
+    // 2. Setup Buffers
     let textBuffer = "";
     let lastUpdate = Date.now();
     const UPDATE_INTERVAL = 200; // Shorter interval so scratchpad/reasoning appears sooner
     let finalMessage = "Report generation complete!";
 
+    
+
     try {
-      const result = await reportService.generateReportStream(
-        payload.projectId,
-        {
-          title: payload.input.title,
-          reportType: payload.input.reportType,
-          modelName: payload.input.modelName,
-          selectedImageIds: payload.input.selectedImageIds,
-          templateId: payload.input.templateId,
-          sections: payload.input.sections
-        },
-        supabase,
-        payload.userId
-      );
+      // PRE-CALCULATE ID: We need this ID for the graph state
+      const draftReportId = uuidv4();
+      
+      // Use workflow type from modal; only fallback to "simple" when field is missing (e.g. old client)
+      const workflowType = payload.input.workflowType ?? 'simple';
+      
+      console.log(`🚀 Starting LangGraph for Report: ${draftReportId} using workflow: ${workflowType}`);
 
-      const { streamResult, draftReportId } = result;
+      // 3. SELECT THE APPROPRIATE WORKFLOW GRAPH
+      const workflowGraph = getWorkflow(workflowType);
 
-      // ONE LOOP TO RULE THEM ALL
-      for await (const part of streamResult.fullStream) {
-        switch (part.type) {
-          case 'text-delta':
-            textBuffer += part.text;
-            // Stream scratchpad/reasoning: batch every UPDATE_INTERVAL so user sees reasoning as the agent types
-            if (textBuffer.length > 0 && Date.now() - lastUpdate > UPDATE_INTERVAL) {
+      // 4. PREPARE LANGGRAPH STATE
+      // Instead of calling reportService.generateReportStream, we prepare the Graph Input
+      const inputState = {
+        messages: [new HumanMessage("Generate the report.")], // Trigger the graph
+        context: "", // Fetch context if needed, or rely on nodes to fetch it
+        projectId: payload.projectId,
+        userId: payload.userId,
+        reportType: payload.input.reportType,
+        title: payload.input.title,
+        provider: payload.input.modelName,
+        selectedImageIds: payload.input.selectedImageIds,
+        draftReportId: draftReportId, // Pass the ID so agents know where to write
+        currentSection: "init"
+      };
+
+      // 5. RUN THE GRAPH STREAM
+      // streamEvents gives us granular tokens & tool calls just like Vercel AI SDK
+      const eventStream = await workflowGraph.streamEvents(inputState, {
+        version: "v2", // Required for LangChain v0.2+
+      });
+
+      // 5. THE NEW LOOP (Adapting LangGraph events to your logic)
+      for await (const event of eventStream) {
+        
+        // A. TEXT STREAMING (Reasoning)
+        // Event: 'on_chat_model_stream' means the LLM is outputting tokens
+        if (event.event === "on_chat_model_stream") {
+          const token = event.data.chunk?.content;
+          if (typeof token === "string" && token.length > 0) {
+            textBuffer += token;
+
+            // Broadcast buffer (debounce logic from your original code)
+            if (Date.now() - lastUpdate > UPDATE_INTERVAL) {
               await broadcast(supabase, payload.projectId, 'reasoning', { chunk: textBuffer });
               textBuffer = "";
               lastUpdate = Date.now();
             }
-            break;
+          }
+        }
 
-          case 'tool-call':
-            // Use 'input' property for AI SDK streamText
-            const toolInput = 'input' in part ? part.input : undefined;
-            const inputObj = toolInput as Record<string, unknown> | undefined;
+        // B. TOOL CALLS (Status Updates)
+        // Event: 'on_tool_start' means the agent decided to use a tool
+        else if (event.event === "on_tool_start") {
+          const toolName = event.name;
+          const inputObj = event.data.input;
 
+          const friendlyStatus = getFriendlyStatus(toolName, inputObj);
+          
+          // Broadcast Header
+          await broadcast(supabase, payload.projectId, 'reasoning', { chunk: `\n### ${friendlyStatus}\n` });
+          await broadcast(supabase, payload.projectId, 'status', { chunk: friendlyStatus });
 
-            const friendlyStatus = getFriendlyStatus(part.toolName, toolInput);
-            const headerChunk = `### ${friendlyStatus}\n`;
-            await broadcast(supabase, payload.projectId, 'reasoning', { chunk: headerChunk });
+          // Broadcast "Reasoning" field if your agent outputted it in the tool args
+          if (inputObj?.reasoning) {
+            await broadcast(supabase, payload.projectId, 'reasoning', { chunk: `${inputObj.reasoning}\n\n` });
+          }
+        }
 
-            // Stream the agent's reasoning note for this tool call (scratchpad) if provided
-            if (inputObj?.reasoning && typeof inputObj.reasoning === 'string') {
-              const reasoningChunk = `${(inputObj.reasoning as string).trim()}\n\n`;
-              await broadcast(supabase, payload.projectId, 'reasoning', {chunk: reasoningChunk});
-            }
-
-            await broadcast(supabase, payload.projectId, 'status', { chunk: friendlyStatus });
-            break;
-
-          case 'tool-result':
-            // Catch the final report submission result
-            if (part.toolName === 'submit_report') {
-              // Narrow the type to access result property
-              const toolResult = 'result' in part ? part.result : undefined;
-              finalMessage = (toolResult as any)?.message || "Report finalized successfully.";
-            }
-            break;
+        // C. TOOL RESULTS (Completion)
+        // Event: 'on_tool_end'
+        else if (event.event === "on_tool_end") {
+           if (event.name === 'submit_report') {
+             // Capture the final summary message
+             const output = event.data.output; // This is the return value of your tool
+             // Depending on how your tool returns data, it might be a string or object
+             // Adjust 'output.message' based on your actual tool implementation
+             finalMessage = typeof output === 'string' ? output : (output?.message || finalMessage);
+           }
         }
       }
 
-      // Flush remaining text
+      // 6. FLUSH & FINALIZE (Keep exactly as is)
       if (textBuffer.length > 0) {
         await broadcast(supabase, payload.projectId, 'reasoning', { chunk: textBuffer });
       }
 
-      // Finalize report: compile report_sections into reports.tiptap_content so the DB column is filled
+      // Compile sections -> tiptap_content
       if (draftReportId) {
         try {
           await reportService.saveReport(draftReportId, supabase);
-          console.log(`✅ Report ${draftReportId} finalized: tiptap_content updated from report_sections`);
+          console.log(`✅ Report ${draftReportId} finalized.`);
         } catch (saveErr) {
-          console.error(`⚠️ Failed to finalize report (tiptap_content not updated):`, saveErr);
-          // Don't throw - sections are saved; UI can still display via getReportById fallback
+          console.error(`⚠️ Failed to finalize report:`, saveErr);
         }
       }
 
-      // Add the final message to the chat session so the user sees it in chat (instead of only in the stream)
+      // Add Chat Message
       if (draftReportId) {
         await addFinalMessageToChatSession(supabase, payload.projectId, payload.userId, draftReportId, finalMessage, chatRepo, chatService);
       }
 
-      // BROADCAST COMPLETION: This triggers the frontend to refresh the UI
+      // Broadcast Completion
       if (draftReportId) {
         await broadcast(supabase, payload.projectId, 'report_complete', {
           reportId: draftReportId,

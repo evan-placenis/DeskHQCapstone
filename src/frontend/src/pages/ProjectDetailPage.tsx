@@ -547,7 +547,8 @@ export function ProjectDetailPage({
         sections: reportData.sections,
         style: reportData.style,
         modelName: reportData.modelName || 'gemini-cheap',
-        reportType: reportData.reportType
+        reportType: reportData.reportType,
+        workflowType: reportData.workflowType, // User's selection from modal (modal default is "simple")
       };
 
       // Start the streaming request (don't await - it's a stream)

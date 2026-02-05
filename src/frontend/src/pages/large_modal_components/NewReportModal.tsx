@@ -82,6 +82,7 @@ export function NewReportModal({ open, onOpenChange, projectName, onCreateReport
   const [reportStyle, setReportStyle] = useState("comprehensive");
   const [processingMode, setProcessingMode] = useState<"TEXT_ONLY" | "IMAGE_AND_TEXT">("IMAGE_AND_TEXT");
   const [modelProvider, setModelProvider] = useState<'grok' | 'claude' | 'gemini-pro' | 'gemini-cheap'>('gemini-cheap');
+  const [workflowType, setWorkflowType] = useState<string>("simple");
   const [draggedPhoto, setDraggedPhoto] = useState<string | null>(null);
 
   // Get the selected template object
@@ -222,6 +223,7 @@ export function NewReportModal({ open, onOpenChange, projectName, onCreateReport
       style: reportStyle,
       processingMode: processingMode,
       modelName: modelProvider,
+      workflowType: workflowType, // Add workflow type selection
       reportType: selectedTemplate ? selectedTemplate.toUpperCase() : "OBSERVATION" 
     };
     
@@ -237,6 +239,7 @@ export function NewReportModal({ open, onOpenChange, projectName, onCreateReport
     setReportStyle("comprehensive");
     setProcessingMode("IMAGE_AND_TEXT");
     setModelProvider("gemini-cheap");
+    setWorkflowType("simple");
   };
 
   const selectedPhotos = photos.filter(p => selectedPhotoIds.includes(String(p.id)));
@@ -742,6 +745,30 @@ export function NewReportModal({ open, onOpenChange, projectName, onCreateReport
                 </Select>
               </div>
 
+              <div className="space-y-3">
+                <Label>Workflow Type</Label>
+                <Select value={workflowType} onValueChange={setWorkflowType}>
+                  <SelectTrigger className="rounded-lg">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent className="rounded-lg">
+                    <SelectItem value="simple" className="rounded-md">
+                      <div>
+                        <p>Simple Workflow</p>
+                        <p className="text-xs text-slate-500">Standard research → write → review flow</p>
+                      </div>
+                    </SelectItem>
+                    {/* Add more workflow types here as you create them */}
+                    {/* <SelectItem value="advanced" className="rounded-md">
+                      <div>
+                        <p>Advanced Workflow</p>
+                        <p className="text-xs text-slate-500">Multi-agent collaboration with quality checks</p>
+                      </div>
+                    </SelectItem> */}
+                  </SelectContent>
+                </Select>
+              </div>
+
               <Separator />
 
               <div className="bg-slate-50 rounded-lg p-4 space-y-3">
@@ -776,6 +803,10 @@ export function NewReportModal({ open, onOpenChange, projectName, onCreateReport
                   <div className="flex justify-between">
                     <span className="text-slate-600">AI Model:</span>
                     <span className="text-slate-900 capitalize">{modelProvider}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-slate-600">Workflow:</span>
+                    <span className="text-slate-900 capitalize">{workflowType}</span>
                   </div>
                 </div>
               </div>
