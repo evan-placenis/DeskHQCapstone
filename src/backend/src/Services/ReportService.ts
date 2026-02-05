@@ -95,10 +95,9 @@ export class ReportService {
             sections: input.sections || [],
             templateId: input.templateId || ''
         };
-// Filter out any messages with empty/undefined content
-
+        // Filter out any messages with empty/undefined content
         // 3. Call AI-SDK Orchestrator
-        const provider = (normalizedInput.modelName?.toLowerCase() || 'grok') as 'grok' | 'gemini' | 'claude';
+        const provider = (normalizedInput.modelName?.toLowerCase())|| 'gemini-cheap';
 
         const streamResult = await this.reportOrchestrator.generateStream({
             messages: [userMessage], // Only User message here

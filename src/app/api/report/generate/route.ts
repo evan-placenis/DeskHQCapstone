@@ -23,7 +23,8 @@ export async function POST(
             title,
             reportType,
             modelName,
-            templateId
+            templateId,
+            workflowType
         } = body;
 
         if (!projectId) {
@@ -44,6 +45,7 @@ export async function POST(
             title: title ?? '(default)',
             reportType,
             modelName,
+            workflowType,
             selectedImageIdsCount: selectedImageIds.length,
             sectionsCount: sections.length,
             templateId
@@ -60,7 +62,8 @@ export async function POST(
                 modelName: modelName,
                 selectedImageIds: selectedImageIds,
                 templateId: templateId || '',
-                sections: sections
+                sections: sections,
+                workflowType: workflowType // Pass through user's selection from modal (undefined = use fallback in job)
             }
         );
 
