@@ -17,7 +17,13 @@ import { ReportImageComponent } from './ReportImageComponent'
 import { AdditionMark, DeletionMark } from './DiffMarks'
 import { computeDiffDocument } from './diffUtils'
 import { Button } from '../ui_components/button'
-import { Check, X } from 'lucide-react'
+import {
+    DropdownMenu,
+    DropdownMenuContent,
+    DropdownMenuItem,
+    DropdownMenuTrigger,
+} from '../ui_components/dropdown-menu'
+import { Check, X, Heading as HeadingIcon, ChevronDown } from 'lucide-react'
 
 
 // 2. Customize the Image Extension
@@ -290,6 +296,32 @@ export function TiptapEditor({
                     <button onClick={() => editor.chain().focus().toggleBold().run()} className="font-bold px-2 border rounded">B</button>
                     <button onClick={() => editor.chain().focus().toggleItalic().run()} className="italic px-2 border rounded">I</button>
                     <button onClick={() => editor.chain().focus().toggleBulletList().run()} className="px-2 border rounded">• List</button>
+                    <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                            <button
+                                className="px-2 border rounded flex items-center gap-1"
+                                title="Heading level"
+                            >
+                                <HeadingIcon className="w-4 h-4" />
+                                <span>Heading</span>
+                                <ChevronDown className="w-3.5 h-3.5 opacity-70" />
+                            </button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="start">
+                            <DropdownMenuItem onClick={() => editor.chain().focus().setParagraph().run()}>
+                                Paragraph
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => editor.chain().focus().toggleHeading({ level: 1 }).run()}>
+                                Heading 1
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()}>
+                                Heading 2
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => editor.chain().focus().toggleHeading({ level: 3 }).run()}>
+                                Heading 3
+                            </DropdownMenuItem>
+                        </DropdownMenuContent>
+                    </DropdownMenu>
                 </div>
             )}
             <EditorContent editor={editor} />
