@@ -287,6 +287,93 @@ export class ReportService {
         return section;
     }
 
+    /**
+     * Accept edit: update a section (by row id) and sync the substring in report.tiptap_content.
+     * Reuses updateSectionInReport for the section row; then syncs tiptap_content and returns it.
+     */
+    public async updateSectionAndTiptapContent(
+        reportId: string,
+        sectionRowId: string,
+        params: { content: string; originalInTiptap?: string; heading?: string },
+        client: SupabaseClient
+    ): Promise<{ tiptap_content: string } | null> {
+        const section = await this.reportRepo.getSectionByRowId(reportId, sectionRowId, client);
+        if (!section) throw new Error("Section not found");
+
+        const originalContent =
+            typeof params.originalInTiptap === "string" && params.originalInTiptap.trim()
+                ? params.originalInTiptap
+                : section.content;
+        const originalHeading = section.heading;
+        const heading = params.heading ?? section.heading;
+        const order = typeof section.order === "number" ? section.order : 0;
+
+        await this.updateSectionInReport(
+            reportId,
+            section.section_id,
+            heading,
+            params.content,
+            order,
+            client,
+            section.metadata ?? {}
+        );
+
+        const report = await this.reportRepo.getById(reportId, client);
+        if (!report?.tiptapContent) return null;
+
+        // Normalize line endings so replace matches (ai-edit may return \n-only substring)
+        let synced = report.tiptapContent.replace(/\r\n/g, "\n");
+        if (originalContent) {
+            synced = synced.replace(originalContent, params.content);
+        }
+        if (params.heading !== undefined && originalHeading && originalHeading !== params.heading) {
+            const escaped = originalHeading.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+            const patterns = [
+                new RegExp(`^(#{1,6})\\s*${escaped}\\s*$`, "gm"),
+                new RegExp(`^${escaped}\\s*$`, "gm"),
+            ];
+            for (const pattern of patterns) {
+                synced = synced.replace(pattern, (match: string, hashes?: string) =>
+                    hashes ? `${hashes} ${params.heading}` : (params.heading ?? match)
+                );
+            }
+        }
+
+        report.tiptapContent = synced;
+        report.updatedAt = new Date();
+        await this.reportRepo.update(report, client);
+
+        return { tiptap_content: synced };
+    }
+
+    /**
+     * Update section content by template section_id (e.g. "exec-summary").
+     * Used by the legacy /api/report/updateSection flow. Syncs tiptap_content when present.
+     */
+    public async updateSectionContent(
+        _projectId: string,
+        reportId: string,
+        sectionId: string,
+        newContent: string,
+        client: SupabaseClient
+    ): Promise<void> {
+        const section = await this.reportRepo.getSection(reportId, sectionId, client);
+        if (!section) throw new Error(`Section ${sectionId} not found`);
+        await this.reportRepo.updateSectionByRowId(
+            reportId,
+            section.id,
+            { content: newContent },
+            client
+        );
+        const report = await this.reportRepo.getById(reportId, client);
+        if (report?.tiptapContent && section.content) {
+            const synced = report.tiptapContent.replace(section.content, newContent);
+            report.tiptapContent = synced;
+            report.updatedAt = new Date();
+            await this.reportRepo.update(report, client);
+        }
+    }
+
 
 
     public async getReportsByProject(projectId: string, client: SupabaseClient): Promise<Report[]> {

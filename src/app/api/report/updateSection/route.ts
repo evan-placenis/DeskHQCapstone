@@ -1,7 +1,14 @@
 import { NextResponse } from "next/server";
-import { Container } from '@/backend/config/container'
+import { Container } from "@/backend/config/container";
 import { createAuthenticatedClient } from "@/app/api/utils";
 
+/**
+ * PUT /api/report/updateSection
+ *
+ * Updates a section by template section_id (e.g. "exec-summary"). Thin route:
+ * auth + validation, then ReportService.updateSectionContent. Use
+ * PUT /api/report/[reportId]/section/[sectionRowId] when you have the section row UUID (e.g. after AI edit).
+ */
 export async function PUT(request: Request) {
   try {
     const body = await request.json();

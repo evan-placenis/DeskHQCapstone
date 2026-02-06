@@ -80,6 +80,38 @@ export class SupabaseReportRepository implements ReportRepository {
         return data;
     }
 
+    async getSectionByRowId(reportId: string, sectionRowId: string, client: SupabaseClient): Promise<any | null> {
+        const { data, error } = await client
+            .from('report_sections')
+            .select('*')
+            .eq('id', sectionRowId)
+            .eq('report_id', reportId)
+            .single();
+
+        if (error || !data) return null;
+        return data;
+    }
+
+    async updateSectionByRowId(
+        reportId: string,
+        sectionRowId: string,
+        data: { content?: string; heading?: string },
+        client: SupabaseClient
+    ): Promise<void> {
+        const updateData: Record<string, unknown> = {};
+        if (data.content !== undefined) updateData.content = data.content;
+        if (data.heading !== undefined) updateData.heading = data.heading;
+        if (Object.keys(updateData).length === 0) return;
+
+        const { error } = await client
+            .from('report_sections')
+            .update(updateData)
+            .eq('id', sectionRowId)
+            .eq('report_id', reportId);
+
+        if (error) throw new Error(`Update Section By Row Failed: ${error.message}`);
+    }
+
     async getTemplateById(reportType: string, client: SupabaseClient): Promise<any | null> { // TODO: Add Template type
         const { data: template } = await client
             .from('report_templates')

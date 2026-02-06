@@ -236,10 +236,9 @@ function ReportViewerContent() {
             setProjectName("Project");
           }
 
-          // 🟢 NEW: Load tiptap_content (Markdown)
-          const tiptapContent = data.tiptap_content || "";
+          // Display only from tiptap_content; if empty, report is blank
+          const tiptapContent = data.tiptap_content ?? "";
           setMarkdownContent(tiptapContent);
-          // Initialize the saved content ref to prevent saving on initial load
           lastSavedContentRef.current = tiptapContent;
 
           // 🟢 Create minimal ReportContent structure for ReportLayout compatibility
@@ -255,7 +254,8 @@ function ReportViewerContent() {
               content: tiptapContent, // Pass markdown content here
               images: [],
               subSections: []
-            }]
+            }],
+            tiptapContent: tiptapContent // Also set at top level for AI edit flow
           });
           setReportStatus(data.status || "Draft");
         })
@@ -295,7 +295,21 @@ function ReportViewerContent() {
   };
 
   const handleContentChange = (updates: Partial<ReportContent>) => {
-    setReportContent(prev => ({ ...prev, ...updates }));
+    setReportContent(prev => {
+      const next = { ...prev, ...updates };
+      // If tiptapContent was updated (e.g., from AI edit), also set main section content
+      // so the TipTap editor re-renders with the new text
+      if (updates.tiptapContent !== undefined && prev.sections?.length) {
+        next.sections = prev.sections.map((s, i) =>
+          s.id === "main-content" ? { ...s, content: updates.tiptapContent! } : s
+        );
+      }
+      return next;
+    });
+    // Sync markdownContent (source of truth for editor display)
+    if (updates.tiptapContent !== undefined) {
+      setMarkdownContent(updates.tiptapContent);
+    }
   };
 
   // 🟢 NEW: Handle section change - update both reportContent and markdownContent
@@ -472,8 +486,10 @@ function ReportViewerContent() {
         projectId={projectId}
         reportId={reportId || undefined}
         reportContent={reportContent}
+        currentDocumentContent={markdownContent}
         onContentChange={handleContentChange}
         onSectionChange={handleSectionChange}
+        onReportContentSaved={ (content) => { lastSavedContentRef.current = content; } }
         onBack={handleBack}
         backLabel={fromPeerReview ? "Back to Dashboard" : "Back to Project"}
         reportStatus={reportStatus}

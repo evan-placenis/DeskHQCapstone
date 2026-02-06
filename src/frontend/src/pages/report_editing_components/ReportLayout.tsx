@@ -1,7 +1,8 @@
-import { useState, useEffect } from "react";
-import { AIChatSidebar } from "./AIChatSidebar";
+import { useState, useEffect, useRef, useCallback } from "react";
+import { AIChatSidebar, EditSuggestion } from "./AIChatSidebar";
 import { ReportContent } from "./ReportContent";
 import { PeerReview, ReportContent as ReportContentType } from "@/frontend/types";
+import { DiffPopup } from "../smart_components/DiffPopup";
 
 interface SelectedContext {
   type: "photo" | "section" | "text";
@@ -28,8 +29,12 @@ interface ReportLayoutProps {
   projectId?: string | number;
   reportId?: string | number;
   reportContent: ReportContentType;
+  /** Current full document content (e.g. markdown) for AI edit replace; used when accepting edits */
+  currentDocumentContent?: string;
   onContentChange: (updates: Partial<ReportContentType>) => void;
   onSectionChange: (sectionId: number | string, newContent: string, newData?: any) => void;
+  /** Called after report content is saved (e.g. so parent can sync lastSavedContentRef) */
+  onReportContentSaved?: (content: string) => void;
 
   // Header props
   onBack: () => void;
@@ -66,8 +71,10 @@ export function ReportLayout({
   projectId,
   reportId,
   reportContent,
+  currentDocumentContent,
   onContentChange,
   onSectionChange,
+  onReportContentSaved,
   onBack,
   backLabel = "Back",
   photos = [],
@@ -101,6 +108,128 @@ export function ReportLayout({
   const [isChatCollapsed, setIsChatCollapsed] = useState(false);
   const [chatWidth, setChatWidth] = useState(384); // Default 384px (w-96)
   const [activeHighlightCommentId, setActiveHighlightCommentId] = useState<number | null>(null);
+
+  // New: EditSuggestion state for diff popup
+  const [pendingEditSuggestion, setPendingEditSuggestion] = useState<EditSuggestion | null>(null);
+  const [isGeneratingEdit, setIsGeneratingEdit] = useState(false);
+  
+  // Debounced save ref
+  const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  
+  // Non-streaming AI edit function
+  const requestAIEdit = useCallback(async (sectionRowId: string, instruction: string) => {
+    if (!reportId || isGeneratingEdit) return;
+    
+    setIsGeneratingEdit(true);
+    try {
+      const response = await fetch(`/api/report/${reportId}/ai-edit`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sectionRowId, instruction })
+      });
+      
+      if (!response.ok) {
+        const error = await response.json();
+        console.error('AI Edit failed:', error);
+        return null;
+      }
+      
+      const result = await response.json();
+      if (result.status === 'SUCCESS' && result.suggestion) {
+        setPendingEditSuggestion(result.suggestion);
+        return result.suggestion;
+      }
+    } catch (error) {
+      console.error('AI Edit request failed:', error);
+    } finally {
+      setIsGeneratingEdit(false);
+    }
+    return null;
+  }, [reportId, isGeneratingEdit]);
+  
+  // Debounced save function for tiptap_content changes
+  const debouncedSave = useCallback((newContent: string) => {
+    // Clear existing timeout
+    if (saveTimeoutRef.current) {
+      clearTimeout(saveTimeoutRef.current);
+    }
+    
+    // Set new debounced save (2 seconds)
+    saveTimeoutRef.current = setTimeout(async () => {
+      if (reportId && newContent) {
+        try {
+          // Save the updated tiptap_content to the database
+          await fetch(`/api/report/${reportId}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ tiptap_content: newContent })
+          });
+          console.log('✅ Report content saved (debounced)');
+        } catch (error) {
+          console.error('❌ Failed to save report content:', error);
+        }
+      }
+    }, 2000);
+  }, [reportId]);
+  
+  // Cleanup debounce timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (saveTimeoutRef.current) {
+        clearTimeout(saveTimeoutRef.current);
+      }
+    };
+  }, []);
+  
+  // Handler for accepting an edit suggestion.
+  // Display is always from tiptap_content. Section API replaces the substring in tiptap_content and updates report_sections; we use only the returned tiptap_content.
+  const handleAcceptEditSuggestion = useCallback(async () => {
+    if (!pendingEditSuggestion) return;
+
+    const { sectionRowId, originalText, suggestedText } = pendingEditSuggestion;
+
+    if (!reportId || !sectionRowId) {
+      setPendingEditSuggestion(null);
+      return;
+    }
+
+    try {
+      const response = await fetch(`/api/report/${reportId}/section/${sectionRowId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          content: suggestedText,
+          original_in_tiptap: originalText
+        })
+      });
+
+      if (!response.ok) {
+        console.error('Failed to update section:', await response.text());
+        setPendingEditSuggestion(null);
+        return;
+      }
+
+      const data = await response.json().catch(() => ({}));
+      const newTiptapContent = data.tiptap_content;
+
+      if (typeof newTiptapContent === 'string') {
+        onContentChange({ tiptapContent: newTiptapContent });
+        onReportContentSaved?.(newTiptapContent);
+        console.log('✅ Section and tiptap_content updated');
+      }
+    } catch (error) {
+      console.error('Error updating section:', error);
+    }
+
+    setPendingEditSuggestion(null);
+  }, [pendingEditSuggestion, onContentChange, reportId, onReportContentSaved]);
+  
+  // Handler for rejecting (or dismissing) an edit suggestion. Only clears the popup.
+  // AIChatSidebar keeps processedEditRef set so the same assistant message won't re-trigger
+  // the edit request and re-prompt the user.
+  const handleRejectEditSuggestion = useCallback(() => {
+    setPendingEditSuggestion(null);
+  }, []);
 
   // Auto-scroll is handled by Thread component
 
@@ -282,6 +411,9 @@ export function ReportLayout({
             });
           }
         }}
+        onEditSuggestion={setPendingEditSuggestion}
+        onRequestAIEdit={requestAIEdit}
+        isGeneratingEdit={isGeneratingEdit}
         selectedContexts={selectedContexts.filter(c => c.type === "section" || c.type === "photo") as any}
         onClearSelectedContexts={() => setSelectedContexts([])}
         onRemoveSelectedContext={removeSelectedContext}
@@ -290,6 +422,16 @@ export function ReportLayout({
         useTiptap={useTiptap}
         onSetDiffContent={setDiffContent}
       />
+
+      {/* Diff Popup for AI edit suggestions */}
+      {pendingEditSuggestion && (
+        <DiffPopup
+          suggestion={pendingEditSuggestion}
+          onAccept={handleAcceptEditSuggestion}
+          onReject={handleRejectEditSuggestion}
+          onDismiss={handleRejectEditSuggestion}
+        />
+      )}
     </div>
   );
 }

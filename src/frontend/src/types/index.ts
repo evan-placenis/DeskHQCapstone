@@ -76,6 +76,7 @@ export interface ReportContent {
   location: string;
   engineer: string;
   sections: ReportSection[];
+  tiptapContent?: string; // Full markdown content for TipTap editor
 }
 
 export interface ChatMessage {

@@ -96,6 +96,7 @@ export async function POST(
             context: reportContext,
             projectId: session.projectId,
             userId: session.userId,
+            reportId,  // Pass reportId to enable edit skills
             systemMessage,
             client: supabase
         });

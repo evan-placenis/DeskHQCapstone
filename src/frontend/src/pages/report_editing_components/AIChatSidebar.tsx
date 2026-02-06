@@ -162,6 +162,17 @@ const CustomMessage = () => {
 };
 
 
+// EditSuggestion type for proposeEdit tool
+export interface EditSuggestion {
+  sectionRowId: string;    // UUID primary key from report_sections.id (for DB updates)
+  sectionId: string;       // Template category like "exec-summary" (for context)
+  sectionHeading: string;
+  originalText: string;
+  suggestedText: string;
+  reason: string;
+  status: 'PENDING' | 'ACCEPTED' | 'REJECTED';
+}
+
 interface AIChatSidebarProps {
   projectId?: string;
   reportId?: string;
@@ -173,6 +184,9 @@ interface AIChatSidebarProps {
   onToggleCollapse: () => void;
   onResize: (width: number) => void;
   onSuggestionAccept: (suggestion: any) => void;
+  onEditSuggestion?: (suggestion: EditSuggestion) => void; // New: for proposeEdit tool
+  onRequestAIEdit?: (sectionRowId: string, instruction: string) => Promise<EditSuggestion | null>; // Non-streaming edit
+  isGeneratingEdit?: boolean;
   selectedContexts?: any[];
   onClearSelectedContexts?: () => void;
   onRemoveSelectedContext?: (index: number) => void;
@@ -193,6 +207,9 @@ export function AIChatSidebar({
   onToggleCollapse,
   onResize,
   onSuggestionAccept,
+  onEditSuggestion,
+  onRequestAIEdit,
+  isGeneratingEdit = false,
   selectedContexts = [],
   onClearSelectedContexts,
   onRemoveSelectedContext,
@@ -311,64 +328,130 @@ export function AIChatSidebar({
     return () => { cancelled = true; };
   }, [sessionId]);
 
-  // Listen for message completion to handle tool calls and suggestions
+  // Track processed edits to avoid duplicates
+  const processedEditRef = useRef<string | null>(null);
+  const lastUserMessageRef = useRef<string | null>(null);
+
+  // Listen for message completion to handle tool calls and trigger non-streaming edits
   useEffect(() => {
     if (!runtime || !sessionId) return;
 
-    // Subscribe to thread state changes to detect completed messages
-    const unsubscribe = runtime.thread.subscribe(() => {
-      const threadState = runtime.thread.getState();
-      const messages = threadState.messages || [];
+    // Helper function to extract and process tool calls
+    const processToolCalls = (lastMessage: any) => {
+      try {
+        // Get tool calls from content array (assistant-ui format) OR toolInvocations (vercel ai format)
+        const contentParts = (lastMessage as any).content || [];
+        const toolCalls = contentParts.filter((part: any) => 
+          part.type === 'tool-call' && part.result !== undefined
+        );
+        
+        // Also check legacy toolInvocations property
+        const toolInvocations = (lastMessage as any).toolInvocations || [];
+        const allToolCalls = [...toolCalls, ...toolInvocations];
+        
+        if (allToolCalls.length > 0) {
+          // Check for retrieveReportContext tool calls - this triggers the non-streaming edit
+          const retrieveContextCall = allToolCalls.find(
+            (tool: any) => {
+              const toolName = tool.toolName || tool.name;
+              const hasResult = 'result' in tool;
+              return toolName === 'retrieveReportContext' && hasResult;
+            }
+          );
 
-      if (messages.length > 0) {
-        const lastMessage = messages[messages.length - 1];
-
-        // Check if message is complete and from assistant
-        if (lastMessage.role === 'assistant' && (lastMessage as any).status === 'complete') {
-          // Handle suggestions when message finishes
-          const toolInvocations = (lastMessage as any).toolInvocations || [];
-          if (toolInvocations.length > 0) {
-            // Check for updateSection tool calls
-            const updateSectionCall = toolInvocations.find(
-              (tool: any) => {
-                const toolName = tool.toolName || (tool as any).toolName;
-                const hasResult = 'result' in tool;
-                return toolName === 'updateSection' && hasResult;
+          if (retrieveContextCall && onRequestAIEdit) {
+            const toolResult = retrieveContextCall.result;
+            
+            // If we found a section successfully, trigger the non-streaming edit
+            if (toolResult?.status === 'SUCCESS' && toolResult?.sectionRowId) {
+              // Avoid duplicate processing
+              const editKey = `${toolResult.sectionRowId}-${lastUserMessageRef.current}`;
+              if (processedEditRef.current === editKey) {
+                return;
               }
-            );
+              processedEditRef.current = editKey;
+              
+              // Get the user's instruction from the last message they sent
+              const instruction = lastUserMessageRef.current || 'improve this section';
+              
+              console.log(`🔄 [AIChatSidebar] Triggering non-streaming edit for "${toolResult.sectionHeading}"`);
+              onRequestAIEdit(toolResult.sectionRowId, instruction);
+              return true;
+            }
+          }
 
-            if (updateSectionCall && activeSectionId) {
-              // Extract suggestion from tool result
-              const toolAny = updateSectionCall as any;
-              const toolResult = toolAny.result || toolAny;
-              const messageContent = (lastMessage as any).content || (lastMessage as any).text || '';
-              const suggestedText = (toolResult?.markdown ||
-                (typeof toolResult === 'string' ? toolResult : null) ||
-                messageContent) as string;
+          // Fallback: Check for updateSection tool calls (legacy)
+          const updateSectionCall = allToolCalls.find(
+            (tool: any) => {
+              const toolName = tool.toolName || tool.name;
+              const hasResult = 'result' in tool;
+              return toolName === 'updateSection' && hasResult;
+            }
+          );
 
-              // Call the onSuggestionAccept callback
-              if (useTiptap && activeSectionId === "main-content" && onSetDiffContent) {
-                onSetDiffContent(suggestedText);
-              } else {
-                onSuggestionAccept({
-                  messageId: (lastMessage as any).id || String(Date.now()),
-                  sectionId: activeSectionId,
-                  oldValue: '',
-                  newValue: suggestedText,
-                  source: "ai"
-                });
-              }
+          if (updateSectionCall && activeSectionId) {
+            const toolResult = updateSectionCall.result;
+            const messageContent = (lastMessage as any).content || (lastMessage as any).text || '';
+            const suggestedText = (toolResult?.markdown ||
+              (typeof toolResult === 'string' ? toolResult : null) ||
+              messageContent) as string;
+
+            if (useTiptap && activeSectionId === "main-content" && onSetDiffContent) {
+              onSetDiffContent(suggestedText);
+            } else {
+              onSuggestionAccept({
+                messageId: (lastMessage as any).id || String(Date.now()),
+                sectionId: activeSectionId,
+                oldValue: '',
+                newValue: suggestedText,
+                source: "ai"
+              });
             }
           }
         }
+      } catch (err) {
+        console.error('[AIChatSidebar] Error processing tool calls:', err);
+      }
+    };
+
+    // Subscribe to thread state changes to detect completed messages
+    const unsubscribe = runtime.thread.subscribe(() => {
+      try {
+        const threadState = runtime.thread.getState();
+        const messages = threadState.messages || [];
+
+        if (messages.length > 0) {
+          const lastMessage = messages[messages.length - 1];
+
+          // Check if message is from assistant (process both running and complete to catch tool results early)
+          if (lastMessage.role === 'assistant') {
+            const messageStatus = typeof (lastMessage as any).status === 'string' 
+              ? (lastMessage as any).status 
+              : (lastMessage as any).status?.type;
+            
+            // Process tool calls when message is complete, or when running (to catch results as they stream)
+            if (messageStatus === 'complete' || messageStatus === 'running') {
+              processToolCalls(lastMessage);
+            }
+          }
+        }
+      } catch (err) {
+        // Catch streaming errors gracefully - the tool result data may still be valid
+        console.warn('[AIChatSidebar] Streaming error (may be recoverable):', err);
       }
     });
 
-    return unsubscribe;
-  }, [runtime, sessionId, activeSectionId, useTiptap, onSuggestionAccept, onSetDiffContent]);
+    return () => {
+      unsubscribe();
+      // Reset processed edit ref when unsubscribing
+      processedEditRef.current = null;
+    };
+  }, [runtime, sessionId, activeSectionId, useTiptap, onSuggestionAccept, onSetDiffContent, onEditSuggestion]);
 
   const handleCustomSend = async (message: string) => {
     if (!runtime) return;
+    // Track the user's message for non-streaming edit instruction
+    lastUserMessageRef.current = message;
     await runtime.thread.append({
       role: 'user',
       content: [{ type: 'text', text: message }],
