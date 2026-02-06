@@ -3,7 +3,7 @@
 import { useEditor, EditorContent } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
 import { Markdown } from 'tiptap-markdown' // You need to install this
-import { useEffect, useMemo, useState, useRef } from 'react'
+import { useEffect, useMemo, useState, useRef, forwardRef, useImperativeHandle } from 'react'
 
 import { Table } from '@tiptap/extension-table'
 import { TableRow } from '@tiptap/extension-table-row'
@@ -72,6 +72,17 @@ const CustomImageExtension = Image.extend({
 })
 
 
+/** Context from the editor for client-side AI edit (selection + surrounding text + full doc) */
+export interface SelectionContext {
+    selection: string;
+    surroundingContext: string;
+    fullMarkdown: string;
+}
+
+export interface TiptapEditorHandle {
+    getSelectionContext: () => SelectionContext | null;
+}
+
 interface TiptapEditorProps {
     content: string; // This expects the Markdown string from your processNode
     editable?: boolean; //make everything editable
@@ -79,16 +90,21 @@ interface TiptapEditorProps {
     diffContent?: string | null; // New content to compare against (enables review mode)
     onAcceptDiff?: () => void; // Callback when user accepts the diff
     onRejectDiff?: () => void; // Callback when user rejects the diff
+    /** Called when selection changes; used to pin selection so it survives blur (e.g. clicking into chat) */
+    onSelectionChange?: (context: SelectionContext | null) => void;
 }
 
-export function TiptapEditor({
+const SURROUNDING_CHARS = 500;
+
+export const TiptapEditor = forwardRef<TiptapEditorHandle, TiptapEditorProps>(function TiptapEditor({
     content,
     editable = true,
     onUpdate,
     diffContent,
     onAcceptDiff,
-    onRejectDiff
-}: TiptapEditorProps) {
+    onRejectDiff,
+    onSelectionChange,
+}, ref) {
     // Store the original markdown when entering review mode to prevent infinite loops
     const originalMarkdownRef = useRef<string | null>(null);
     const [originalMarkdown, setOriginalMarkdown] = useState<string | null>(null);
@@ -255,6 +271,73 @@ export function TiptapEditor({
         }
     }, [content, editor, isReviewMode]);
 
+    // Notify parent when selection changes so we can "pin" it (survives blur when user clicks into chat)
+    useEffect(() => {
+        if (!editor || !onSelectionChange || isReviewMode) return;
+        const buildContext = (): SelectionContext | null => {
+            const { from, to } = editor.state.selection;
+            if (from === to) return null;
+            const doc = editor.state.doc;
+            const selection = doc.textBetween(from, to);
+            if (!selection.trim()) return null;
+            const size = doc.content.size;
+            const before = doc.textBetween(0, from).slice(-SURROUNDING_CHARS);
+            const after = doc.textBetween(to, size).slice(0, SURROUNDING_CHARS);
+            let fullMarkdown = '';
+            try {
+                fullMarkdown = (editor.storage as any).markdown?.getMarkdown() ?? '';
+            } catch {
+                return null;
+            }
+            return { selection, surroundingContext: before + (after ? '\n\n---\n\n' + after : ''), fullMarkdown };
+        };
+        const handler = () => {
+            const { from, to } = editor.state.selection;
+            const hasSelection = from !== to && editor.state.doc.textBetween(from, to).trim().length > 0;
+            if (hasSelection) {
+                const ctx = buildContext();
+                if (ctx) onSelectionChange(ctx);
+            } else {
+                // Only clear pinned selection when user cleared selection while still in editor (keeps selection when they blur to chat)
+                if (editor.isFocused) onSelectionChange(null);
+            }
+        };
+        editor.on('selectionUpdate', handler);
+        return () => {
+            editor.off('selectionUpdate', handler);
+        };
+    }, [editor, onSelectionChange, isReviewMode]);
+
+    // Expose selection context for client-side AI edit (highlighted text + surrounding + full doc)
+    useImperativeHandle(
+        ref,
+        () => ({
+            getSelectionContext(): SelectionContext | null {
+                if (!editor || isReviewMode) return null;
+                const { from, to } = editor.state.selection;
+                if (from === to) return null;
+                const doc = editor.state.doc;
+                const selection = doc.textBetween(from, to);
+                if (!selection.trim()) return null;
+                const size = doc.content.size;
+                const before = doc.textBetween(0, from).slice(-SURROUNDING_CHARS);
+                const after = doc.textBetween(to, size).slice(0, SURROUNDING_CHARS);
+                let fullMarkdown = '';
+                try {
+                    fullMarkdown = (editor.storage as any).markdown?.getMarkdown() ?? '';
+                } catch {
+                    return null;
+                }
+                return {
+                    selection,
+                    surroundingContext: before + (after ? '\n\n---\n\n' + after : ''),
+                    fullMarkdown,
+                };
+            },
+        }),
+        [editor, isReviewMode]
+    );
+
     if (!editor) return null;
 
     return (
@@ -326,8 +409,8 @@ export function TiptapEditor({
             )}
             <EditorContent editor={editor} />
         </div>
-    )
-}
+    );
+});
 
 
 

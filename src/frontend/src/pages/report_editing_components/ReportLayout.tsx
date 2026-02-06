@@ -3,6 +3,7 @@ import { AIChatSidebar, EditSuggestion } from "./AIChatSidebar";
 import { ReportContent } from "./ReportContent";
 import { PeerReview, ReportContent as ReportContentType } from "@/frontend/types";
 import { DiffPopup } from "../smart_components/DiffPopup";
+import type { TiptapEditorHandle, SelectionContext } from "../smart_components/TiptapEditor";
 
 interface SelectedContext {
   type: "photo" | "section" | "text";
@@ -109,43 +110,66 @@ export function ReportLayout({
   const [chatWidth, setChatWidth] = useState(384); // Default 384px (w-96)
   const [activeHighlightCommentId, setActiveHighlightCommentId] = useState<number | null>(null);
 
-  // New: EditSuggestion state for diff popup
+  // EditSuggestion state for diff popup
   const [pendingEditSuggestion, setPendingEditSuggestion] = useState<EditSuggestion | null>(null);
   const [isGeneratingEdit, setIsGeneratingEdit] = useState(false);
-  
+
+  // Ref to Tiptap editor for client-context (selection + surrounding) AI edit
+  const editorRef = useRef<TiptapEditorHandle | null>(null);
+  // Pinned selection: survives blur so user can highlight in editor then type in chat (Cursor-style)
+  const [pinnedSelectionContext, setPinnedSelectionContext] = useState<SelectionContext | null>(null);
+
   // Debounced save ref
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  
-  // Non-streaming AI edit function
-  const requestAIEdit = useCallback(async (sectionRowId: string, instruction: string) => {
-    if (!reportId || isGeneratingEdit) return;
-    
-    setIsGeneratingEdit(true);
-    try {
-      const response = await fetch(`/api/report/${reportId}/ai-edit`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sectionRowId, instruction })
-      });
-      
-      if (!response.ok) {
-        const error = await response.json();
-        console.error('AI Edit failed:', error);
-        return null;
+
+  // Selection-based AI edit: context from client, stream replacement, no DB read
+  const requestAIEditWithSelection = useCallback(
+    async (selection: string, surroundingContext: string, instruction: string, fullMarkdown: string) => {
+      if (!reportId || isGeneratingEdit) return;
+
+      setPinnedSelectionContext(null); // clear pill as soon as they send
+      setIsGeneratingEdit(true);
+      try {
+        const response = await fetch(`/api/report/${reportId}/ai-edit`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ selection, surroundingContext, instruction }),
+        });
+
+        if (!response.ok) {
+          const err = await response.json().catch(() => ({}));
+          console.error("AI Edit (selection) failed:", err);
+          return;
+        }
+
+        const reader = response.body?.getReader();
+        const decoder = new TextDecoder();
+        let suggestedText = "";
+        if (reader) {
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            suggestedText += decoder.decode(value, { stream: true });
+          }
+        }
+        suggestedText = suggestedText.trim();
+        if (suggestedText) {
+          setPendingEditSuggestion({
+            originalText: selection,
+            suggestedText,
+            reason: instruction,
+            status: "PENDING",
+            fullDocument: fullMarkdown,
+          });
+        }
+      } catch (error) {
+        console.error("AI Edit (selection) request failed:", error);
+      } finally {
+        setIsGeneratingEdit(false);
       }
-      
-      const result = await response.json();
-      if (result.status === 'SUCCESS' && result.suggestion) {
-        setPendingEditSuggestion(result.suggestion);
-        return result.suggestion;
-      }
-    } catch (error) {
-      console.error('AI Edit request failed:', error);
-    } finally {
-      setIsGeneratingEdit(false);
-    }
-    return null;
-  }, [reportId, isGeneratingEdit]);
+    },
+    [reportId, isGeneratingEdit]
+  );
   
   // Debounced save function for tiptap_content changes
   const debouncedSave = useCallback((newContent: string) => {
@@ -181,48 +205,29 @@ export function ReportLayout({
     };
   }, []);
   
-  // Handler for accepting an edit suggestion.
-  // Display is always from tiptap_content. Section API replaces the substring in tiptap_content and updates report_sections; we use only the returned tiptap_content.
-  const handleAcceptEditSuggestion = useCallback(async () => {
+  // Accept edit: selection-based only updates editor state (replace in fullDocument); save happens via debounced report PUT.
+  const handleAcceptEditSuggestion = useCallback(() => {
     if (!pendingEditSuggestion) return;
 
-    const { sectionRowId, originalText, suggestedText } = pendingEditSuggestion;
+    const { originalText, suggestedText, fullDocument } = pendingEditSuggestion;
 
-    if (!reportId || !sectionRowId) {
-      setPendingEditSuggestion(null);
-      return;
-    }
-
-    try {
-      const response = await fetch(`/api/report/${reportId}/section/${sectionRowId}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          content: suggestedText,
-          original_in_tiptap: originalText
-        })
-      });
-
-      if (!response.ok) {
-        console.error('Failed to update section:', await response.text());
-        setPendingEditSuggestion(null);
-        return;
+    if (fullDocument != null) {
+      // Client-context flow: replace selection with suggested text; no DB call here
+      let newContent = fullDocument.replace(originalText, suggestedText);
+      if (newContent === fullDocument) {
+        // Plain-text selection may not match markdown exactly; try trimmed
+        const trimmed = originalText.trim();
+        if (trimmed && fullDocument.includes(trimmed)) {
+          newContent = fullDocument.replace(trimmed, suggestedText);
+        }
       }
-
-      const data = await response.json().catch(() => ({}));
-      const newTiptapContent = data.tiptap_content;
-
-      if (typeof newTiptapContent === 'string') {
-        onContentChange({ tiptapContent: newTiptapContent });
-        onReportContentSaved?.(newTiptapContent);
-        console.log('✅ Section and tiptap_content updated');
-      }
-    } catch (error) {
-      console.error('Error updating section:', error);
+      onContentChange({ tiptapContent: newContent });
+      onReportContentSaved?.(newContent);
+      console.log("✅ Edit accepted (content updated; save will sync to DB)");
     }
 
     setPendingEditSuggestion(null);
-  }, [pendingEditSuggestion, onContentChange, reportId, onReportContentSaved]);
+  }, [pendingEditSuggestion, onContentChange, onReportContentSaved]);
   
   // Handler for rejecting (or dismissing) an edit suggestion. Only clears the popup.
   // AIChatSidebar keeps processedEditRef set so the same assistant message won't re-trigger
@@ -383,6 +388,8 @@ export function ReportLayout({
         onSetPendingChange={setPendingChange}
         diffContent={diffContent}
         onSetDiffContent={setDiffContent}
+        editorRef={editorRef}
+        onSelectionChange={setPinnedSelectionContext}
       />
 
       {/* AI Chat Sidebar - Extracted to AIChatSidebar component */}
@@ -412,7 +419,10 @@ export function ReportLayout({
           }
         }}
         onEditSuggestion={setPendingEditSuggestion}
-        onRequestAIEdit={requestAIEdit}
+        getEditorSelectionContext={() => editorRef.current?.getSelectionContext() ?? pinnedSelectionContext ?? null}
+        onRequestAIEditWithSelection={requestAIEditWithSelection}
+        pinnedSelectionContext={pinnedSelectionContext}
+        onClearPinnedSelection={() => setPinnedSelectionContext(null)}
         isGeneratingEdit={isGeneratingEdit}
         selectedContexts={selectedContexts.filter(c => c.type === "section" || c.type === "photo") as any}
         onClearSelectedContexts={() => setSelectedContexts([])}

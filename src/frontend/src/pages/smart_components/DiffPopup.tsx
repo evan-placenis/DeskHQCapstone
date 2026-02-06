@@ -4,19 +4,7 @@ import { useEffect, useRef, useMemo } from 'react';
 import { diff_match_patch, Diff } from 'diff-match-patch';
 import { Button } from '../ui_components/button';
 import { Check, X } from 'lucide-react';
-
-/**
- * EditSuggestion type - matches the backend definition
- */
-export interface EditSuggestion {
-  sectionRowId: string;    // UUID primary key from report_sections.id (for DB updates)
-  sectionId: string;       // Template category like "exec-summary" (for context)
-  sectionHeading: string;
-  originalText: string;
-  suggestedText: string;
-  reason: string;
-  status: 'PENDING' | 'ACCEPTED' | 'REJECTED';
-}
+import type { EditSuggestion } from '../report_editing_components/AIChatSidebar';
 
 interface DiffPopupProps {
   suggestion: EditSuggestion;
@@ -171,7 +159,7 @@ export function DiffPopup({
                 Suggested Edit
               </h3>
               <p className="text-xs text-slate-500 mt-0.5">
-                {suggestion.sectionHeading}
+                {suggestion.sectionHeading ?? 'Selection'}
               </p>
             </div>
             <div className="flex items-center gap-2 text-xs">

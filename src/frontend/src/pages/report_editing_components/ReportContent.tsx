@@ -19,7 +19,7 @@ import { HighlightableText } from "../smart_components/HighlightableText";
 import { PeerReviewPanel } from "../smart_components/PeerReviewPanel";
 import { ImageWithFallback } from "../figma/ImageWithFallback";
 import { SecureImage } from "../smart_components/SecureImage";
-import { TiptapEditor } from "../smart_components/TiptapEditor";
+import { TiptapEditor, type TiptapEditorHandle } from "../smart_components/TiptapEditor";
 import { PeerReview, ReportContent as ReportContentType } from "@/frontend/types";
 import {
   ArrowLeft,
@@ -103,6 +103,10 @@ interface ReportContentProps {
   onSetPendingChange?: (change: PendingChange | null) => void;
   diffContent?: string | null;
   onSetDiffContent?: (content: string | null) => void;
+  /** Ref to Tiptap editor for client-context AI edit (selection + surrounding) */
+  editorRef?: React.RefObject<TiptapEditorHandle | null>;
+  /** Called when selection changes in Tiptap (to pin selection when user blurs to chat) */
+  onSelectionChange?: (context: import("../smart_components/TiptapEditor").SelectionContext | null) => void;
 }
 
 export function ReportContent({
@@ -137,6 +141,8 @@ export function ReportContent({
   onSetPendingChange,
   diffContent: diffContentProp,
   onSetDiffContent,
+  editorRef,
+  onSelectionChange,
 }: ReportContentProps) {
   // Local state for pending changes if not managed by parent
   const [localPendingChange, setLocalPendingChange] = useState<PendingChange | null>(null);
@@ -563,6 +569,7 @@ export function ReportContent({
                             {useTiptap && section.id === "main-content" ? (
                               // Use TiptapEditor for main content with inline diff support
                               <TiptapEditor
+                                ref={editorRef as React.RefObject<TiptapEditorHandle>}
                                 content={section.content || ""}
                                 onUpdate={(newMarkdown) => onSectionChange(section.id, newMarkdown)}
                                 editable={mode === "edit" && !isSelectionMode}
@@ -576,6 +583,7 @@ export function ReportContent({
                                 onRejectDiff={() => {
                                   setDiffContent(null);
                                 }}
+                                onSelectionChange={onSelectionChange}
                               />
                             ) : mode === "peer-review" && peerReview && peerReview.comments ? (
                               <HighlightableText

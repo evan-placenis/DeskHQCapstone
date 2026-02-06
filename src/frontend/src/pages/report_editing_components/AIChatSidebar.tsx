@@ -162,15 +162,17 @@ const CustomMessage = () => {
 };
 
 
-// EditSuggestion type for proposeEdit tool
+// EditSuggestion type (selection-based flow uses fullDocument; section-based uses sectionRowId)
 export interface EditSuggestion {
-  sectionRowId: string;    // UUID primary key from report_sections.id (for DB updates)
-  sectionId: string;       // Template category like "exec-summary" (for context)
-  sectionHeading: string;
+  sectionRowId?: string;    // UUID from report_sections (section-based flow only)
+  sectionId?: string;
+  sectionHeading?: string;
   originalText: string;
   suggestedText: string;
   reason: string;
   status: 'PENDING' | 'ACCEPTED' | 'REJECTED';
+  /** When set, Accept only updates editor state (replace in fullDocument); no DB section update */
+  fullDocument?: string;
 }
 
 interface AIChatSidebarProps {
@@ -184,8 +186,15 @@ interface AIChatSidebarProps {
   onToggleCollapse: () => void;
   onResize: (width: number) => void;
   onSuggestionAccept: (suggestion: any) => void;
-  onEditSuggestion?: (suggestion: EditSuggestion) => void; // New: for proposeEdit tool
-  onRequestAIEdit?: (sectionRowId: string, instruction: string) => Promise<EditSuggestion | null>; // Non-streaming edit
+  onEditSuggestion?: (suggestion: EditSuggestion) => void;
+  onRequestAIEdit?: (sectionRowId: string, instruction: string) => Promise<EditSuggestion | null>;
+  /** When user has highlighted text: get selection + surrounding context from editor (client-context edit) */
+  getEditorSelectionContext?: () => { selection: string; surroundingContext: string; fullMarkdown: string } | null;
+  /** Trigger selection-based edit (streaming). Called when user sends a message and has text selected. */
+  onRequestAIEditWithSelection?: (selection: string, surroundingContext: string, instruction: string, fullMarkdown: string) => Promise<void>;
+  /** Pinned selection (survives blur) - show Cursor-style "Editing selection" pill when set */
+  pinnedSelectionContext?: { selection: string; surroundingContext: string; fullMarkdown: string } | null;
+  onClearPinnedSelection?: () => void;
   isGeneratingEdit?: boolean;
   selectedContexts?: any[];
   onClearSelectedContexts?: () => void;
@@ -209,6 +218,10 @@ export function AIChatSidebar({
   onSuggestionAccept,
   onEditSuggestion,
   onRequestAIEdit,
+  getEditorSelectionContext,
+  onRequestAIEditWithSelection,
+  pinnedSelectionContext,
+  onClearPinnedSelection,
   isGeneratingEdit = false,
   selectedContexts = [],
   onClearSelectedContexts,
@@ -450,12 +463,19 @@ export function AIChatSidebar({
 
   const handleCustomSend = async (message: string) => {
     if (!runtime) return;
-    // Track the user's message for non-streaming edit instruction
     lastUserMessageRef.current = message;
     await runtime.thread.append({
       role: 'user',
       content: [{ type: 'text', text: message }],
     });
+
+    // Client-context edit: when user has text selected in Tiptap, trigger selection-based edit (no DB/tools)
+    if (useTiptap && getEditorSelectionContext && onRequestAIEditWithSelection) {
+      const ctx = getEditorSelectionContext();
+      if (ctx?.selection?.trim()) {
+        onRequestAIEditWithSelection(ctx.selection, ctx.surroundingContext ?? '', message, ctx.fullMarkdown ?? '');
+      }
+    }
   };
 
   return (
@@ -557,10 +577,30 @@ export function AIChatSidebar({
               </div>
             )}
 
+            {/* Pinned selection pill (Cursor-style): show when user highlighted text then clicked to chat */}
+            {useTiptap && pinnedSelectionContext && onClearPinnedSelection && (
+              <div className="px-3 pt-2 pb-0 border-t border-slate-100 bg-slate-50/50">
+                <div className="flex items-center gap-2 flex-wrap rounded-lg border border-theme-primary/30 bg-theme-primary/5 px-3 py-2">
+                  <span className="text-xs font-medium text-theme-primary shrink-0">Editing selection:</span>
+                  <span className="text-xs text-slate-600 truncate min-w-0 flex-1" title={pinnedSelectionContext.selection}>
+                    &quot;{pinnedSelectionContext.selection.length > 50 ? pinnedSelectionContext.selection.slice(0, 50) + '…' : pinnedSelectionContext.selection}&quot;
+                  </span>
+                  <button
+                    type="button"
+                    onClick={onClearPinnedSelection}
+                    className="shrink-0 p-1 rounded hover:bg-slate-200/80 text-slate-500 hover:text-slate-700"
+                    title="Clear selection"
+                    aria-label="Clear selection"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              </div>
+            )}
             <div className="p-3 border-t border-slate-200 bg-white">
               <AIChatInput
                 onSendMessage={handleCustomSend}
-                placeholder="Ask AI to revise the report..."
+                placeholder={pinnedSelectionContext ? "Ask AI to edit the selection above..." : "Ask AI to revise the report..."}
                 disabled={false}
               />
             </div>
