@@ -37,7 +37,7 @@ export async function POST(
     try {
         const { sessionId } = await params;
         const body = await req.json();
-        const { messages, activeSectionId, reportId, projectId, provider = 'gemini-cheap' } = body;
+        const { messages, activeSectionId, reportId, projectId, provider = 'gemini-cheap', selectionEdit } = body;
 
         const { supabase, user } = await createAuthenticatedClient();
         if (!user) {
@@ -79,9 +79,12 @@ export async function POST(
             }
         }
 
-        // Build system message if we have report context
+        // Build system message if we have report context (or selection-edit: assistant must not use tools)
         let systemMessage: string | undefined = undefined;
-        if (reportContext) {
+        if (selectionEdit) {
+            // User highlighted text and asked for edit; edit is handled client-side. Assistant should only acknowledge.
+            systemMessage = `The user has selected text in the report and asked for an edit. The edit is being applied separately. Do NOT use any tools (including retrieveReportContext). Respond with exactly one short sentence acknowledging the edit, e.g. "I've suggested an edit to your selection. Review the changes in the popup." or similar.`;
+        } else if (reportContext) {
             // Simple text extraction from section
             const contextText = reportContext.title
                 ? `# ${reportContext.title}\n\n${reportContext.description || ''}`
@@ -96,7 +99,8 @@ export async function POST(
             context: reportContext,
             projectId: session.projectId,
             userId: session.userId,
-            reportId,  // Pass reportId to enable edit skills
+            reportId,
+            selectionEdit: !!selectionEdit,
             systemMessage,
             client: supabase
         });

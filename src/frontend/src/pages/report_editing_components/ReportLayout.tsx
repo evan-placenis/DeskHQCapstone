@@ -128,6 +128,7 @@ export function ReportLayout({
       if (!reportId || isGeneratingEdit) return;
 
       setPinnedSelectionContext(null); // clear pill as soon as they send
+      editorRef.current?.clearSelection(); // so next send doesn't reuse this selection (e.g. "make exec summary concise")
       setIsGeneratingEdit(true);
       try {
         const response = await fetch(`/api/report/${reportId}/ai-edit`, {
@@ -222,7 +223,6 @@ export function ReportLayout({
         }
       }
       onContentChange({ tiptapContent: newContent });
-      onReportContentSaved?.(newContent);
       console.log("✅ Edit accepted (content updated; save will sync to DB)");
     }
 

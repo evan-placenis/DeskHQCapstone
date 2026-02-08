@@ -293,14 +293,20 @@ export function AIChatSidebar({
     };
   }, [isResizing, windowWidth, onResize]);
 
-  // Vercel useChat + assistant-ui adapter (useAISDKRuntime = "useVercelUseChatRuntime" pattern)
+  // Vercel useChat + assistant-ui adapter. selectionEdit: true when user has pinned selection (edit handled client-side; assistant should not use retrieveReportContext)
   const transport = useMemo(
     () =>
       new AssistantChatTransport({
         api: sessionId ? `/api/chat/sessions/${sessionId}/stream` : '',
-        body: { activeSectionId, reportId, projectId, provider: chatProvider },
+        body: {
+          activeSectionId,
+          reportId,
+          projectId,
+          provider: chatProvider,
+          selectionEdit: !!pinnedSelectionContext,
+        },
       }),
-    [sessionId, activeSectionId, reportId, projectId, chatProvider]
+    [sessionId, activeSectionId, reportId, projectId, chatProvider, pinnedSelectionContext]
   );
   const chat = useChat({ id: sessionId ?? 'pending', transport });
   const runtime = useAISDKRuntime(chat);

@@ -24,10 +24,12 @@ export class ChatOrchestrator {
         projectId?: string,
         userId?: string,
         reportId?: string,
+        /** When true, user edited via selection (client-side); do not add edit skills so assistant does not call retrieveReportContext */
+        selectionEdit?: boolean,
         systemMessage?: string
         client: SupabaseClient;
     }) {
-        const { messages, provider, context, projectId, userId, reportId, systemMessage, client } = params;
+        const { messages, provider, context, projectId, userId, reportId, selectionEdit, systemMessage, client } = params;
 
         // Build tools - include report skills if we have context
         const tools: any = {
@@ -41,13 +43,13 @@ export class ChatOrchestrator {
             Object.assign(tools, reportSkills(projectId, userId, client));
         }
 
-        // If we have a reportId, add the edit skills for diff-based editing
-        if (reportId) {
+        // If we have a reportId and this is not a selection-edit turn, add the edit skills for diff-based editing
+        if (reportId && !selectionEdit) {
             Object.assign(tools, editSkills(reportId, client));
         }
 
-        // Build system prompt - use custom systemMessage if provided, otherwise default
-        const systemPrompt = systemMessage || this.buildSystemPrompt(!!reportId);
+        // Build system prompt - use custom systemMessage if provided (e.g. selection-edit ack), otherwise default
+        const systemPrompt = systemMessage || this.buildSystemPrompt(!!reportId && !selectionEdit);
 
         return streamText({
             model: ModelStrategy.getModel(provider),
@@ -72,16 +74,15 @@ RESEARCH TOOLS:
         if (hasReportContext) {
             prompt += `
 
-REPORT EDITING:
-When the user asks you to edit, modify, improve, or change any part of the report:
-1. FIRST call 'retrieveReportContext' to find the relevant section based on their request.
-2. If status is 'SUCCESS': Respond with the sectionRowId and a brief summary of what you would change. The system will generate the edit for the user to review.
-   Format your response like: "I found the [section name] section. I'll make it more [concise/detailed/etc]. [sectionRowId: <the UUID>]"
-3. If status is 'NO_MATCH': Tell the user which sections are available (from availableSections) and ask them to clarify.
-4. If status is 'NOT_FOUND': The report content isn't available yet.
-5. If status is 'REPORT_EMPTY': Tell the user the report has no content yet and they need to add or generate content before requesting edits (use the returned message).
-
-Do NOT call proposeEdit - the edit will be generated separately to avoid streaming issues.`;
+REPORT EDITING (section-by-name only):
+- Use report editing tools ONLY when the user asks to edit a section BY NAME (e.g. "make the executive summary more concise") and has NOT selected any text in the report.
+- If the user HAS selected/highlighted text, or says "this", "the selection", or "what I highlighted", do NOT call retrieveReportContext. Reply briefly that their edit will be applied to the selection (e.g. "I've suggested an edit to your selection. Review the changes in the popup.").
+- When the user clearly refers to a section by name (and has not selected text):
+  1. Call 'retrieveReportContext' with a query for that section name.
+  2. If status is 'SUCCESS': Respond naturally with what you'll change; include the sectionRowId so the system can generate the edit. Example: "I'll make the Executive Summary more concise."
+  3. If status is 'NO_MATCH': Tell the user which sections are available (availableSections) and ask them to clarify.
+  4. If status is 'NOT_FOUND' or 'REPORT_EMPTY': Use the returned message to inform the user.
+- Do NOT call proposeEdit; the edit is generated separately.`;
         }
 
         return prompt;

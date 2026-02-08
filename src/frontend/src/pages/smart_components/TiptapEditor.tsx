@@ -81,6 +81,8 @@ export interface SelectionContext {
 
 export interface TiptapEditorHandle {
     getSelectionContext: () => SelectionContext | null;
+    /** Collapse the selection so the next getSelectionContext() returns null (e.g. after using selection for an edit). */
+    clearSelection: () => void;
 }
 
 interface TiptapEditorProps {
@@ -333,6 +335,11 @@ export const TiptapEditor = forwardRef<TiptapEditorHandle, TiptapEditorProps>(fu
                     surroundingContext: before + (after ? '\n\n---\n\n' + after : ''),
                     fullMarkdown,
                 };
+            },
+            clearSelection() {
+                if (!editor || isReviewMode) return;
+                const { from } = editor.state.selection;
+                editor.commands.setTextSelection(from);
             },
         }),
         [editor, isReviewMode]

@@ -3,24 +3,29 @@ import { z } from 'zod/v3';
 import { SupabaseClient } from '@supabase/supabase-js';
 
 /**
- * Edit Skills - Tools for AI-powered report editing
- * 
- * The AI uses retrieveReportContext to find the relevant section.
- * The actual edit is generated via a separate non-streaming endpoint (/api/report/[reportId]/ai-edit)
- * to avoid streaming JSON order issues.
+ * Edit Skills - Section-by-name only (no selection)
+ *
+ * Use these tools ONLY when the user asks to edit a section by name or description
+ * (e.g. "make the executive summary more concise") and has NOT selected/highlighted
+ * any text in the report. Selection-based edits are handled entirely on the client;
+ * do not call retrieveReportContext when the user has selected text or refers to
+ * "this", "the selection", or "what I highlighted".
  */
 export const editSkills = (reportId: string, client: SupabaseClient) => ({
 
   /**
-   * Retrieve Report Context
-   * 
-   * Queries the report_sections table to find the relevant section.
-   * Uses section-level FTS to find matching content.
+   * Retrieve Report Context (section-by-name only)
+   *
+   * Call this ONLY when the user asks to edit a section by name (e.g. "executive summary",
+   * "site conditions") and has NOT selected any text in the editor. Queries report_sections
+   * to find the matching section. Do NOT call this if the user has highlighted text or
+   * refers to "this", "the selection", or "what I highlighted" — those edits are handled
+   * elsewhere.
    */
   retrieveReportContext: tool({
-    description: 'Find the relevant section of the report based on what the user wants to edit. The system will then generate the edit using a separate process.',
+    description: 'Find a report section by name when the user asks to edit a section by name (e.g. "make the executive summary more concise") and has NOT selected any text. Do NOT use when the user has selected/highlighted text — selection edits are handled separately.',
     inputSchema: z.object({
-      query: z.string().describe('What the user is asking about or wants to edit'),
+      query: z.string().describe('Section name or description the user wants to edit (e.g. "executive summary")'),
     }),
     execute: async ({ query }) => {
       try {
