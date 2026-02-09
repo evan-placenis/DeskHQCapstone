@@ -295,7 +295,6 @@ export function AIChatSidebar({
     };
   }, [isResizing, windowWidth, onResize]);
 
-  // selectionEdit: use getter so when the request body is serialized we read the ref (set right before append when user has selection)
   const transport = useMemo(
     () =>
       new AssistantChatTransport({
@@ -305,12 +304,9 @@ export function AIChatSidebar({
           reportId,
           projectId,
           provider: chatProvider,
-          get selectionEdit() {
-            return !!pinnedSelectionContext || selectionEditForNextRequestRef.current;
-          },
         },
       }),
-    [sessionId, activeSectionId, reportId, projectId, chatProvider, pinnedSelectionContext]
+    [sessionId, activeSectionId, reportId, projectId, chatProvider]
   );
   const chat = useChat({ id: sessionId ?? 'pending', transport });
   const runtime = useAISDKRuntime(chat);
@@ -353,8 +349,6 @@ export function AIChatSidebar({
 
   // Track processed edits to avoid duplicates
   const lastUserMessageRef = useRef<string | null>(null);
-  // Set to true when sending with selection so the stream request body has selectionEdit: true at serialize time
-  const selectionEditForNextRequestRef = useRef(false);
 
   // Listen for message completion to handle tool calls and trigger non-streaming edits
   useEffect(() => {
@@ -442,30 +436,59 @@ export function AIChatSidebar({
     if (!runtime) return;
     lastUserMessageRef.current = message;
 
-    // Set ref so when the stream request body is serialized, selectionEdit is true (getter in transport body)
     const hadSelection =
       useTiptap && !!getEditorSelectionContext?.()?.selection?.trim();
-    if (hadSelection) selectionEditForNextRequestRef.current = true;
-    // Reset after request has been sent (body is read when fetch runs)
-    const resetSelectionEditRef = () => {
-      setTimeout(() => {
-        selectionEditForNextRequestRef.current = false;
-      }, 1500);
-    };
 
+    // When user has selection: run the edit flow and add user + confirmation to the thread without streaming.
+    if (useTiptap && hadSelection && getEditorSelectionContext && onRequestAIEditWithSelection) {
+      const ctx = getEditorSelectionContext();
+      if (ctx?.selection?.trim()) {
+        onRequestAIEditWithSelection(ctx, message);
+
+        // Add user message and a static assistant confirmation so the user sees their message and a reply.
+        const setMessages = setMessagesRef.current;
+        if (typeof setMessages === "function") {
+          const threadState = runtime.thread.getState();
+          const rawMessages = threadState.messages ?? [];
+          const existing = Array.from(rawMessages) as Array<{ id?: string; role?: string; content?: unknown }>;
+          const toParts = (m: (typeof existing)[0]) => {
+            const content = m.content;
+            if (Array.isArray(content)) {
+              const textPart = content.find((p: { type?: string; text?: string }) => p?.type === "text");
+              return [{ type: "text" as const, text: (textPart as { text?: string })?.text ?? "" }];
+            }
+            return [{ type: "text" as const, text: typeof content === "string" ? content : "" }];
+          };
+          const uiMessages = existing.map((m, i) => ({
+            id: m.id ?? `msg-${i}`,
+            role: (m.role === "assistant" ? "assistant" : "user") as "user" | "assistant",
+            parts: toParts(m),
+          }));
+          const ts = Date.now();
+          uiMessages.push(
+            { id: `user-sel-${ts}`, role: "user", parts: [{ type: "text" as const, text: message }] },
+            {
+              id: `assistant-sel-${ts}`,
+              role: "assistant",
+              parts: [
+                {
+                  type: "text" as const,
+                  text: "I've suggested an edit to your selection. Review the popup to accept or reject.",
+                },
+              ],
+            }
+          );
+          setMessages(uiMessages);
+        }
+        return;
+      }
+    }
+
+    // No selection: normal chat — append user message and let the transport stream the reply.
     await runtime.thread.append({
       role: 'user',
       content: [{ type: 'text', text: message }],
     });
-    resetSelectionEditRef();
-
-    // Client-context edit: when user has text selected in Tiptap, trigger selection-based edit (send markdown to API)
-    if (useTiptap && getEditorSelectionContext && onRequestAIEditWithSelection) {
-      const ctx = getEditorSelectionContext();
-      if (ctx?.selection?.trim()) {
-        onRequestAIEditWithSelection(ctx, message);
-      }
-    }
   };
 
   return (

@@ -9,25 +9,19 @@ export async function GET(
 ) {
     try {
         const { reportId } = await params;
-
-        // Authenticate
         const { user, supabase } = await createAuthenticatedClient();
         if (!user) {
             return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
         }
 
-        const reportService = Container.reportService;
-        const report = await reportService.getReportById(reportId, supabase);
-
+        const report = await Container.reportService.getReportById(reportId, supabase);
         if (!report) {
             return NextResponse.json({ error: "Report not found" }, { status: 404 });
         }
-
-        // Transform domain object to match frontend expectations (snake_case)
-        const response = {
+        return NextResponse.json({
             id: report.reportId,
             title: report.title,
-            tiptap_content: report.tiptapContent || null, // Transform camelCase to snake_case
+            tiptap_content: report.tiptapContent ?? null,
             project_id: report.projectId,
             status: report.status,
             updated_at: report.updatedAt.toISOString(),
@@ -35,21 +29,15 @@ export async function GET(
             template_id: report.templateId,
             version_number: report.versionNumber,
             created_by: report.createdBy,
-            // Include all fields for ReportHeader
-        };
-
-        return NextResponse.json(response);
-
-    } catch (error: any) {
+        });
+    } catch (error: unknown) {
         console.error("Get Report Error:", error);
-        return NextResponse.json(
-            { error: error.message || "Failed to fetch report" },
-            { status: 500 }
-        );
+        const message = error instanceof Error ? error.message : "Failed to fetch report";
+        return NextResponse.json({ error: message }, { status: 500 });
     }
 }
 
-// PUT /api/report/[reportId] - Update report (tiptap_content)
+// PUT /api/report/[reportId] - Update report (tiptap_content, title)
 export async function PUT(
     request: Request,
     { params }: { params: Promise<{ reportId: string }> }
@@ -59,43 +47,26 @@ export async function PUT(
         const body = await request.json();
         const { tiptap_content, title } = body;
 
-        // Authenticate
         const { user, supabase } = await createAuthenticatedClient();
         if (!user) {
             return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
         }
 
-        // Build update object
-        const updateData: { tiptap_content?: string; title?: string; updated_at: string } = {
-            updated_at: new Date().toISOString()
-        };
-        if (tiptap_content !== undefined) updateData.tiptap_content = tiptap_content;
-        if (title !== undefined) updateData.title = title;
-
-        // Update the report
-        const { error: updateError } = await supabase
-            .from('reports')
-            .update(updateData)
-            .eq('id', reportId);
-
-        if (updateError) {
-            console.error("Report update error:", updateError);
-            return NextResponse.json(
-                { error: "Failed to update report" },
-                { status: 500 }
-            );
+        const updates: { tiptap_content?: string; title?: string } = {};
+        if (tiptap_content !== undefined) updates.tiptap_content = tiptap_content;
+        if (title !== undefined) updates.title = title;
+        if (Object.keys(updates).length === 0) {
+            return NextResponse.json({ success: true, message: "No updates provided; no changes made." });
         }
 
-        return NextResponse.json({
-            success: true,
-            message: "Report updated successfully"
-        });
-
-    } catch (error: any) {
+        await Container.reportService.updateReport(reportId, updates, supabase);
+        return NextResponse.json({ success: true, message: "Report updated successfully" });
+    } catch (error: unknown) {
         console.error("Report Update Error:", error);
-        return NextResponse.json(
-            { error: error.message || "Failed to update report" },
-            { status: 500 }
-        );
+        if (error instanceof Error && error.message === "Report not found") {
+            return NextResponse.json({ error: "Report not found" }, { status: 404 });
+        }
+        const message = error instanceof Error ? error.message : "Failed to update report";
+        return NextResponse.json({ error: message }, { status: 500 });
     }
 }

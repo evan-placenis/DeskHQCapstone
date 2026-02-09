@@ -243,6 +243,22 @@ export class ReportService {
     // }
 
     /**
+     * Update report fields (tiptap_content and/or title). Throws if report not found or update fails.
+     */
+    public async updateReport(
+        reportId: string,
+        updates: { tiptap_content?: string; title?: string },
+        client: SupabaseClient
+    ): Promise<void> {
+        const report = await this.reportRepo.getById(reportId, client);
+        if (!report) throw new Error("Report not found");
+        if (updates.tiptap_content !== undefined) report.tiptapContent = updates.tiptap_content;
+        if (updates.title !== undefined) report.title = updates.title;
+        report.updatedAt = new Date();
+        await this.reportRepo.update(report, client);
+    }
+
+    /**
      * 🟢 GET BY ID
      * We now fetch the 'header' from the reports table 
      * and the 'sections' from the new report_sections table.
