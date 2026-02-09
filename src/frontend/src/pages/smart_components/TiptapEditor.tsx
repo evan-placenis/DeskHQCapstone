@@ -72,15 +72,22 @@ const CustomImageExtension = Image.extend({
 })
 
 
-/** Context from the editor for client-side AI edit (selection + surrounding text + full doc) */
+/** Context from the editor for client-side AI edit (selection + markdown + range) */
 export interface SelectionContext {
+    /** Plain text of the selection (for display) */
     selection: string;
+    /** Markdown of the selection (preserves **, _, etc.) – send this to the LLM */
+    markdown: string;
+    /** ProseMirror positions so we can replace by coordinates on accept */
+    range: { from: number; to: number };
     surroundingContext: string;
     fullMarkdown: string;
 }
 
 export interface TiptapEditorHandle {
     getSelectionContext: () => SelectionContext | null;
+    /** Replace the given range with new markdown (parsed and inserted). Use when accepting an AI edit. */
+    replaceRange: (range: { from: number; to: number }, newMarkdown: string) => void;
     /** Collapse the selection so the next getSelectionContext() returns null (e.g. after using selection for an edit). */
     clearSelection: () => void;
 }
@@ -277,39 +284,41 @@ export const TiptapEditor = forwardRef<TiptapEditorHandle, TiptapEditorProps>(fu
     useEffect(() => {
         if (!editor || !onSelectionChange || isReviewMode) return;
         const buildContext = (): SelectionContext | null => {
+            const { from, to } = editor.state.selection;
+            if (from === to) return null;
+            const doc = editor.state.doc;
+            const selection = doc.textBetween(from, to);
+            if (!selection.trim()) return null;
+            const size = doc.content.size;
+            const before = doc.textBetween(0, from).slice(-SURROUNDING_CHARS);
+            const after = doc.textBetween(to, size).slice(0, SURROUNDING_CHARS);
+            let fullMarkdown = '';
+            let markdown = '';
             try {
-                const { from, to } = editor.state.selection;
-                if (from === to) return null;
-                if (editor.state.selection.$from.parent.type.name === 'tableCell' || editor.state.selection.$from.parent.type.name === 'tableHeader') return null;
-                const doc = editor.state.doc;
-                const selection = doc.textBetween(from, to);
-                if (!selection.trim()) return null;
-                const size = doc.content.size;
-                const before = doc.textBetween(0, from).slice(-SURROUNDING_CHARS);
-                const after = doc.textBetween(to, size).slice(0, SURROUNDING_CHARS);
-                let fullMarkdown = '';
-                try {
-                    fullMarkdown = (editor.storage as any).markdown?.getMarkdown() ?? '';
-                } catch {
-                    return null;
-                }
-                return { selection, surroundingContext: before + (after ? '\n\n---\n\n' + after : ''), fullMarkdown };
+                const storage = (editor.storage as any).markdown;
+                fullMarkdown = storage?.getMarkdown() ?? '';
+                const slice = doc.slice(from, to);
+                markdown = storage?.serializer?.serialize(slice.content) ?? selection;
             } catch {
                 return null;
             }
+            return {
+                selection,
+                markdown: markdown || selection,
+                range: { from, to },
+                surroundingContext: before + (after ? '\n\n---\n\n' + after : ''),
+                fullMarkdown,
+            };
         };
         const handler = () => {
-            try {
-                const { from, to } = editor.state.selection;
-                const hasSelection = from !== to && editor.state.doc.textBetween(from, to).trim().length > 0;
-                if (hasSelection) {
-                    const ctx = buildContext();
-                    if (ctx) onSelectionChange(ctx);
-                } else {
-                    if (editor.isFocused) onSelectionChange(null);
-                }
-            } catch {
-                onSelectionChange(null);
+            const { from, to } = editor.state.selection;
+            const hasSelection = from !== to && editor.state.doc.textBetween(from, to).trim().length > 0;
+            if (hasSelection) {
+                const ctx = buildContext();
+                if (ctx) onSelectionChange(ctx);
+            } else {
+                // Only clear pinned selection when user cleared selection while still in editor (keeps selection when they blur to chat)
+                if (editor.isFocused) onSelectionChange(null);
             }
         };
         editor.on('selectionUpdate', handler);
@@ -318,48 +327,59 @@ export const TiptapEditor = forwardRef<TiptapEditorHandle, TiptapEditorProps>(fu
         };
     }, [editor, onSelectionChange, isReviewMode]);
 
-    // Expose selection context for client-side AI edit (highlighted text + surrounding + full doc)
+    // Expose selection context and replaceRange for client-side AI edit (markdown in/out, range-based apply)
     useImperativeHandle(
         ref,
         () => ({
             getSelectionContext(): SelectionContext | null {
                 if (!editor || isReviewMode) return null;
+                const { from, to } = editor.state.selection;
+                if (from === to) return null;
+                const doc = editor.state.doc;
+                const selection = doc.textBetween(from, to);
+                if (!selection.trim()) return null;
+                const size = doc.content.size;
+                const before = doc.textBetween(0, from).slice(-SURROUNDING_CHARS);
+                const after = doc.textBetween(to, size).slice(0, SURROUNDING_CHARS);
+                let fullMarkdown = '';
+                let markdown = '';
                 try {
-                    const { from, to } = editor.state.selection;
-                    if (from === to) return null;
-                    const doc = editor.state.doc;
-                    const selection = doc.textBetween(from, to);
-                    if (!selection.trim()) return null;
-                    // Avoid invalid selection in table cells (ProseMirror can warn: "TextSelection endpoint not pointing into a node with inline content (tableCell)")
-                    const $from = editor.state.selection.$from;
-                    if ($from.parent.type.name === 'tableCell' || $from.parent.type.name === 'tableHeader') return null;
-                    const size = doc.content.size;
-                    const before = doc.textBetween(0, from).slice(-SURROUNDING_CHARS);
-                    const after = doc.textBetween(to, size).slice(0, SURROUNDING_CHARS);
-                    let fullMarkdown = '';
-                    try {
-                        fullMarkdown = (editor.storage as any).markdown?.getMarkdown() ?? '';
-                    } catch {
-                        return null;
-                    }
-                    return {
-                        selection,
-                        surroundingContext: before + (after ? '\n\n---\n\n' + after : ''),
-                        fullMarkdown,
-                    };
+                    const storage = (editor.storage as any).markdown;
+                    fullMarkdown = storage?.getMarkdown() ?? '';
+                    const slice = doc.slice(from, to);
+                    markdown = storage?.serializer?.serialize(slice.content) ?? selection;
                 } catch {
                     return null;
+                }
+                return {
+                    selection,
+                    markdown: markdown || selection,
+                    range: { from, to },
+                    surroundingContext: before + (after ? '\n\n---\n\n' + after : ''),
+                    fullMarkdown,
+                };
+            },
+            replaceRange(range: { from: number; to: number }, newMarkdown: string) {
+                if (!editor || isReviewMode) return;
+                try {
+                    editor.chain().focus().setTextSelection({ from: range.from, to: range.to }).deleteSelection().run();
+                    // tiptap-markdown extends commands with insertContentAt(position, markdownString)
+                    const commands = editor.commands as { insertContentAt?: (pos: number, content: string) => boolean };
+                    if (typeof commands.insertContentAt === "function") {
+                        commands.insertContentAt(range.from, newMarkdown);
+                    } else {
+                        editor.commands.insertContent(newMarkdown);
+                    }
+                } catch (e) {
+                    console.warn("replaceRange failed, inserting as plain text", e);
+                    editor.chain().focus().setTextSelection({ from: range.from, to: range.to }).deleteSelection().run();
+                    editor.commands.insertContent(newMarkdown);
                 }
             },
             clearSelection() {
                 if (!editor || isReviewMode) return;
-                try {
-                    const { from, $from } = editor.state.selection;
-                    if ($from.parent.type.name === 'tableCell' || $from.parent.type.name === 'tableHeader') return;
-                    editor.commands.setTextSelection(from);
-                } catch {
-                    // Ignore: e.g. "TextSelection endpoint not pointing into a node with inline content (tableCell)"
-                }
+                const { from } = editor.state.selection;
+                editor.commands.setTextSelection(from);
             },
         }),
         [editor, isReviewMode]

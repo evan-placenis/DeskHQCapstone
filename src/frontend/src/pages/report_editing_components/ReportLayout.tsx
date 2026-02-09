@@ -101,6 +101,7 @@ export function ReportLayout({
   const [isSelectionMode, setIsSelectionMode] = useState(false);
   const [selectedContexts, setSelectedContexts] = useState<SelectedContext[]>([]);
 
+  //TODO: don't think we need this anymore
   // Get active section ID for context
   const activeSection = selectedContexts.find(c => c.type === "section");
   const activeSectionId = activeSection ? String(activeSection.id) : undefined;
@@ -122,27 +123,23 @@ export function ReportLayout({
   // Debounced save ref
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Selection-based AI edit: context from client, stream replacement, no DB read
+  // Selection-based AI edit: send markdown to API, store range, apply via editor.replaceRange on accept
   const requestAIEditWithSelection = useCallback(
-    async (selection: string, surroundingContext: string, instruction: string, fullMarkdown: string) => {
+    async (context: SelectionContext, instruction: string) => {
       if (!reportId || isGeneratingEdit) return;
 
-      // Delay clearing pinned selection so the chat stream request is sent with selectionEdit: true
-      // (transport body is from current render; clearing immediately would make the next request use selectionEdit: false).
-      setTimeout(() => {
-        setPinnedSelectionContext(null);
-        editorRef.current?.clearSelection();
-      }, 400);
+      const editRange = context.range;
+      setPinnedSelectionContext(null);
+      editorRef.current?.clearSelection();
       setIsGeneratingEdit(true);
       try {
         const response = await fetch(`/api/report/${reportId}/ai-edit`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            selection,
-            surroundingContext,
+            selection: context.markdown,
+            surroundingContext: context.surroundingContext ?? "",
             instruction,
-            ...(projectId != null && { projectId: String(projectId) }),
           }),
         });
 
@@ -165,11 +162,11 @@ export function ReportLayout({
         suggestedText = suggestedText.trim();
         if (suggestedText) {
           setPendingEditSuggestion({
-            originalText: selection,
+            originalText: context.selection,
             suggestedText,
             reason: instruction,
             status: "PENDING",
-            fullDocument: fullMarkdown,
+            range: editRange,
           });
         }
       } catch (error) {
@@ -178,7 +175,7 @@ export function ReportLayout({
         setIsGeneratingEdit(false);
       }
     },
-    [reportId, projectId, isGeneratingEdit]
+    [reportId, isGeneratingEdit]
   );
   
   // Debounced save function for tiptap_content changes
@@ -215,28 +212,32 @@ export function ReportLayout({
     };
   }, []);
   
-  // Accept edit: selection-based only updates editor state (replace in fullDocument); save happens via debounced report PUT.
+  // Accept edit: range-based replace in Tiptap (markdown in/out); editor onUpdate triggers save path.
   const handleAcceptEditSuggestion = useCallback(() => {
     if (!pendingEditSuggestion) return;
 
-    const { originalText, suggestedText, fullDocument } = pendingEditSuggestion;
+    const { suggestedText, range } = pendingEditSuggestion;
 
-    if (fullDocument != null) {
-      // Client-context flow: replace selection with suggested text; no DB call here
+    if (useTiptap && editorRef.current && range != null) {
+      editorRef.current.replaceRange(range, suggestedText);
+      console.log("✅ Edit accepted via Tiptap replaceRange (save will sync via onUpdate)");
+    } else if (pendingEditSuggestion.fullDocument != null) {
+      // Legacy fallback: string replace when not using Tiptap or no range
+      const { originalText, fullDocument } = pendingEditSuggestion;
       let newContent = fullDocument.replace(originalText, suggestedText);
       if (newContent === fullDocument) {
-        // Plain-text selection may not match markdown exactly; try trimmed
         const trimmed = originalText.trim();
         if (trimmed && fullDocument.includes(trimmed)) {
           newContent = fullDocument.replace(trimmed, suggestedText);
         }
       }
-      onContentChange({ tiptapContent: newContent });
-      console.log("✅ Edit accepted (content updated; save will sync to DB)");
+      if (newContent !== fullDocument) {
+        onContentChange({ tiptapContent: newContent });
+      }
     }
 
     setPendingEditSuggestion(null);
-  }, [pendingEditSuggestion, onContentChange, onReportContentSaved]);
+  }, [pendingEditSuggestion, useTiptap, onContentChange]);
   
   // Handler for rejecting (or dismissing) an edit suggestion. Only clears the popup.
   // AIChatSidebar keeps processedEditRef set so the same assistant message won't re-trigger

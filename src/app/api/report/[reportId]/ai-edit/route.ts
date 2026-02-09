@@ -1,29 +1,22 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAuthenticatedClient } from "@/app/api/utils";
 import { Container } from "@/backend/config/container";
+import { ReportNotFoundError } from "@/backend/Services/EditService";
 
 /**
  * POST /api/report/[reportId]/ai-edit
  *
- * Selection-based edit only. Body: { selection, surroundingContext?, instruction, provider?, projectId? }.
- * Edit content is provided only by the client (e.g. Tiptap selection); this route and the edit
- * agent do not fetch report content from the DB. With projectId, the edit agent can use
- * research tools (internal knowledge + web) to make fact-based edits. Returns stream of replacement text.
+ * Selection-based edit. Body: { selection, surroundingContext?, instruction, provider? }.
+ * All logic (resolve project, run edit) is in EditService.
  */
 export async function POST(
     request: NextRequest,
     { params }: { params: Promise<{ reportId: string }> }
 ) {
     try {
-        await params;
+        const { reportId } = await params;
         const body = await request.json();
-        const {
-            selection,
-            surroundingContext,
-            instruction,
-            provider = "gemini-cheap",
-            projectId,
-        } = body;
+        const { selection, surroundingContext, instruction, provider } = body;
 
         if (!selection || typeof selection !== "string" || !instruction || typeof instruction !== "string") {
             return NextResponse.json(
@@ -32,25 +25,21 @@ export async function POST(
             );
         }
 
-        const { user } = await createAuthenticatedClient();
+        const { user, supabase } = await createAuthenticatedClient();
         if (!user) {
             return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
         }
 
-        const validProvider = ["grok", "gemini-pro", "claude", "gemini-cheap"].includes(provider)
-            ? provider
-            : "gemini-cheap";
-
-        const response = await Container.editService.streamSelectionEdit({
-            selection,
-            surroundingContext: typeof surroundingContext === "string" ? surroundingContext : undefined,
-            instruction,
-            provider: validProvider,
-            projectId: typeof projectId === "string" && projectId.trim() ? projectId.trim() : undefined,
-        });
-
+        const response = await Container.editService.streamSelectionEdit(
+            reportId,
+            { selection, surroundingContext, instruction, provider },
+            supabase
+        );
         return response;
-    } catch (error: unknown) {
+    } catch (error) {
+        if (error instanceof ReportNotFoundError) {
+            return NextResponse.json({ error: "Report not found" }, { status: 404 });
+        }
         const message = error instanceof Error ? error.message : "Failed to generate edit";
         console.error("❌ [AI Edit] Error:", error);
         return NextResponse.json({ error: message }, { status: 500 });

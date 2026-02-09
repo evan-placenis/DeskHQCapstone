@@ -162,7 +162,7 @@ const CustomMessage = () => {
 };
 
 
-// EditSuggestion type (selection-based flow uses fullDocument; section-based uses sectionRowId)
+// EditSuggestion type (selection-based flow uses range; section-based uses sectionRowId)
 export interface EditSuggestion {
   sectionRowId?: string;    // UUID from report_sections (section-based flow only)
   sectionId?: string;
@@ -171,8 +171,12 @@ export interface EditSuggestion {
   suggestedText: string;
   reason: string;
   status: 'PENDING' | 'ACCEPTED' | 'REJECTED';
-  /** When set, Accept only updates editor state (replace in fullDocument); no DB section update */
+  /** ProseMirror range for range-based replace in Tiptap (selection flow) */
+  range?: { from: number; to: number };
+  /** Legacy: when set without range, Accept used fullDocument replace (deprecated) */
   fullDocument?: string;
+  startIdx?: number;
+  endIdx?: number;
 }
 
 interface AIChatSidebarProps {
@@ -187,12 +191,12 @@ interface AIChatSidebarProps {
   onResize: (width: number) => void;
   onSuggestionAccept: (suggestion: any) => void;
   onEditSuggestion?: (suggestion: EditSuggestion) => void;
-  /** When user has highlighted text: get selection + surrounding context from editor (client-context edit) */
-  getEditorSelectionContext?: () => { selection: string; surroundingContext: string; fullMarkdown: string } | null;
-  /** Trigger selection-based edit (streaming). Called when user sends a message and has text selected. */
-  onRequestAIEditWithSelection?: (selection: string, surroundingContext: string, instruction: string, fullMarkdown: string) => Promise<void>;
+  /** When user has highlighted text: get selection + markdown + range from editor (client-context edit) */
+  getEditorSelectionContext?: () => import("../smart_components/TiptapEditor").SelectionContext | null;
+  /** Trigger selection-based edit (streaming). Called with full context (send context.markdown to API). */
+  onRequestAIEditWithSelection?: (context: import("../smart_components/TiptapEditor").SelectionContext, instruction: string) => Promise<void>;
   /** Pinned selection (survives blur) - show Cursor-style "Editing selection" pill when set */
-  pinnedSelectionContext?: { selection: string; surroundingContext: string; fullMarkdown: string } | null;
+  pinnedSelectionContext?: import("../smart_components/TiptapEditor").SelectionContext | null;
   onClearPinnedSelection?: () => void;
   isGeneratingEdit?: boolean;
   selectedContexts?: any[];
@@ -455,11 +459,11 @@ export function AIChatSidebar({
     });
     resetSelectionEditRef();
 
-    // Client-context edit: when user has text selected in Tiptap, trigger selection-based edit (no DB/tools)
+    // Client-context edit: when user has text selected in Tiptap, trigger selection-based edit (send markdown to API)
     if (useTiptap && getEditorSelectionContext && onRequestAIEditWithSelection) {
       const ctx = getEditorSelectionContext();
       if (ctx?.selection?.trim()) {
-        onRequestAIEditWithSelection(ctx.selection, ctx.surroundingContext ?? '', message, ctx.fullMarkdown ?? '');
+        onRequestAIEditWithSelection(ctx, message);
       }
     }
   };

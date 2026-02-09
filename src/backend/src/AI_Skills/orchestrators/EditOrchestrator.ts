@@ -1,4 +1,4 @@
-import { streamText, generateText, stepCountIs } from 'ai';
+import { generateText, stepCountIs } from 'ai';
 import { ModelStrategy } from '../Models/model-strategy';
 import { editSkills } from '../skills/edit.skills';
 
@@ -9,35 +9,38 @@ import { editSkills } from '../skills/edit.skills';
  * This orchestrator never fetches report content from the DB; the only way edit
  * content is provided is via the request body from the client.
  *
- * When projectId is provided, the edit agent uses edit skills (research + future
- * edit-specific tools) to make fact-based edits; otherwise it edits without tools.
+ * Always runs with edit skills (research + future edit-specific tools) so the
+ * agent can research when needed. projectId is required so those tools can
+ * target the correct project (e.g. knowledge search); the route resolves it from
+ * the report.
  */
 export class EditOrchestrator {
-    private static readonly SYSTEM_PROMPT_NO_TOOLS = `You are an expert editor helping improve engineering reports.
-Your task is to edit the selected text based on the user's instruction.
-Keep the same professional tone and technical accuracy.
-Return ONLY the replacement text for the selection — no explanations, no markdown code blocks, no preamble.`;
+    private static readonly SYSTEM_PROMPT = `You are an expert AI Editor for engineering reports.
+Your task is to rewrite the provided content based on the user's instruction.
 
-    private static readonly SYSTEM_PROMPT_WITH_RESEARCH = `You are an expert editor helping improve engineering reports.
-Your task is to edit the selected text based on the user's instruction. You may use your research tools (searchInternalKnowledge, searchWeb) when the instruction requires factual accuracy, up-to-date standards, or external context.
-Keep the same professional tone and technical accuracy. After any research, return ONLY the replacement text for the selection — no explanations, no markdown code blocks, no preamble.`;
+Input format: Markdown text (the selected passage, which may include **bold**, _italic_, links, lists, etc.).
+Output format: ONLY the rewritten Markdown text. Do not wrap in \`\`\`markdown blocks. Do not add conversational filler ("Here is the edit:", etc.).
+
+IMPORTANT:
+- Preserve formatting (bold, italics, links, lists) unless the user asks to remove or change it.
+- If the user sends a Markdown list, return a Markdown list.
+- Keep the same professional tone and technical accuracy.
+You may use research tools (searchInternalKnowledge, searchWeb) when the instruction requires factual accuracy or external context. After any research, return only the replacement Markdown.`;
 
     /**
-     * Run selection edit. When projectId is set, uses research tools and returns
-     * final text; otherwise streams with no tools. Caller should use
-     * EditService.streamSelectionEdit() which returns a Response in both cases.
+     * Run selection edit with tools. Caller (EditService) resolves projectId from the report.
      */
     async runSelectionEdit(params: {
         selection: string;
         surroundingContext?: string;
         instruction: string;
         provider?: 'grok' | 'gemini-pro' | 'claude' | 'gemini-cheap';
-        projectId?: string;
-    }): Promise<{ stream: ReturnType<typeof streamText> } | { text: string }> {
+        projectId: string;
+    }): Promise<{ text: string }> {
         const { selection, surroundingContext, instruction, provider = 'gemini-cheap', projectId } = params;
 
         const userPrompt = surroundingContext
-            ? `## Selected text (edit this):
+            ? `## Selected Markdown (edit this):
 ${selection}
 
 ## Surrounding context (for flavor only):
@@ -46,35 +49,24 @@ ${surroundingContext}
 ## Instruction
 ${instruction}
 
-## Your task
-Return only the edited replacement for the selected text.`
-            : `## Selected text (edit this):
+Return only the edited replacement Markdown (no code fence, no preamble).`
+            : `## Selected Markdown (edit this):
 ${selection}
 
 ## Instruction
 ${instruction}
 
-## Your task
-Return only the edited replacement for the selected text.`;
+Return only the edited replacement Markdown (no code fence, no preamble).`;
 
-        if (projectId?.trim()) {
-            const tools = editSkills(projectId.trim());
-            const result = await generateText({
-                model: ModelStrategy.getModel(provider),
-                system: EditOrchestrator.SYSTEM_PROMPT_WITH_RESEARCH,
-                prompt: userPrompt,
-                stopWhen: stepCountIs(5),
-                tools,
-            });
-            const text = (result.text ?? '').trim();
-            return { text: text || selection };
-        }
-
-        const stream = streamText({
+        const tools = editSkills(projectId.trim());
+        const result = await generateText({
             model: ModelStrategy.getModel(provider),
-            system: EditOrchestrator.SYSTEM_PROMPT_NO_TOOLS,
+            system: EditOrchestrator.SYSTEM_PROMPT,
             prompt: userPrompt,
+            stopWhen: stepCountIs(5),
+            tools,
         });
-        return { stream };
+        const text = (result.text ?? '').trim();
+        return { text: text || selection };
     }
 }
