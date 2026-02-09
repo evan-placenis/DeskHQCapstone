@@ -11,7 +11,9 @@ import { PineconeVectorStore } from '../infrastructure/vector_store/PineconeVect
 import { DocumentStrategyFactory } from '../Document_Strategies/factory/DocumentFactory';
 import { ReportService } from '../Services/ReportService';
 import { ChatService } from '../Services/ChatService';
+import { EditService } from '../Services/EditService';
 import { ChatOrchestrator } from '../AI_Skills/orchestrators/ChatOrchestrator';
+import { EditOrchestrator } from '../AI_Skills/orchestrators/EditOrchestrator';
 import { ReportOrchestrator } from '../AI_Skills/orchestrators/ReportOrchestrator';
 import { KnowledgeService } from '../Services/KnowledgeServivce';
 import { UserService } from '../Services/UserService';
@@ -44,6 +46,7 @@ export class Container {
 
   private static _reportService: ReportService;
   private static _chatService: ChatService;
+  private static _editService: EditService;
   private static _userService: UserService;
   private static _storageService: StorageService;
   private static _statsRepo: SupabaseStatsRepository;
@@ -52,6 +55,7 @@ export class Container {
   private static _exa: Exa;
 
   private static _chatOrchestrator: ChatOrchestrator;
+  private static _editOrchestrator: EditOrchestrator;
   private static _reportOrchestrator: ReportOrchestrator;
 
   private static _visionAgent: VisionAgent;
@@ -147,6 +151,20 @@ export class Container {
       );
     }
     return this._chatService;
+  }
+
+  static get editOrchestrator() {
+    if (!this._editOrchestrator) {
+      this._editOrchestrator = new EditOrchestrator();
+    }
+    return this._editOrchestrator;
+  }
+
+  static get editService() {
+    if (!this._editService) {
+      this._editService = new EditService(this.editOrchestrator);
+    }
+    return this._editService;
   }
 
   static get reportOrchestrator() {

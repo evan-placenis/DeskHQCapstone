@@ -1,200 +1,58 @@
 import { NextRequest, NextResponse } from "next/server";
-import { streamText, generateText } from "ai";
-import { ModelStrategy } from "@/backend/AI_Skills/Models/model-strategy";
 import { createAuthenticatedClient } from "@/app/api/utils";
+import { Container } from "@/backend/config/container";
 
 /**
  * POST /api/report/[reportId]/ai-edit
  *
- * Two modes:
- * 1) Selection-based (client context): body has { selection, surroundingContext?, instruction }.
- *    Streams replacement text. No DB read for context.
- * 2) Section-by-name: body has { sectionRowId, instruction }. Reads report + section from DB,
- *    extracts section text, returns JSON suggestion. No DB write — frontend shows modal and
- *    on accept updates state; save is debounced.
+ * Selection-based edit only. Body: { selection, surroundingContext?, instruction, provider?, projectId? }.
+ * Edit content is provided only by the client (e.g. Tiptap selection); this route and the edit
+ * agent do not fetch report content from the DB. With projectId, the edit agent can use
+ * research tools (internal knowledge + web) to make fact-based edits. Returns stream of replacement text.
  */
 export async function POST(
     request: NextRequest,
     { params }: { params: Promise<{ reportId: string }> }
 ) {
     try {
-        const { reportId } = await params;
+        await params;
         const body = await request.json();
         const {
             selection,
             surroundingContext,
-            sectionRowId,
             instruction,
             provider = "gemini-cheap",
+            projectId,
         } = body;
 
-        const { user, supabase } = await createAuthenticatedClient();
-        if (!user) {
-            return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-        }
-
-        // ——— Section-by-name: no selection, use sectionRowId ———
-        if (sectionRowId && typeof sectionRowId === "string" && instruction) {
-            const { data: report, error: reportError } = await supabase
-                .from("reports")
-                .select("tiptap_content")
-                .eq("id", reportId)
-                .single();
-
-            if (reportError || !report) {
-                return NextResponse.json({ error: "Report not found" }, { status: 404 });
-            }
-
-            const fullReportText = report.tiptap_content ?? "";
-            if (!fullReportText.trim()) {
-                return NextResponse.json(
-                    { error: "Report has no content yet." },
-                    { status: 400 }
-                );
-            }
-
-            const { data: section, error: sectionError } = await supabase
-                .from("report_sections")
-                .select("id, section_id, heading, content")
-                .eq("id", sectionRowId)
-                .eq("report_id", reportId)
-                .single();
-
-            if (sectionError || !section) {
-                return NextResponse.json({ error: "Section not found" }, { status: 404 });
-            }
-
-            const sectionContent = section.content ?? "";
-            const originalText =
-                findSectionSubstring(fullReportText, sectionContent) ??
-                extractSectionByHeading(fullReportText, section.heading ?? "");
-
-            if (!originalText?.trim()) {
-                return NextResponse.json(
-                    { error: "Section content not found in report." },
-                    { status: 400 }
-                );
-            }
-
-            const systemPrompt = `You are an expert editor helping improve engineering reports.
-Edit the given section based on the user's instruction. Keep the same professional tone and technical accuracy.
-Return ONLY the edited text — no explanations, no markdown code blocks, no preamble.`;
-
-            const userPrompt = `## Section: "${section.heading}"
-
-${originalText}
-
-## Instruction
-${instruction}
-
-## Your task
-Rewrite the section above following the instruction. Return only the edited text.`;
-
-            const result = await generateText({
-                model: ModelStrategy.getModel(provider as "grok" | "gemini-pro" | "claude" | "gemini-cheap"),
-                system: systemPrompt,
-                prompt: userPrompt,
-            });
-
-            const suggestedText = result.text.trim();
-            if (!suggestedText) {
-                return NextResponse.json({ error: "AI returned empty response" }, { status: 500 });
-            }
-
-            return NextResponse.json({
-                status: "SUCCESS",
-                suggestion: {
-                    sectionRowId: section.id,
-                    sectionId: section.section_id,
-                    sectionHeading: section.heading,
-                    originalText,
-                    suggestedText,
-                    reason: instruction,
-                    status: "PENDING",
-                    fullDocument: fullReportText,
-                },
-            });
-        }
-
-        // ——— Selection-based: require selection + instruction ———
         if (!selection || typeof selection !== "string" || !instruction || typeof instruction !== "string") {
             return NextResponse.json(
-                { error: "Either (sectionRowId + instruction) or (selection + instruction) is required" },
+                { error: "selection and instruction are required" },
                 { status: 400 }
             );
         }
 
-        const systemPrompt = `You are an expert editor helping improve engineering reports.
-Your task is to edit the selected text based on the user's instruction.
-Keep the same professional tone and technical accuracy.
-Return ONLY the replacement text for the selection - no explanations, no markdown code blocks, no preamble.`;
+        const { user } = await createAuthenticatedClient();
+        if (!user) {
+            return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+        }
 
-        const userPrompt = surroundingContext
-            ? `## Selected text (edit this):
-${selection}
+        const validProvider = ["grok", "gemini-pro", "claude", "gemini-cheap"].includes(provider)
+            ? provider
+            : "gemini-cheap";
 
-## Surrounding context (for flavor only):
-${surroundingContext}
-
-## Instruction
-${instruction}
-
-## Your task
-Return only the edited replacement for the selected text.`
-            : `## Selected text (edit this):
-${selection}
-
-## Instruction
-${instruction}
-
-## Your task
-Return only the edited replacement for the selected text.`;
-
-        const result = streamText({
-            model: ModelStrategy.getModel(provider as "grok" | "gemini-pro" | "claude" | "gemini-cheap"),
-            system: systemPrompt,
-            prompt: userPrompt,
+        const response = await Container.editService.streamSelectionEdit({
+            selection,
+            surroundingContext: typeof surroundingContext === "string" ? surroundingContext : undefined,
+            instruction,
+            provider: validProvider,
+            projectId: typeof projectId === "string" && projectId.trim() ? projectId.trim() : undefined,
         });
 
-        return result.toTextStreamResponse();
-    } catch (error: any) {
+        return response;
+    } catch (error: unknown) {
+        const message = error instanceof Error ? error.message : "Failed to generate edit";
         console.error("❌ [AI Edit] Error:", error);
-        return NextResponse.json(
-            { error: error.message || "Failed to generate edit" },
-            { status: 500 }
-        );
+        return NextResponse.json({ error: message }, { status: 500 });
     }
-}
-
-function findSectionSubstring(fullText: string, sectionContent: string): string | null {
-    if (!sectionContent.trim()) return null;
-    const variants = [
-        sectionContent,
-        sectionContent.trim(),
-        sectionContent.replace(/\r\n/g, "\n"),
-        sectionContent.replace(/\r\n/g, "\n").trim(),
-    ];
-    for (const v of variants) {
-        if (v && fullText.includes(v)) return v;
-    }
-    return null;
-}
-
-function extractSectionByHeading(fullText: string, heading: string): string | null {
-    const raw = (heading ?? "").trim();
-    if (!raw) return null;
-    const normalizedFull = fullText.replace(/\r\n/g, "\n");
-    const headingText = raw.replace(/^#+\s*/, "").trim() || raw;
-    const escaped = headingText.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    const headingRegex = new RegExp(`(^|\\n)(#{0,6}\\s*)${escaped}\\s*(?:\\n|\\r\\n)?`, "im");
-    const match = normalizedFull.match(headingRegex);
-    if (!match) return null;
-    const matchStart = normalizedFull.indexOf(match[0]);
-    const sectionStart = matchStart + match[1].length;
-    const afterStart = normalizedFull.slice(sectionStart + 1);
-    const nextHeadingMatch = afterStart.match(/\n#{1,6}\s+/);
-    const sectionEnd = nextHeadingMatch
-        ? sectionStart + 1 + nextHeadingMatch.index!
-        : normalizedFull.length;
-    return normalizedFull.slice(sectionStart, sectionEnd);
 }

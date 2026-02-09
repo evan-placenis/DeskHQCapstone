@@ -134,7 +134,12 @@ export function ReportLayout({
         const response = await fetch(`/api/report/${reportId}/ai-edit`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ selection, surroundingContext, instruction }),
+          body: JSON.stringify({
+            selection,
+            surroundingContext,
+            instruction,
+            ...(projectId != null && { projectId: String(projectId) }),
+          }),
         });
 
         if (!response.ok) {
@@ -169,7 +174,7 @@ export function ReportLayout({
         setIsGeneratingEdit(false);
       }
     },
-    [reportId, isGeneratingEdit]
+    [reportId, projectId, isGeneratingEdit]
   );
   
   // Debounced save function for tiptap_content changes

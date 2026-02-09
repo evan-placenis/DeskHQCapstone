@@ -187,7 +187,6 @@ interface AIChatSidebarProps {
   onResize: (width: number) => void;
   onSuggestionAccept: (suggestion: any) => void;
   onEditSuggestion?: (suggestion: EditSuggestion) => void;
-  onRequestAIEdit?: (sectionRowId: string, instruction: string) => Promise<EditSuggestion | null>;
   /** When user has highlighted text: get selection + surrounding context from editor (client-context edit) */
   getEditorSelectionContext?: () => { selection: string; surroundingContext: string; fullMarkdown: string } | null;
   /** Trigger selection-based edit (streaming). Called when user sends a message and has text selected. */
@@ -217,7 +216,6 @@ export function AIChatSidebar({
   onResize,
   onSuggestionAccept,
   onEditSuggestion,
-  onRequestAIEdit,
   getEditorSelectionContext,
   onRequestAIEditWithSelection,
   pinnedSelectionContext,
@@ -348,7 +346,6 @@ export function AIChatSidebar({
   }, [sessionId]);
 
   // Track processed edits to avoid duplicates
-  const processedEditRef = useRef<string | null>(null);
   const lastUserMessageRef = useRef<string | null>(null);
 
   // Listen for message completion to handle tool calls and trigger non-streaming edits
@@ -369,37 +366,7 @@ export function AIChatSidebar({
         const allToolCalls = [...toolCalls, ...toolInvocations];
         
         if (allToolCalls.length > 0) {
-          // Check for retrieveReportContext tool calls - this triggers the non-streaming edit
-          const retrieveContextCall = allToolCalls.find(
-            (tool: any) => {
-              const toolName = tool.toolName || tool.name;
-              const hasResult = 'result' in tool;
-              return toolName === 'retrieveReportContext' && hasResult;
-            }
-          );
-
-          if (retrieveContextCall && onRequestAIEdit) {
-            const toolResult = retrieveContextCall.result;
-            
-            // If we found a section successfully, trigger the non-streaming edit
-            if (toolResult?.status === 'SUCCESS' && toolResult?.sectionRowId) {
-              // Avoid duplicate processing
-              const editKey = `${toolResult.sectionRowId}-${lastUserMessageRef.current}`;
-              if (processedEditRef.current === editKey) {
-                return;
-              }
-              processedEditRef.current = editKey;
-              
-              // Get the user's instruction from the last message they sent
-              const instruction = lastUserMessageRef.current || 'improve this section';
-              
-              console.log(`🔄 [AIChatSidebar] Triggering non-streaming edit for "${toolResult.sectionHeading}"`);
-              onRequestAIEdit(toolResult.sectionRowId, instruction);
-              return true;
-            }
-          }
-
-          // Fallback: Check for updateSection tool calls (legacy)
+          // Check for updateSection tool calls (legacy)
           const updateSectionCall = allToolCalls.find(
             (tool: any) => {
               const toolName = tool.toolName || tool.name;
@@ -460,12 +427,8 @@ export function AIChatSidebar({
       }
     });
 
-    return () => {
-      unsubscribe();
-      // Reset processed edit ref when unsubscribing
-      processedEditRef.current = null;
-    };
-  }, [runtime, sessionId, activeSectionId, useTiptap, onSuggestionAccept, onSetDiffContent, onEditSuggestion]);
+    return () => unsubscribe();
+  }, [runtime, sessionId, activeSectionId, useTiptap, onSuggestionAccept, onSetDiffContent]);
 
   const handleCustomSend = async (message: string) => {
     if (!runtime) return;
