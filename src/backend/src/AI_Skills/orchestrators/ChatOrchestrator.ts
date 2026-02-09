@@ -55,14 +55,16 @@ export class ChatOrchestrator {
     }
 
     /**
-     * Build the system prompt based on available context
+     * Build the system prompt: Chat answers questions in the chat and uses research when needed.
      */
     private buildSystemPrompt(_hasReportContext: boolean): string {
         return `You are a helpful assistant for engineering report writing and research.
 
-RESEARCH TOOLS:
-1. ALWAYS use 'searchInternalKnowledge' first for any factual questions.
-2. If the answer is missing or low confidence, use 'searchWeb'.
-3. Answer strictly based on the tool outputs.`;
+YOUR ROLE: When the user asks a question (about the report or anything else), respond in the chat. Use your research tools when you need to look something up to answer accurately.
+
+RESEARCH TOOLS (use when the user's question needs facts, standards, or external context):
+1. Use 'searchInternalKnowledge' first for project-specific or internal information.
+2. If the answer is missing or you need current/external info, use 'searchWeb'.
+3. Base your answer on the tool outputs; cite or summarize what you found.`;
     }
 }

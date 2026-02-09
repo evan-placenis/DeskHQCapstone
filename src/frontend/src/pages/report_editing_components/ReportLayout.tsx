@@ -127,8 +127,12 @@ export function ReportLayout({
     async (selection: string, surroundingContext: string, instruction: string, fullMarkdown: string) => {
       if (!reportId || isGeneratingEdit) return;
 
-      setPinnedSelectionContext(null); // clear pill as soon as they send
-      editorRef.current?.clearSelection(); // so next send doesn't reuse this selection (e.g. "make exec summary concise")
+      // Delay clearing pinned selection so the chat stream request is sent with selectionEdit: true
+      // (transport body is from current render; clearing immediately would make the next request use selectionEdit: false).
+      setTimeout(() => {
+        setPinnedSelectionContext(null);
+        editorRef.current?.clearSelection();
+      }, 400);
       setIsGeneratingEdit(true);
       try {
         const response = await fetch(`/api/report/${reportId}/ai-edit`, {

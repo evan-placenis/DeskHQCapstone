@@ -291,7 +291,7 @@ export function AIChatSidebar({
     };
   }, [isResizing, windowWidth, onResize]);
 
-  // Vercel useChat + assistant-ui adapter. selectionEdit: true when user has pinned selection (edit handled client-side; assistant should not use retrieveReportContext)
+  // selectionEdit: use getter so when the request body is serialized we read the ref (set right before append when user has selection)
   const transport = useMemo(
     () =>
       new AssistantChatTransport({
@@ -301,7 +301,9 @@ export function AIChatSidebar({
           reportId,
           projectId,
           provider: chatProvider,
-          selectionEdit: !!pinnedSelectionContext,
+          get selectionEdit() {
+            return !!pinnedSelectionContext || selectionEditForNextRequestRef.current;
+          },
         },
       }),
     [sessionId, activeSectionId, reportId, projectId, chatProvider, pinnedSelectionContext]
@@ -347,6 +349,8 @@ export function AIChatSidebar({
 
   // Track processed edits to avoid duplicates
   const lastUserMessageRef = useRef<string | null>(null);
+  // Set to true when sending with selection so the stream request body has selectionEdit: true at serialize time
+  const selectionEditForNextRequestRef = useRef(false);
 
   // Listen for message completion to handle tool calls and trigger non-streaming edits
   useEffect(() => {
@@ -433,10 +437,23 @@ export function AIChatSidebar({
   const handleCustomSend = async (message: string) => {
     if (!runtime) return;
     lastUserMessageRef.current = message;
+
+    // Set ref so when the stream request body is serialized, selectionEdit is true (getter in transport body)
+    const hadSelection =
+      useTiptap && !!getEditorSelectionContext?.()?.selection?.trim();
+    if (hadSelection) selectionEditForNextRequestRef.current = true;
+    // Reset after request has been sent (body is read when fetch runs)
+    const resetSelectionEditRef = () => {
+      setTimeout(() => {
+        selectionEditForNextRequestRef.current = false;
+      }, 1500);
+    };
+
     await runtime.thread.append({
       role: 'user',
       content: [{ type: 'text', text: message }],
     });
+    resetSelectionEditRef();
 
     // Client-context edit: when user has text selected in Tiptap, trigger selection-based edit (no DB/tools)
     if (useTiptap && getEditorSelectionContext && onRequestAIEditWithSelection) {

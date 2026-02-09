@@ -1,10 +1,14 @@
 /**
- * Chat Skills – tools for the conversational Chat agent (ChatOrchestrator).
+ * Chat Skills – for the conversational Chat agent (ChatOrchestrator).
  *
- * Report section writing is NOT here: it lives in report.skills (report generation
- * flow) and in the Edit flow (selection-based via EditOrchestrator + frontend).
- * Add chat-specific tools here as needed (e.g. getPreviousMessages).
+ * The chat agent's role: when the user asks a question (about the report or
+ * anything else), respond in the chat. Research skills (searchInternalKnowledge,
+ * searchWeb) are added alongside so the chatbot can research when necessary to
+ * answer the user's query. Report section writing and report-content editing
+ * live in report.skills and the Edit flow, not here.
+ *
+ * Add chat-specific tools here only if needed (e.g. clarify question, summarize thread).
  */
 export const chatSkills = {
-  // Reserved for future chat-only tools, e.g. getPreviousMessages.
+  // Responding in chat is the default; research tools are provided by research.skills.
 };
