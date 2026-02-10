@@ -4,16 +4,14 @@ import { researchSkills } from '../skills/research.skills';
 import { reportSkills } from '../skills/report.skills';
 import { chatSkills } from '../skills/chat.skills';
 import { visionSkills } from '../skills/vison.skills';
-import { channel } from 'diagnostics_channel';
 import { SupabaseClient } from '@supabase/supabase-js';
 
 /**
- * 🆕 Chat Orchestrator using AI-SDK
- * 
- * This orchestrator handles chat conversations with access to:
- * - Knowledge base search (RAG)
- * - Web research
- * - Report editing (when report context is provided)
+ * Chat Orchestrator using AI-SDK.
+ *
+ * Has research tools (searchInternalKnowledge, searchWeb), report tools (when context
+ * is provided), chat and vision tools. It does NOT have any tool that retrieves report
+ * content from the DB for editing; edit content is provided only by the frontend (selection flow).
  */
 export class ChatOrchestrator {
     async generateStream(params: {
@@ -22,10 +20,13 @@ export class ChatOrchestrator {
         context?: any,
         projectId?: string,
         userId?: string,
+        reportId?: string,
+        /** When true, user edited via selection (client-side); do not add edit skills so assistant does not call retrieveReportContext */
+        selectionEdit?: boolean,
         systemMessage?: string
         client: SupabaseClient;
     }) {
-        const { messages, provider, context, projectId, userId, systemMessage, client } = params;
+        const { messages, provider, context, projectId, userId, reportId, selectionEdit, systemMessage, client } = params;
 
         // Build tools - include report skills if we have context
         const tools: any = {
@@ -39,12 +40,10 @@ export class ChatOrchestrator {
             Object.assign(tools, reportSkills(projectId, userId, client));
         }
 
-        // Build system prompt - use custom systemMessage if provided, otherwise default
-        const systemPrompt = systemMessage || `You are a helpful research assistant.
-               1. ALWAYS search 'searchInternalKnowledge' first.
-               2. If the answer is missing or low confidence, use 'searchWeb'.
-               3. Answer strictly based on the tool outputs.
-               ${context ? '4. You can edit report sections using "updateSection" when the user requests changes in the report they are editing..' : ''}`;
+        // Edit flow is selection-only and handled by EditOrchestrator via ai-edit route; Chat has no edit tools.
+
+        // Build system prompt - use custom systemMessage if provided (e.g. selection-edit ack), otherwise default
+        const systemPrompt = systemMessage || this.buildSystemPrompt(false);
 
         return streamText({
             model: ModelStrategy.getModel(provider),
@@ -53,5 +52,19 @@ export class ChatOrchestrator {
             stopWhen: stepCountIs(10),
             tools
         });
+    }
+
+    /**
+     * Build the system prompt: Chat answers questions in the chat and uses research when needed.
+     */
+    private buildSystemPrompt(_hasReportContext: boolean): string {
+        return `You are a helpful assistant for engineering report writing and research.
+
+YOUR ROLE: When the user asks a question (about the report or anything else), respond in the chat. Use your research tools when you need to look something up to answer accurately.
+
+RESEARCH TOOLS (use when the user's question needs facts, standards, or external context):
+1. Use 'searchInternalKnowledge' first for project-specific or internal information.
+2. If the answer is missing or you need current/external info, use 'searchWeb'.
+3. Base your answer on the tool outputs; cite or summarize what you found.`;
     }
 }

@@ -32,7 +32,18 @@ export interface ReportRepository {
         client: SupabaseClient
     ): Promise<void>;
     getSection(reportId: string, sectionId: string, client: SupabaseClient): Promise<any | null>;
-    
+
+    /** Get a section by its row UUID (report_sections.id). */
+    getSectionByRowId(reportId: string, sectionRowId: string, client: SupabaseClient): Promise<any | null>;
+
+    /** Update a section row by UUID (used when accepting AI edit). */
+    updateSectionByRowId(
+        reportId: string,
+        sectionRowId: string,
+        data: { content?: string; heading?: string },
+        client: SupabaseClient
+    ): Promise<void>;
+
     // Utility methods
     touchReport(reportId: string, client: SupabaseClient): Promise<void>;
 }

@@ -3,7 +3,7 @@
 import { useEditor, EditorContent } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
 import { Markdown } from 'tiptap-markdown' // You need to install this
-import { useEffect, useMemo, useState, useRef } from 'react'
+import { useEffect, useMemo, useState, useRef, forwardRef, useImperativeHandle } from 'react'
 
 import { Table } from '@tiptap/extension-table'
 import { TableRow } from '@tiptap/extension-table-row'
@@ -17,7 +17,13 @@ import { ReportImageComponent } from './ReportImageComponent'
 import { AdditionMark, DeletionMark } from './DiffMarks'
 import { computeDiffDocument } from './diffUtils'
 import { Button } from '../ui_components/button'
-import { Check, X } from 'lucide-react'
+import {
+    DropdownMenu,
+    DropdownMenuContent,
+    DropdownMenuItem,
+    DropdownMenuTrigger,
+} from '../ui_components/dropdown-menu'
+import { Check, X, Heading as HeadingIcon, ChevronDown } from 'lucide-react'
 
 
 // 2. Customize the Image Extension
@@ -66,6 +72,26 @@ const CustomImageExtension = Image.extend({
 })
 
 
+/** Context from the editor for client-side AI edit (selection + markdown + range) */
+export interface SelectionContext {
+    /** Plain text of the selection (for display) */
+    selection: string;
+    /** Markdown of the selection (preserves **, _, etc.) – send this to the LLM */
+    markdown: string;
+    /** ProseMirror positions so we can replace by coordinates on accept */
+    range: { from: number; to: number };
+    surroundingContext: string;
+    fullMarkdown: string;
+}
+
+export interface TiptapEditorHandle {
+    getSelectionContext: () => SelectionContext | null;
+    /** Replace the given range with new markdown (parsed and inserted). Use when accepting an AI edit. */
+    replaceRange: (range: { from: number; to: number }, newMarkdown: string) => void;
+    /** Collapse the selection so the next getSelectionContext() returns null (e.g. after using selection for an edit). */
+    clearSelection: () => void;
+}
+
 interface TiptapEditorProps {
     content: string; // This expects the Markdown string from your processNode
     editable?: boolean; //make everything editable
@@ -73,16 +99,21 @@ interface TiptapEditorProps {
     diffContent?: string | null; // New content to compare against (enables review mode)
     onAcceptDiff?: () => void; // Callback when user accepts the diff
     onRejectDiff?: () => void; // Callback when user rejects the diff
+    /** Called when selection changes; used to pin selection so it survives blur (e.g. clicking into chat) */
+    onSelectionChange?: (context: SelectionContext | null) => void;
 }
 
-export function TiptapEditor({
+const SURROUNDING_CHARS = 500;
+
+export const TiptapEditor = forwardRef<TiptapEditorHandle, TiptapEditorProps>(function TiptapEditor({
     content,
     editable = true,
     onUpdate,
     diffContent,
     onAcceptDiff,
-    onRejectDiff
-}: TiptapEditorProps) {
+    onRejectDiff,
+    onSelectionChange,
+}, ref) {
     // Store the original markdown when entering review mode to prevent infinite loops
     const originalMarkdownRef = useRef<string | null>(null);
     const [originalMarkdown, setOriginalMarkdown] = useState<string | null>(null);
@@ -249,6 +280,111 @@ export function TiptapEditor({
         }
     }, [content, editor, isReviewMode]);
 
+    // Notify parent when selection changes so we can "pin" it (survives blur when user clicks into chat)
+    useEffect(() => {
+        if (!editor || !onSelectionChange || isReviewMode) return;
+        const buildContext = (): SelectionContext | null => {
+            const { from, to } = editor.state.selection;
+            if (from === to) return null;
+            const doc = editor.state.doc;
+            const selection = doc.textBetween(from, to);
+            if (!selection.trim()) return null;
+            const size = doc.content.size;
+            const before = doc.textBetween(0, from).slice(-SURROUNDING_CHARS);
+            const after = doc.textBetween(to, size).slice(0, SURROUNDING_CHARS);
+            let fullMarkdown = '';
+            let markdown = '';
+            try {
+                const storage = (editor.storage as any).markdown;
+                fullMarkdown = storage?.getMarkdown() ?? '';
+                const slice = doc.slice(from, to);
+                markdown = storage?.serializer?.serialize(slice.content) ?? selection;
+            } catch {
+                return null;
+            }
+            return {
+                selection,
+                markdown: markdown || selection,
+                range: { from, to },
+                surroundingContext: before + (after ? '\n\n---\n\n' + after : ''),
+                fullMarkdown,
+            };
+        };
+        const handler = () => {
+            const { from, to } = editor.state.selection;
+            const hasSelection = from !== to && editor.state.doc.textBetween(from, to).trim().length > 0;
+            if (hasSelection) {
+                const ctx = buildContext();
+                if (ctx) onSelectionChange(ctx);
+            } else {
+                // Only clear pinned selection when user cleared selection while still in editor (keeps selection when they blur to chat)
+                if (editor.isFocused) onSelectionChange(null);
+            }
+        };
+        editor.on('selectionUpdate', handler);
+        return () => {
+            editor.off('selectionUpdate', handler);
+        };
+    }, [editor, onSelectionChange, isReviewMode]);
+
+    // Expose selection context and replaceRange for client-side AI edit (markdown in/out, range-based apply)
+    useImperativeHandle(
+        ref,
+        () => ({
+            getSelectionContext(): SelectionContext | null {
+                if (!editor || isReviewMode) return null;
+                const { from, to } = editor.state.selection;
+                if (from === to) return null;
+                const doc = editor.state.doc;
+                const selection = doc.textBetween(from, to);
+                if (!selection.trim()) return null;
+                const size = doc.content.size;
+                const before = doc.textBetween(0, from).slice(-SURROUNDING_CHARS);
+                const after = doc.textBetween(to, size).slice(0, SURROUNDING_CHARS);
+                let fullMarkdown = '';
+                let markdown = '';
+                try {
+                    const storage = (editor.storage as any).markdown;
+                    fullMarkdown = storage?.getMarkdown() ?? '';
+                    const slice = doc.slice(from, to);
+                    markdown = storage?.serializer?.serialize(slice.content) ?? selection;
+                } catch {
+                    return null;
+                }
+                return {
+                    selection,
+                    markdown: markdown || selection,
+                    range: { from, to },
+                    surroundingContext: before + (after ? '\n\n---\n\n' + after : ''),
+                    fullMarkdown,
+                };
+            },
+            replaceRange(range: { from: number; to: number }, newMarkdown: string) {
+                if (!editor || isReviewMode) return;
+                try {
+                    editor.chain().focus().setTextSelection({ from: range.from, to: range.to }).deleteSelection().run();
+                    // tiptap-markdown extends commands with insertContentAt(position, markdownString)
+                    const commands = editor.commands as { insertContentAt?: (pos: number, content: string) => boolean };
+                    if (typeof commands.insertContentAt === "function") {
+                        commands.insertContentAt(range.from, newMarkdown);
+                    } else {
+                        editor.commands.insertContent(newMarkdown);
+                    }
+                } catch (e) {
+                    console.warn("replaceRange failed, inserting as plain text", e);
+                    editor.chain().focus().setTextSelection({ from: range.from, to: range.to }).deleteSelection().run();
+                    editor.commands.insertContent(newMarkdown);
+                }
+            },
+            clearSelection() {
+                if (!editor || isReviewMode) return;
+                const { from } = editor.state.selection;
+                editor.commands.setTextSelection(from);
+            },
+        }),
+        [editor, isReviewMode]
+    );
+
     if (!editor) return null;
 
     return (
@@ -290,12 +426,38 @@ export function TiptapEditor({
                     <button onClick={() => editor.chain().focus().toggleBold().run()} className="font-bold px-2 border rounded">B</button>
                     <button onClick={() => editor.chain().focus().toggleItalic().run()} className="italic px-2 border rounded">I</button>
                     <button onClick={() => editor.chain().focus().toggleBulletList().run()} className="px-2 border rounded">• List</button>
+                    <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                            <button
+                                className="px-2 border rounded flex items-center gap-1"
+                                title="Heading level"
+                            >
+                                <HeadingIcon className="w-4 h-4" />
+                                <span>Heading</span>
+                                <ChevronDown className="w-3.5 h-3.5 opacity-70" />
+                            </button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="start">
+                            <DropdownMenuItem onClick={() => editor.chain().focus().setParagraph().run()}>
+                                Paragraph
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => editor.chain().focus().toggleHeading({ level: 1 }).run()}>
+                                Heading 1
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()}>
+                                Heading 2
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => editor.chain().focus().toggleHeading({ level: 3 }).run()}>
+                                Heading 3
+                            </DropdownMenuItem>
+                        </DropdownMenuContent>
+                    </DropdownMenu>
                 </div>
             )}
             <EditorContent editor={editor} />
         </div>
-    )
-}
+    );
+});
 
 
 

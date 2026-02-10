@@ -162,6 +162,23 @@ const CustomMessage = () => {
 };
 
 
+// EditSuggestion type (selection-based flow uses range; section-based uses sectionRowId)
+export interface EditSuggestion {
+  sectionRowId?: string;    // UUID from report_sections (section-based flow only)
+  sectionId?: string;
+  sectionHeading?: string;
+  originalText: string;
+  suggestedText: string;
+  reason: string;
+  status: 'PENDING' | 'ACCEPTED' | 'REJECTED';
+  /** ProseMirror range for range-based replace in Tiptap (selection flow) */
+  range?: { from: number; to: number };
+  /** Legacy: when set without range, Accept used fullDocument replace (deprecated) */
+  fullDocument?: string;
+  startIdx?: number;
+  endIdx?: number;
+}
+
 interface AIChatSidebarProps {
   projectId?: string;
   reportId?: string;
@@ -173,6 +190,15 @@ interface AIChatSidebarProps {
   onToggleCollapse: () => void;
   onResize: (width: number) => void;
   onSuggestionAccept: (suggestion: any) => void;
+  onEditSuggestion?: (suggestion: EditSuggestion) => void;
+  /** When user has highlighted text: get selection + markdown + range from editor (client-context edit) */
+  getEditorSelectionContext?: () => import("../smart_components/TiptapEditor").SelectionContext | null;
+  /** Trigger selection-based edit (streaming). Called with full context (send context.markdown to API). */
+  onRequestAIEditWithSelection?: (context: import("../smart_components/TiptapEditor").SelectionContext, instruction: string) => Promise<void>;
+  /** Pinned selection (survives blur) - show Cursor-style "Editing selection" pill when set */
+  pinnedSelectionContext?: import("../smart_components/TiptapEditor").SelectionContext | null;
+  onClearPinnedSelection?: () => void;
+  isGeneratingEdit?: boolean;
   selectedContexts?: any[];
   onClearSelectedContexts?: () => void;
   onRemoveSelectedContext?: (index: number) => void;
@@ -193,6 +219,12 @@ export function AIChatSidebar({
   onToggleCollapse,
   onResize,
   onSuggestionAccept,
+  onEditSuggestion,
+  getEditorSelectionContext,
+  onRequestAIEditWithSelection,
+  pinnedSelectionContext,
+  onClearPinnedSelection,
+  isGeneratingEdit = false,
   selectedContexts = [],
   onClearSelectedContexts,
   onRemoveSelectedContext,
@@ -263,12 +295,16 @@ export function AIChatSidebar({
     };
   }, [isResizing, windowWidth, onResize]);
 
-  // Vercel useChat + assistant-ui adapter (useAISDKRuntime = "useVercelUseChatRuntime" pattern)
   const transport = useMemo(
     () =>
       new AssistantChatTransport({
         api: sessionId ? `/api/chat/sessions/${sessionId}/stream` : '',
-        body: { activeSectionId, reportId, projectId, provider: chatProvider },
+        body: {
+          activeSectionId,
+          reportId,
+          projectId,
+          provider: chatProvider,
+        },
       }),
     [sessionId, activeSectionId, reportId, projectId, chatProvider]
   );
@@ -311,64 +347,144 @@ export function AIChatSidebar({
     return () => { cancelled = true; };
   }, [sessionId]);
 
-  // Listen for message completion to handle tool calls and suggestions
+  // Track processed edits to avoid duplicates
+  const lastUserMessageRef = useRef<string | null>(null);
+
+  // Listen for message completion to handle tool calls and trigger non-streaming edits
   useEffect(() => {
     if (!runtime || !sessionId) return;
 
-    // Subscribe to thread state changes to detect completed messages
-    const unsubscribe = runtime.thread.subscribe(() => {
-      const threadState = runtime.thread.getState();
-      const messages = threadState.messages || [];
+    // Helper function to extract and process tool calls
+    const processToolCalls = (lastMessage: any) => {
+      try {
+        // Get tool calls from content array (assistant-ui format) OR toolInvocations (vercel ai format)
+        const contentParts = (lastMessage as any).content || [];
+        const toolCalls = contentParts.filter((part: any) => 
+          part.type === 'tool-call' && part.result !== undefined
+        );
+        
+        // Also check legacy toolInvocations property
+        const toolInvocations = (lastMessage as any).toolInvocations || [];
+        const allToolCalls = [...toolCalls, ...toolInvocations];
+        
+        if (allToolCalls.length > 0) {
+          // Check for updateSection tool calls (legacy)
+          const updateSectionCall = allToolCalls.find(
+            (tool: any) => {
+              const toolName = tool.toolName || tool.name;
+              const hasResult = 'result' in tool;
+              return toolName === 'updateSection' && hasResult;
+            }
+          );
 
-      if (messages.length > 0) {
-        const lastMessage = messages[messages.length - 1];
+          if (updateSectionCall && activeSectionId) {
+            const toolResult = updateSectionCall.result;
+            const messageContent = (lastMessage as any).content || (lastMessage as any).text || '';
+            const suggestedText = (toolResult?.markdown ||
+              (typeof toolResult === 'string' ? toolResult : null) ||
+              messageContent) as string;
 
-        // Check if message is complete and from assistant
-        if (lastMessage.role === 'assistant' && (lastMessage as any).status === 'complete') {
-          // Handle suggestions when message finishes
-          const toolInvocations = (lastMessage as any).toolInvocations || [];
-          if (toolInvocations.length > 0) {
-            // Check for updateSection tool calls
-            const updateSectionCall = toolInvocations.find(
-              (tool: any) => {
-                const toolName = tool.toolName || (tool as any).toolName;
-                const hasResult = 'result' in tool;
-                return toolName === 'updateSection' && hasResult;
-              }
-            );
-
-            if (updateSectionCall && activeSectionId) {
-              // Extract suggestion from tool result
-              const toolAny = updateSectionCall as any;
-              const toolResult = toolAny.result || toolAny;
-              const messageContent = (lastMessage as any).content || (lastMessage as any).text || '';
-              const suggestedText = (toolResult?.markdown ||
-                (typeof toolResult === 'string' ? toolResult : null) ||
-                messageContent) as string;
-
-              // Call the onSuggestionAccept callback
-              if (useTiptap && activeSectionId === "main-content" && onSetDiffContent) {
-                onSetDiffContent(suggestedText);
-              } else {
-                onSuggestionAccept({
-                  messageId: (lastMessage as any).id || String(Date.now()),
-                  sectionId: activeSectionId,
-                  oldValue: '',
-                  newValue: suggestedText,
-                  source: "ai"
-                });
-              }
+            if (useTiptap && activeSectionId === "main-content" && onSetDiffContent) {
+              onSetDiffContent(suggestedText);
+            } else {
+              onSuggestionAccept({
+                messageId: (lastMessage as any).id || String(Date.now()),
+                sectionId: activeSectionId,
+                oldValue: '',
+                newValue: suggestedText,
+                source: "ai"
+              });
             }
           }
         }
+      } catch (err) {
+        console.error('[AIChatSidebar] Error processing tool calls:', err);
+      }
+    };
+
+    // Subscribe to thread state changes to detect completed messages
+    const unsubscribe = runtime.thread.subscribe(() => {
+      try {
+        const threadState = runtime.thread.getState();
+        const messages = threadState.messages || [];
+
+        if (messages.length > 0) {
+          const lastMessage = messages[messages.length - 1];
+
+          // Check if message is from assistant (process both running and complete to catch tool results early)
+          if (lastMessage.role === 'assistant') {
+            const messageStatus = typeof (lastMessage as any).status === 'string' 
+              ? (lastMessage as any).status 
+              : (lastMessage as any).status?.type;
+            
+            // Process tool calls when message is complete, or when running (to catch results as they stream)
+            if (messageStatus === 'complete' || messageStatus === 'running') {
+              processToolCalls(lastMessage);
+            }
+          }
+        }
+      } catch (err) {
+        // Catch streaming errors gracefully - the tool result data may still be valid
+        console.warn('[AIChatSidebar] Streaming error (may be recoverable):', err);
       }
     });
 
-    return unsubscribe;
+    return () => unsubscribe();
   }, [runtime, sessionId, activeSectionId, useTiptap, onSuggestionAccept, onSetDiffContent]);
 
   const handleCustomSend = async (message: string) => {
     if (!runtime) return;
+    lastUserMessageRef.current = message;
+
+    const hadSelection =
+      useTiptap && !!getEditorSelectionContext?.()?.selection?.trim();
+
+    // When user has selection: run the edit flow and add user + confirmation to the thread without streaming.
+    if (useTiptap && hadSelection && getEditorSelectionContext && onRequestAIEditWithSelection) {
+      const ctx = getEditorSelectionContext();
+      if (ctx?.selection?.trim()) {
+        onRequestAIEditWithSelection(ctx, message);
+
+        // Add user message and a static assistant confirmation so the user sees their message and a reply.
+        const setMessages = setMessagesRef.current;
+        if (typeof setMessages === "function") {
+          const threadState = runtime.thread.getState();
+          const rawMessages = threadState.messages ?? [];
+          const existing = Array.from(rawMessages) as Array<{ id?: string; role?: string; content?: unknown }>;
+          const toParts = (m: (typeof existing)[0]) => {
+            const content = m.content;
+            if (Array.isArray(content)) {
+              const textPart = content.find((p: { type?: string; text?: string }) => p?.type === "text");
+              return [{ type: "text" as const, text: (textPart as { text?: string })?.text ?? "" }];
+            }
+            return [{ type: "text" as const, text: typeof content === "string" ? content : "" }];
+          };
+          const uiMessages = existing.map((m, i) => ({
+            id: m.id ?? `msg-${i}`,
+            role: (m.role === "assistant" ? "assistant" : "user") as "user" | "assistant",
+            parts: toParts(m),
+          }));
+          const ts = Date.now();
+          uiMessages.push(
+            { id: `user-sel-${ts}`, role: "user", parts: [{ type: "text" as const, text: message }] },
+            {
+              id: `assistant-sel-${ts}`,
+              role: "assistant",
+              parts: [
+                {
+                  type: "text" as const,
+                  text: "I've suggested an edit to your selection. Review the popup to accept or reject.",
+                },
+              ],
+            }
+          );
+          setMessages(uiMessages);
+        }
+        return;
+      }
+    }
+
+    // No selection: normal chat — append user message and let the transport stream the reply.
     await runtime.thread.append({
       role: 'user',
       content: [{ type: 'text', text: message }],
@@ -474,10 +590,30 @@ export function AIChatSidebar({
               </div>
             )}
 
+            {/* Pinned selection pill (Cursor-style): show when user highlighted text then clicked to chat */}
+            {useTiptap && pinnedSelectionContext && onClearPinnedSelection && (
+              <div className="px-3 pt-2 pb-0 border-t border-slate-100 bg-slate-50/50">
+                <div className="flex items-center gap-2 flex-wrap rounded-lg border border-theme-primary/30 bg-theme-primary/5 px-3 py-2">
+                  <span className="text-xs font-medium text-theme-primary shrink-0">Editing selection:</span>
+                  <span className="text-xs text-slate-600 truncate min-w-0 flex-1" title={pinnedSelectionContext.selection}>
+                    &quot;{pinnedSelectionContext.selection.length > 50 ? pinnedSelectionContext.selection.slice(0, 50) + '…' : pinnedSelectionContext.selection}&quot;
+                  </span>
+                  <button
+                    type="button"
+                    onClick={onClearPinnedSelection}
+                    className="shrink-0 p-1 rounded hover:bg-slate-200/80 text-slate-500 hover:text-slate-700"
+                    title="Clear selection"
+                    aria-label="Clear selection"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              </div>
+            )}
             <div className="p-3 border-t border-slate-200 bg-white">
               <AIChatInput
                 onSendMessage={handleCustomSend}
-                placeholder="Ask AI to revise the report..."
+                placeholder={pinnedSelectionContext ? "Ask AI to edit the selection above..." : "Ask AI to revise the report..."}
                 disabled={false}
               />
             </div>

@@ -23,14 +23,14 @@ export interface ChatMessage {
 
 // The "Smart" part: Structured data for UI Diffing
 export interface EditSuggestion {
-    targetSectionId: string; // Which paragraph/section to change
+    sectionRowId: string;    // UUID primary key from report_sections.id (for DB updates)
+    sectionId: string;       // Template category like "exec-summary" (for context)
+    sectionHeading: string;  // Which section to change (identified by heading text)
     originalText: string;
     suggestedText: string;
     reason: string;          // "Correcting grammar" or "Adding missing spec"
     status: 'PENDING' | 'ACCEPTED' | 'REJECTED';
-    changes: DiffChange[]; // The raw array for rendering green/red text
-    stats: DiffStats;      // The summary data (e.g. "+5 words")
-    suggestedData?: any;     // 🟢 NEW: Structured JSON version of the suggested text
+    // Note: Diff computation (changes, stats) is now done on frontend using diff-match-patch
 }
 
 // 1. The shape of a single text change (matches the 'diff' library output)
