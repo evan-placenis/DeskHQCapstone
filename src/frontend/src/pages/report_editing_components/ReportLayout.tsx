@@ -4,6 +4,7 @@ import { ReportContent } from "./ReportContent";
 import { PeerReview, ReportContent as ReportContentType } from "@/frontend/types";
 import { DiffPopup } from "../smart_components/DiffPopup";
 import type { TiptapEditorHandle, SelectionContext } from "../smart_components/TiptapEditor";
+import { Loader2 } from "lucide-react";
 
 interface SelectedContext {
   type: "photo" | "section" | "text";
@@ -152,22 +153,39 @@ export function ReportLayout({
         const reader = response.body?.getReader();
         const decoder = new TextDecoder();
         let suggestedText = "";
+        let lastUpdate = 0;
+        const UPDATE_INTERVAL_MS = 80;
         if (reader) {
           while (true) {
             const { done, value } = await reader.read();
             if (done) break;
             suggestedText += decoder.decode(value, { stream: true });
+            const now = Date.now();
+            const isFirstChunk = suggestedText.length > 0 && lastUpdate === 0;
+            if (isFirstChunk || now - lastUpdate >= UPDATE_INTERVAL_MS) {
+              lastUpdate = now;
+              setPendingEditSuggestion((prev) => {
+                const base =
+                  prev ??
+                  ({
+                    originalText: context.selection,
+                    suggestedText: "",
+                    reason: instruction,
+                    status: "PENDING",
+                    range: editRange,
+                  } as EditSuggestion);
+                return { ...base, suggestedText };
+              });
+            }
           }
         }
         suggestedText = suggestedText.trim();
         if (suggestedText) {
-          setPendingEditSuggestion({
-            originalText: context.selection,
-            suggestedText,
-            reason: instruction,
-            status: "PENDING",
-            range: editRange,
-          });
+          setPendingEditSuggestion((prev) =>
+            prev ? { ...prev, suggestedText } : null
+          );
+        } else {
+          setPendingEditSuggestion(null);
         }
       } catch (error) {
         console.error("AI Edit (selection) request failed:", error);
@@ -442,6 +460,25 @@ export function ReportLayout({
         useTiptap={useTiptap}
         onSetDiffContent={setDiffContent}
       />
+
+      {/* Loading overlay: show as soon as user sends a selection edit, until the suggestion is ready.
+          Backend delay causes to check if popup stays slow: (1) generateText waits for full response vs streamText,
+          (2) edit orchestrator stepCountIs(5) allows many tool rounds, (3) edit skills include research tools so model may call search first,
+          (4) model/provider latency. Consider streaming + stepCountIs(2) and showing popup on first chunk. */}
+      {isGeneratingEdit && !pendingEditSuggestion && useTiptap && (
+        <>
+          <div className="fixed inset-0 bg-black/20 z-40" aria-hidden />
+          <div
+            className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-50 bg-white rounded-lg shadow-2xl border border-slate-200 px-8 py-6 flex flex-col items-center gap-4 min-w-[280px]"
+            role="status"
+            aria-live="polite"
+          >
+            <Loader2 className="w-10 h-10 animate-spin text-theme-primary" />
+            <p className="text-sm font-medium text-slate-700">Generating your edit...</p>
+            <p className="text-xs text-slate-500">This usually takes a few seconds</p>
+          </div>
+        </>
+      )}
 
       {/* Diff Popup for AI edit suggestions */}
       {pendingEditSuggestion && (

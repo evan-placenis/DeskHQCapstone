@@ -21,7 +21,7 @@ export class EditService {
     constructor(private readonly editOrchestrator: EditOrchestrator) {}
 
     /**
-     * Run selection edit for a report: resolve project_id, run edit with tools, return stream Response.
+     * Run selection edit: resolve project_id, stream tokens from the model as they are generated.
      * @throws ReportNotFoundError if report does not exist or has no project_id
      */
     async streamSelectionEdit(
@@ -45,7 +45,7 @@ export class EditService {
         }
 
         const provider = normalizeProvider(params.provider);
-        const { text } = await this.editOrchestrator.runSelectionEdit({
+        const result = await this.editOrchestrator.streamSelectionEdit({
             selection: params.selection,
             surroundingContext:
                 typeof params.surroundingContext === 'string' ? params.surroundingContext : undefined,
@@ -54,14 +54,26 @@ export class EditService {
             projectId: String(report.project_id),
         });
 
+        const encoder = new TextEncoder();
         const stream = new ReadableStream({
-            start(controller) {
-                controller.enqueue(new TextEncoder().encode(text ?? ''));
-                controller.close();
+            async start(controller) {
+                try {
+                    for await (const chunk of result.textStream) {
+                        controller.enqueue(encoder.encode(chunk));
+                    }
+                } catch (err) {
+                    controller.error(err);
+                } finally {
+                    controller.close();
+                }
             },
         });
         return new Response(stream, {
-            headers: { 'Content-Type': 'text/plain; charset=utf-8' },
+            headers: {
+                'Content-Type': 'text/plain; charset=utf-8',
+                'Cache-Control': 'no-cache',
+                'X-Content-Type-Options': 'nosniff',
+            },
         });
     }
 }
