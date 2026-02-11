@@ -120,6 +120,9 @@ export const TiptapEditor = forwardRef<TiptapEditorHandle, TiptapEditorProps>(fu
     const originalMarkdownRef = useRef<string | null>(null);
     const [originalMarkdown, setOriginalMarkdown] = useState<string | null>(null);
     const isUpdatingRef = useRef(false);
+    // Track the last markdown the editor emitted via onUpdate so we can distinguish
+    // "echoed" content (parent passing back what we just sent) from genuine external updates.
+    const lastEmittedMarkdownRef = useRef<string | null>(null);
     const imageFileInputRef = useRef<HTMLInputElement | null>(null);
     const audioFileInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -200,6 +203,8 @@ export const TiptapEditor = forwardRef<TiptapEditorHandle, TiptapEditorProps>(fu
 
             // When user types, we extract the new Markdown
             const newMarkdown = (editor.storage as any).markdown.getMarkdown();
+            // Track what we emitted so the content-sync effect can skip the echo
+            lastEmittedMarkdownRef.current = newMarkdown;
             if (onUpdate) onUpdate(newMarkdown);
         },
     })
@@ -257,12 +262,16 @@ export const TiptapEditor = forwardRef<TiptapEditorHandle, TiptapEditorProps>(fu
     }, [diffContent, diffMarkdown, editor]);
 
     // Update editor content if the prop changes externally (e.g. from AI regeneration)
-    // Skip this if we're in review mode
+    // Skip this if we're in review mode OR if the incoming content is just an echo of
+    // what the editor itself emitted (prevents the expensive serialize→setState→setContent loop).
     useEffect(() => {
         if (!editor || isReviewMode) return;
 
-        // 2. Get current editor state
-        // We use a try-catch because .storage.markdown access can sometimes be flaky during init
+        // If the incoming content matches the last markdown we emitted via onUpdate,
+        // this is just the parent echoing our own change back — skip the expensive re-parse.
+        if (content === lastEmittedMarkdownRef.current) return;
+
+        // Get current editor state
         let currentMarkdown = "";
         try {
             currentMarkdown = (editor.storage as any).markdown.getMarkdown();
@@ -271,24 +280,9 @@ export const TiptapEditor = forwardRef<TiptapEditorHandle, TiptapEditorProps>(fu
             return;
         }
 
-        // 3. Compare and Update
-        // We check if content exists AND if it is different from what's in the editor
+        // Only apply if the incoming content is genuinely different from what's in the editor
         if (content && content !== currentMarkdown) {
-
-            // PREVENT CURSOR JUMPING:
-            // Only force update if the editor is virtually empty OR if the incoming content 
-            // is significantly different (like a fresh load from DB).
-            const isEditorEmpty = currentMarkdown.trim() === "";
-
-            if (isEditorEmpty) {
-                // Initial Load: Set content and don't worry about cursor
-                editor.commands.setContent(content);
-            } else {
-                // Update from AI/Server while user might be typing:
-                // Ideally, you'd use a more complex diff here, but for now:
-                // We only update if they differ to avoid loops.
-                editor.commands.setContent(content);
-            }
+            editor.commands.setContent(content);
         }
     }, [content, editor, isReviewMode]);
 
@@ -463,9 +457,9 @@ export const TiptapEditor = forwardRef<TiptapEditorHandle, TiptapEditorProps>(fu
                 </div>
             )}
 
-            {/* Simple Toolbar */}
+            {/* Simple Toolbar — sticky so it stays visible while scrolling */}
             {editable && !isReviewMode && (
-                <div className="flex gap-2 mb-2 border-b border-slate-100 pb-2">
+                <div className="flex gap-2 mb-2 border-b border-slate-100 pb-2 sticky top-0 bg-white z-10 pt-1 -mt-1">
                     <button onClick={() => editor.chain().focus().toggleBold().run()} className="font-bold px-2 border rounded">B</button>
                     <button onClick={() => editor.chain().focus().toggleItalic().run()} className="italic px-2 border rounded">I</button>
                     <button

@@ -17,7 +17,12 @@ export async function GET(
             return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
         }
         const session = await Container.chatRepo.getSessionById(sessionId, supabase);
-        if (!session) return NextResponse.json({ error: "Not found" }, { status: 404 });
+        if (!session) {
+            // Debug: check if RLS is filtering out the row
+            const { data: profile } = await supabase.from('profiles').select('organization_id').eq('id', user.id).single();
+            console.error(`GET /stream 404 — sessionId=${sessionId}, userId=${user.id}, userOrgId=${profile?.organization_id ?? 'NULL (no profile!)'}`);
+            return NextResponse.json({ error: "Not found" }, { status: 404 });
+        }
         const uiMessages = session.messages.map(m => ({
             id: m.messageId,
             role: m.sender,

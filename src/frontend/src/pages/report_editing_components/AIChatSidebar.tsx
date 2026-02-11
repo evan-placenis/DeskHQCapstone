@@ -312,13 +312,32 @@ export function AIChatSidebar({
   const runtime = useAISDKRuntime(chat);
 
   // Hydrate once when sessionId is set: fetch history from /stream and inject into chat.
+  // Skip if initialMessages were already provided by the parent (avoids redundant GET that may 404).
   // Only depend on sessionId so we don't refetch on every chat state update (chat reference changes often).
   const setMessagesRef = useRef(chat?.setMessages);
   setMessagesRef.current = chat?.setMessages;
+  const initialMessagesRef = useRef(initialMessages);
+  initialMessagesRef.current = initialMessages;
 
   useEffect(() => {
     if (!sessionId) return;
 
+    const setMessages = setMessagesRef.current;
+    if (typeof setMessages !== "function") return;
+
+    // If parent already provided messages (from the POST /api/chat response), use those directly
+    const parentMessages = initialMessagesRef.current;
+    if (parentMessages && parentMessages.length > 0) {
+      const uiMessages = parentMessages.map((msg, i) => ({
+        id: msg.messageId ?? `init-${sessionId}-${i}`,
+        role: (msg.role === "assistant" ? "assistant" : "user") as "user" | "assistant",
+        parts: [{ type: "text" as const, text: msg.content ?? "" }]
+      }));
+      setMessages(uiMessages);
+      return;
+    }
+
+    // Otherwise fetch history from the API
     let cancelled = false;
     const fetchHistory = async () => {
       try {
@@ -329,15 +348,15 @@ export function AIChatSidebar({
         if (cancelled) return;
         if (!Array.isArray(history) || history.length === 0) return;
 
-        const setMessages = setMessagesRef.current;
-        if (typeof setMessages !== "function") return;
+        const setMsgs = setMessagesRef.current;
+        if (typeof setMsgs !== "function") return;
 
         const uiMessages = history.map((msg: { id?: string; role?: string; content?: string }, i: number) => ({
           id: msg.id ?? `load-${sessionId}-${i}`,
           role: (msg.role === "assistant" ? "assistant" : "user") as "user" | "assistant",
           parts: [{ type: "text" as const, text: msg.content ?? "" }]
         }));
-        setMessages(uiMessages);
+        setMsgs(uiMessages);
       } catch (err) {
         if (!cancelled) console.error("fetchHistory error:", err);
       }

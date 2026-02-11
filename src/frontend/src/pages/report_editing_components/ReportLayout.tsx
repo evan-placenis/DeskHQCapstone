@@ -35,6 +35,8 @@ interface ReportLayoutProps {
   currentDocumentContent?: string;
   onContentChange: (updates: Partial<ReportContentType>) => void;
   onSectionChange: (sectionId: number | string, newContent: string, newData?: any) => void;
+  /** Lightweight handler for TiptapEditor keystroke updates — ref + debounced save only, no state cascade */
+  onEditorUpdate?: (newContent: string) => void;
   /** Called after report content is saved (e.g. so parent can sync lastSavedContentRef) */
   onReportContentSaved?: (content: string) => void;
 
@@ -76,6 +78,7 @@ export function ReportLayout({
   currentDocumentContent,
   onContentChange,
   onSectionChange,
+  onEditorUpdate,
   onReportContentSaved,
   onBack,
   backLabel = "Back",
@@ -120,9 +123,6 @@ export function ReportLayout({
   const editorRef = useRef<TiptapEditorHandle | null>(null);
   // Pinned selection: survives blur so user can highlight in editor then type in chat (Cursor-style)
   const [pinnedSelectionContext, setPinnedSelectionContext] = useState<SelectionContext | null>(null);
-
-  // Debounced save ref
-  const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // Selection-based AI edit: send markdown to API, store range, apply via editor.replaceRange on accept
   const requestAIEditWithSelection = useCallback(
@@ -196,40 +196,6 @@ export function ReportLayout({
     [reportId, isGeneratingEdit]
   );
   
-  // Debounced save function for tiptap_content changes
-  const debouncedSave = useCallback((newContent: string) => {
-    // Clear existing timeout
-    if (saveTimeoutRef.current) {
-      clearTimeout(saveTimeoutRef.current);
-    }
-    
-    // Set new debounced save (2 seconds)
-    saveTimeoutRef.current = setTimeout(async () => {
-      if (reportId && newContent) {
-        try {
-          // Save the updated tiptap_content to the database
-          await fetch(`/api/report/${reportId}`, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ tiptap_content: newContent })
-          });
-          console.log('✅ Report content saved (debounced)');
-        } catch (error) {
-          console.error('❌ Failed to save report content:', error);
-        }
-      }
-    }, 2000);
-  }, [reportId]);
-  
-  // Cleanup debounce timeout on unmount
-  useEffect(() => {
-    return () => {
-      if (saveTimeoutRef.current) {
-        clearTimeout(saveTimeoutRef.current);
-      }
-    };
-  }, []);
-  
   // Accept edit: range-based replace in Tiptap (markdown in/out); editor onUpdate triggers save path.
   const handleAcceptEditSuggestion = useCallback(() => {
     if (!pendingEditSuggestion) return;
@@ -295,22 +261,6 @@ export function ReportLayout({
             const errBody = await res.json().catch(() => ({}));
             const errMsg = (errBody as { error?: string })?.error ?? res.statusText;
             console.error("ensureSession: POST /api/chat failed", res.status, errMsg);
-          }
-  
-          // STEP 2: Fetch the History using GET /api/chat/sessions/[sessionId]
-          // This ensures we get the correctly formatted 'user'/'assistant' array
-          if (newSessionId) {
-            const historyRes = await fetch(`/api/chat/sessions/${newSessionId}/stream`);
-            if (historyRes.ok) {
-              const historyMessages = await historyRes.json();
-              if (Array.isArray(historyMessages) && historyMessages.length > 0) {
-                setInitialChatMessages(historyMessages.map((m: { id?: string; role?: string; content?: string }) => ({
-                  role: m.role ?? "user",
-                  content: m.content ?? "",
-                  messageId: m.id
-                })));
-              }
-            }
           }
         } catch (error) {
           console.error("ensureSession error:", error);
@@ -389,6 +339,7 @@ export function ReportLayout({
         reportContent={reportContent}
         onContentChange={onContentChange}
         onSectionChange={onSectionChange}
+        onEditorUpdate={onEditorUpdate}
         onBack={onBack}
         backLabel={backLabel}
         reportStatus={reportStatus}
