@@ -21,8 +21,8 @@ export const ReportImageComponent = (props: NodeViewProps) => {
             return;
         }
 
-        // Check if it's already a URL (legacy or user upload)
-        if (src.startsWith('http') || src.startsWith('blob:') || src.startsWith('/')) {
+        // Check if it's already a URL (legacy, user upload, or base64 data URL)
+        if (src.startsWith('http') || src.startsWith('blob:') || src.startsWith('/') || src.startsWith('data:')) {
             setPublicUrl(src);
             setResolving(false);
             return;
