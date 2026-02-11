@@ -14,6 +14,7 @@ import TextAlign from '@tiptap/extension-text-align'
 // 1. Import the component and ReactNodeViewRenderer
 import { ReactNodeViewRenderer } from '@tiptap/react'
 import Image from '@tiptap/extension-image'
+import Audio from '@tiptap/extension-audio'
 import { ReportImageComponent } from './ReportImageComponent'
 import { AdditionMark, DeletionMark } from './DiffMarks'
 import { computeDiffDocument } from './diffUtils'
@@ -24,14 +25,16 @@ import {
     DropdownMenuItem,
     DropdownMenuTrigger,
 } from '../ui_components/dropdown-menu'
-import { Check, X, Heading as HeadingIcon, ChevronDown, AlignLeft, AlignCenter, AlignRight, AlignJustify, List, ListOrdered, Image as ImageIcon } from 'lucide-react'
+import { Check, X, Heading as HeadingIcon, ChevronDown, AlignLeft, AlignCenter, AlignRight, AlignJustify, List, ListOrdered, Image as ImageIcon, FileAudio } from 'lucide-react'
 
 
 // 2. Customize the Image Extension
+// We extend the official @tiptap/extension-image with:
+//   - data-src attribute trick to prevent 404s when src is a UUID
+//   - Custom NodeView (ReportImageComponent) to resolve UUIDs → signed Supabase URLs
+//   - Legacy parseHTML support for older report formats
 const CustomImageExtension = Image.extend({
-    name: 'image', // Rename it to avoid conflict with default Image
-    group: 'inline',
-    inline: true,
+    name: 'image',
     draggable: true,
 
     addAttributes() {
@@ -39,26 +42,25 @@ const CustomImageExtension = Image.extend({
             ...this.parent?.(),
             src: {
                 default: null,
-                // 🟢 PARSING: Look for data-src first (our safe storage), then src (legacy)
+                // Look for data-src first (our safe storage), then src (legacy/standard)
                 parseHTML: element => element.getAttribute('data-src') || element.getAttribute('src'),
-
-                // 🟢 RENDERING: Write UUID to data-src, but put a placeholder in src
-                // This prevents the 404 error because the browser loads the valid placeholder
-                // instead of trying to load "uuid-123".
+                // Write UUID/URL to data-src, put a transparent placeholder in src
+                // This prevents the browser from making failed requests for UUID strings
                 renderHTML: attributes => ({
                     'data-src': attributes.src,
-                    'src': 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7' // Transparent 1x1 pixel
+                    'src': 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7'
                 }),
             },
             alt: { default: null },
+            title: { default: null },
         }
     },
-    // 🛡️ 2. This helper lets it load your OLD reports that might still have <div> tags
+    // Support parsing legacy report formats alongside standard <img> tags
     parseHTML() {
         return [
-            { tag: 'img[src]' },                   // Standard
+            { tag: 'img[src]' },
+            { tag: 'img[data-src]' },
             { tag: 'div[data-type="report-image"]' }, // Legacy support
-            { tag: 'img[data-src]' }, // match our new format
         ]
     },
     renderHTML({ HTMLAttributes }) {
@@ -71,7 +73,6 @@ const CustomImageExtension = Image.extend({
     allowBase64: true,
     inline: true,
 })
-
 
 /** Context from the editor for client-side AI edit (selection + markdown + range) */
 export interface SelectionContext {
@@ -120,6 +121,7 @@ export const TiptapEditor = forwardRef<TiptapEditorHandle, TiptapEditorProps>(fu
     const [originalMarkdown, setOriginalMarkdown] = useState<string | null>(null);
     const isUpdatingRef = useRef(false);
     const imageFileInputRef = useRef<HTMLInputElement | null>(null);
+    const audioFileInputRef = useRef<HTMLInputElement | null>(null);
 
     // Determine if we're in review mode
     const isReviewMode = !!diffContent;
@@ -132,6 +134,11 @@ export const TiptapEditor = forwardRef<TiptapEditorHandle, TiptapEditorProps>(fu
                 types: ['heading', 'paragraph'],
             }),
             CustomImageExtension,
+            Audio.configure({
+                controls: true,
+                preload: 'metadata',
+                allowBase64: true,
+            }),
             AdditionMark, // Add diff marks
             DeletionMark, // Add diff marks
             Markdown.configure({
@@ -404,6 +411,23 @@ export const TiptapEditor = forwardRef<TiptapEditorHandle, TiptapEditorProps>(fu
         e.target.value = '';
     }, [editor]);
 
+    const handleAudioSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file || !file.type.startsWith('audio/')) return;
+        const reader = new FileReader();
+        reader.onload = () => {
+            const result = reader.result as string;
+            if (result && editor) {
+                editor.chain().focus().setAudio({
+                    src: result,
+                    controls: true,
+                }).run();
+            }
+        };
+        reader.readAsDataURL(file);
+        e.target.value = '';
+    }, [editor]);
+
     if (!editor) return null;
 
     return (
@@ -529,6 +553,20 @@ export const TiptapEditor = forwardRef<TiptapEditorHandle, TiptapEditorProps>(fu
                         title="Insert image"
                     >
                         <ImageIcon className="w-4 h-4" />
+                    </button>
+                    <input
+                        ref={audioFileInputRef}
+                        type="file"
+                        accept="audio/*"
+                        className="hidden"
+                        onChange={handleAudioSelect}
+                    />
+                    <button
+                        onClick={() => audioFileInputRef.current?.click()}
+                        className="p-2 border rounded"
+                        title="Insert audio"
+                    >
+                        <FileAudio className="w-4 h-4" />
                     </button>
                 </div>
             )}
