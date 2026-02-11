@@ -3,7 +3,7 @@
 import { useEditor, EditorContent } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
 import { Markdown } from 'tiptap-markdown' // You need to install this
-import { useEffect, useMemo, useState, useRef, forwardRef, useImperativeHandle } from 'react'
+import { useEffect, useMemo, useState, useRef, forwardRef, useImperativeHandle, useCallback } from 'react'
 
 import { Table } from '@tiptap/extension-table'
 import { TableRow } from '@tiptap/extension-table-row'
@@ -24,7 +24,7 @@ import {
     DropdownMenuItem,
     DropdownMenuTrigger,
 } from '../ui_components/dropdown-menu'
-import { Check, X, Heading as HeadingIcon, ChevronDown, AlignLeft, AlignCenter, AlignRight, AlignJustify } from 'lucide-react'
+import { Check, X, Heading as HeadingIcon, ChevronDown, AlignLeft, AlignCenter, AlignRight, AlignJustify, List, ListOrdered, Image as ImageIcon } from 'lucide-react'
 
 
 // 2. Customize the Image Extension
@@ -119,6 +119,7 @@ export const TiptapEditor = forwardRef<TiptapEditorHandle, TiptapEditorProps>(fu
     const originalMarkdownRef = useRef<string | null>(null);
     const [originalMarkdown, setOriginalMarkdown] = useState<string | null>(null);
     const isUpdatingRef = useRef(false);
+    const imageFileInputRef = useRef<HTMLInputElement | null>(null);
 
     // Determine if we're in review mode
     const isReviewMode = !!diffContent;
@@ -171,7 +172,7 @@ export const TiptapEditor = forwardRef<TiptapEditorHandle, TiptapEditorProps>(fu
 
                 prose-p:text-[13.3px] prose-p:text-slate-900 prose-p:my-1
 
-                prose-ul:list-none prose-ol:list-none prose-li:text-[13.3px] prose-li:my-0 prose-li:pl-0
+                prose-ul:list-disc prose-ul:pl-6 [&_ul_li]:marker:text-black prose-ol:list-decimal prose-ol:pl-6 prose-li:text-[13.3px] prose-li:my-0 prose-li:pl-0
 
                 [&_td]:align-top [&_th]:align-top
                 
@@ -389,6 +390,20 @@ export const TiptapEditor = forwardRef<TiptapEditorHandle, TiptapEditorProps>(fu
         [editor, isReviewMode]
     );
 
+    const handleImageSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file || !file.type.startsWith('image/')) return;
+        const reader = new FileReader();
+        reader.onload = () => {
+            const result = reader.result as string;
+            if (result && editor) {
+                editor.chain().focus().setImage({ src: result, alt: file.name }).run();
+            }
+        };
+        reader.readAsDataURL(file);
+        e.target.value = '';
+    }, [editor]);
+
     if (!editor) return null;
 
     return (
@@ -429,7 +444,20 @@ export const TiptapEditor = forwardRef<TiptapEditorHandle, TiptapEditorProps>(fu
                 <div className="flex gap-2 mb-2 border-b border-slate-100 pb-2">
                     <button onClick={() => editor.chain().focus().toggleBold().run()} className="font-bold px-2 border rounded">B</button>
                     <button onClick={() => editor.chain().focus().toggleItalic().run()} className="italic px-2 border rounded">I</button>
-                    <button onClick={() => editor.chain().focus().toggleBulletList().run()} className="px-2 border rounded">• List</button>
+                    <button
+                        onClick={() => editor.chain().focus().toggleBulletList().run()}
+                        className={`p-2 border rounded ${editor.isActive('bulletList') ? 'bg-slate-100 border-slate-300' : ''}`}
+                        title="Bullet list"
+                    >
+                        <List className="w-4 h-4" />
+                    </button>
+                    <button
+                        onClick={() => editor.chain().focus().toggleOrderedList().run()}
+                        className={`p-2 border rounded ${editor.isActive('orderedList') ? 'bg-slate-100 border-slate-300' : ''}`}
+                        title="Numbered list"
+                    >
+                        <ListOrdered className="w-4 h-4" />
+                    </button>
                     <DropdownMenu>
                         <DropdownMenuTrigger asChild>
                             <button
@@ -487,6 +515,21 @@ export const TiptapEditor = forwardRef<TiptapEditorHandle, TiptapEditorProps>(fu
                             <AlignJustify className="w-4 h-4" />
                         </button>
                     </div>
+                    <span className="w-px bg-slate-200 self-stretch" aria-hidden />
+                    <input
+                        ref={imageFileInputRef}
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        onChange={handleImageSelect}
+                    />
+                    <button
+                        onClick={() => imageFileInputRef.current?.click()}
+                        className="p-2 border rounded"
+                        title="Insert image"
+                    >
+                        <ImageIcon className="w-4 h-4" />
+                    </button>
                 </div>
             )}
             <EditorContent editor={editor} />
