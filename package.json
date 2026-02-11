@@ -51,6 +51,7 @@
     "@tiptap/extension-table-cell": "^3.17.0",
     "@tiptap/extension-table-header": "^3.17.0",
     "@tiptap/extension-table-row": "^3.17.0",
+    "@tiptap/extension-text-align": "3.17",
     "@tiptap/react": "^3.17.0",
     "@tiptap/starter-kit": "^3.17.0",
     "@trigger.dev/sdk": "4.3.3",

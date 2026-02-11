@@ -9,6 +9,7 @@ import { Table } from '@tiptap/extension-table'
 import { TableRow } from '@tiptap/extension-table-row'
 import { TableCell } from '@tiptap/extension-table-cell'
 import { TableHeader } from '@tiptap/extension-table-header'
+import TextAlign from '@tiptap/extension-text-align'
 
 // 1. Import the component and ReactNodeViewRenderer
 import { ReactNodeViewRenderer } from '@tiptap/react'
@@ -23,7 +24,7 @@ import {
     DropdownMenuItem,
     DropdownMenuTrigger,
 } from '../ui_components/dropdown-menu'
-import { Check, X, Heading as HeadingIcon, ChevronDown } from 'lucide-react'
+import { Check, X, Heading as HeadingIcon, ChevronDown, AlignLeft, AlignCenter, AlignRight, AlignJustify } from 'lucide-react'
 
 
 // 2. Customize the Image Extension
@@ -126,6 +127,9 @@ export const TiptapEditor = forwardRef<TiptapEditorHandle, TiptapEditorProps>(fu
         immediatelyRender: false,
         extensions: [
             StarterKit, // Handles Bold, Italic, Bullet Lists, History, etc.
+            TextAlign.configure({
+                types: ['heading', 'paragraph'],
+            }),
             CustomImageExtension,
             AdditionMark, // Add diff marks
             DeletionMark, // Add diff marks
@@ -452,6 +456,37 @@ export const TiptapEditor = forwardRef<TiptapEditorHandle, TiptapEditorProps>(fu
                             </DropdownMenuItem>
                         </DropdownMenuContent>
                     </DropdownMenu>
+                    <span className="w-px bg-slate-200 self-stretch" aria-hidden />
+                    <div className="flex items-center gap-0.5" role="group" aria-label="Text alignment">
+                        <button
+                            onClick={() => { editor.commands.focus(); editor.commands.setTextAlign('left'); }}
+                            className={`p-2 border rounded ${editor.isActive('textAlign', { textAlign: 'left' }) ? 'bg-slate-100 border-slate-300' : ''}`}
+                            title="Align left"
+                        >
+                            <AlignLeft className="w-4 h-4" />
+                        </button>
+                        <button
+                            onClick={() => { editor.commands.focus(); editor.commands.setTextAlign('center'); }}
+                            className={`p-2 border rounded ${editor.isActive('textAlign', { textAlign: 'center' }) ? 'bg-slate-100 border-slate-300' : ''}`}
+                            title="Align center"
+                        >
+                            <AlignCenter className="w-4 h-4" />
+                        </button>
+                        <button
+                            onClick={() => { editor.commands.focus(); editor.commands.setTextAlign('right'); }}
+                            className={`p-2 border rounded ${editor.isActive('textAlign', { textAlign: 'right' }) ? 'bg-slate-100 border-slate-300' : ''}`}
+                            title="Align right"
+                        >
+                            <AlignRight className="w-4 h-4" />
+                        </button>
+                        <button
+                            onClick={() => { editor.commands.focus(); editor.commands.setTextAlign('justify'); }}
+                            className={`p-2 border rounded ${editor.isActive('textAlign', { textAlign: 'justify' }) ? 'bg-slate-100 border-slate-300' : ''}`}
+                            title="Justify"
+                        >
+                            <AlignJustify className="w-4 h-4" />
+                        </button>
+                    </div>
                 </div>
             )}
             <EditorContent editor={editor} />
