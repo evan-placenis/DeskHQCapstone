@@ -674,9 +674,7 @@ html {
   }
 
   .ProseMirror h1::before {
-    content: counter(section-counter) ".0 ";
-    color: #000;
-    margin-right: 8px;
+    content: none; /* Auto-numbering disabled */
   }
 
   /* 3. Heading 2 (e.g. "2.1 Attic Insulation") */
@@ -688,8 +686,7 @@ html {
   }
 
   .ProseMirror h2::before {
-    content: counter(section-counter) "." counter(subsection-counter) " ";
-    margin-right: 8px;
+    content: none; /* Auto-numbering disabled */
   }
 
   /* 4. Numbered Lists (e.g. "2.1 Item", "2.2 Item") */

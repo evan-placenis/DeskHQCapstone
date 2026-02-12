@@ -60,6 +60,8 @@ interface ReportContentProps {
   reportContent: ReportContentType;
   onContentChange: (updates: Partial<ReportContentType>) => void;
   onSectionChange: (sectionId: number | string, newContent: string, newData?: any) => void;
+  /** Lightweight handler for TiptapEditor keystroke updates — ref + debounced save only, no state cascade */
+  onEditorUpdate?: (newContent: string) => void;
 
   // Header props
   onBack: () => void;
@@ -114,6 +116,7 @@ export function ReportContent({
   reportContent,
   onContentChange,
   onSectionChange,
+  onEditorUpdate,
   onBack,
   backLabel = "Back",
   reportStatus,
@@ -354,7 +357,7 @@ export function ReportContent({
             )}
 
             {/* Report Card */}
-            <Card className="rounded-xl shadow-sm border-slate-200 overflow-hidden">
+            <Card className="rounded-xl shadow-sm border-slate-200">
               <div className="p-4 sm:p-8 bg-white space-y-6">
                 {/* Report Header Info */}
                 <div className="pb-6 border-b border-slate-200">
@@ -571,7 +574,7 @@ export function ReportContent({
                               <TiptapEditor
                                 ref={editorRef as React.RefObject<TiptapEditorHandle>}
                                 content={section.content || ""}
-                                onUpdate={(newMarkdown) => onSectionChange(section.id, newMarkdown)}
+                                onUpdate={onEditorUpdate || ((newMarkdown) => onSectionChange(section.id, newMarkdown))}
                                 editable={mode === "edit" && !isSelectionMode}
                                 diffContent={diffContent}
                                 onAcceptDiff={() => {

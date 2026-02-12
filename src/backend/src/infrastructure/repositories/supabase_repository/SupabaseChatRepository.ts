@@ -14,8 +14,7 @@ export class SupabaseChatRepository implements ChatRepository {
             .from('chat_messages')
             .select('*')
             .eq('session_id', sessionId)
-            .order('timestamp', { ascending: true })
-            .limit(20);
+            .order('timestamp', { ascending: true });
 
         if (error) return [];
         const messages: ChatMessage[] = (data || []).map((msg: any) => ({
@@ -38,7 +37,11 @@ export class SupabaseChatRepository implements ChatRepository {
             .eq('id', sessionId)
             .single();
 
-        if (error || !data) return null;
+        if (error || !data) {
+            // Surface the real error — most likely RLS filtering out the row
+            console.error(`getSessionById(${sessionId}): ${error?.code} ${error?.message ?? 'no data returned'}`);
+            return null;
+        }
 
         const messages = await this.getMessagesBySessionId(sessionId, client);
 

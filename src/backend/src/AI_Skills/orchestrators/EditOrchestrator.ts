@@ -1,18 +1,13 @@
-import { generateText, stepCountIs } from 'ai';
+import { streamText } from 'ai';
 import { ModelStrategy } from '../Models/model-strategy';
-import { editSkills } from '../skills/edit.skills';
 
 /**
  * Edit Orchestrator – selection-based editing only.
  *
- * Context (selection + surrounding) is always supplied by the caller (frontend).
- * This orchestrator never fetches report content from the DB; the only way edit
- * content is provided is via the request body from the client.
- *
- * Always runs with edit skills (research + future edit-specific tools) so the
- * agent can research when needed. projectId is required so those tools can
- * target the correct project (e.g. knowledge search); the route resolves it from
- * the report.
+ * Streams the replacement text so the client can show the popup as soon as the first token arrives.
+ * No tools: we run a single generation step so time-to-first-token is minimal (~1–3s instead of 5–10s
+ * when the model would otherwise call research tools first). For "make it concise" / "tone down" etc.
+ * this is ideal. If you need research-backed edits later, add a separate flow or optional tools.
  */
 export class EditOrchestrator {
     private static readonly SYSTEM_PROMPT = `You are an expert AI Editor for engineering reports.
@@ -24,20 +19,19 @@ Output format: ONLY the rewritten Markdown text. Do not wrap in \`\`\`markdown b
 IMPORTANT:
 - Preserve formatting (bold, italics, links, lists) unless the user asks to remove or change it.
 - If the user sends a Markdown list, return a Markdown list.
-- Keep the same professional tone and technical accuracy.
-You may use research tools (searchInternalKnowledge, searchWeb) when the instruction requires factual accuracy or external context. After any research, return only the replacement Markdown.`;
+- Keep the same professional tone and technical accuracy.`;
 
     /**
-     * Run selection edit with tools. Caller (EditService) resolves projectId from the report.
+     * Stream selection edit. No tools = model goes straight to generating, so first token arrives quickly.
      */
-    async runSelectionEdit(params: {
+    async streamSelectionEdit(params: {
         selection: string;
         surroundingContext?: string;
         instruction: string;
         provider?: 'grok' | 'gemini-pro' | 'claude' | 'gemini-cheap';
         projectId: string;
-    }): Promise<{ text: string }> {
-        const { selection, surroundingContext, instruction, provider = 'gemini-cheap', projectId } = params;
+    }) {
+        const { selection, surroundingContext, instruction, provider = 'gemini-cheap' } = params;
 
         const userPrompt = surroundingContext
             ? `## Selected Markdown (edit this):
@@ -58,15 +52,10 @@ ${instruction}
 
 Return only the edited replacement Markdown (no code fence, no preamble).`;
 
-        const tools = editSkills(projectId.trim());
-        const result = await generateText({
+        return streamText({
             model: ModelStrategy.getModel(provider),
             system: EditOrchestrator.SYSTEM_PROMPT,
             prompt: userPrompt,
-            stopWhen: stepCountIs(5),
-            tools,
         });
-        const text = (result.text ?? '').trim();
-        return { text: text || selection };
     }
 }

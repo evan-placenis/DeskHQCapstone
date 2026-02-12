@@ -23,10 +23,12 @@ export class ChatOrchestrator {
         reportId?: string,
         /** When true, user edited via selection (client-side); do not add edit skills so assistant does not call retrieveReportContext */
         selectionEdit?: boolean,
-        systemMessage?: string
+        systemMessage?: string;
         client: SupabaseClient;
+        /** Called after the model finishes generating (reliable hook for persistence). */
+        onFinish?: (event: { text: string; finishReason: string }) => void | Promise<void>;
     }) {
-        const { messages, provider, context, projectId, userId, reportId, selectionEdit, systemMessage, client } = params;
+        const { messages, provider, context, projectId, userId, reportId, selectionEdit, systemMessage, client, onFinish } = params;
 
         // Build tools - include report skills if we have context
         const tools: any = {
@@ -50,7 +52,8 @@ export class ChatOrchestrator {
             messages: await convertToModelMessages(messages),
             system: systemPrompt,
             stopWhen: stepCountIs(10),
-            tools
+            tools,
+            onFinish,
         });
     }
 

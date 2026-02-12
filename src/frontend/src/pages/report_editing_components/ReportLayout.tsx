@@ -4,6 +4,7 @@ import { ReportContent } from "./ReportContent";
 import { PeerReview, ReportContent as ReportContentType } from "@/frontend/types";
 import { DiffPopup } from "../smart_components/DiffPopup";
 import type { TiptapEditorHandle, SelectionContext } from "../smart_components/TiptapEditor";
+import { Loader2 } from "lucide-react";
 
 interface SelectedContext {
   type: "photo" | "section" | "text";
@@ -34,6 +35,8 @@ interface ReportLayoutProps {
   currentDocumentContent?: string;
   onContentChange: (updates: Partial<ReportContentType>) => void;
   onSectionChange: (sectionId: number | string, newContent: string, newData?: any) => void;
+  /** Lightweight handler for TiptapEditor keystroke updates — ref + debounced save only, no state cascade */
+  onEditorUpdate?: (newContent: string) => void;
   /** Called after report content is saved (e.g. so parent can sync lastSavedContentRef) */
   onReportContentSaved?: (content: string) => void;
 
@@ -75,6 +78,7 @@ export function ReportLayout({
   currentDocumentContent,
   onContentChange,
   onSectionChange,
+  onEditorUpdate,
   onReportContentSaved,
   onBack,
   backLabel = "Back",
@@ -120,9 +124,6 @@ export function ReportLayout({
   // Pinned selection: survives blur so user can highlight in editor then type in chat (Cursor-style)
   const [pinnedSelectionContext, setPinnedSelectionContext] = useState<SelectionContext | null>(null);
 
-  // Debounced save ref
-  const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-
   // Selection-based AI edit: send markdown to API, store range, apply via editor.replaceRange on accept
   const requestAIEditWithSelection = useCallback(
     async (context: SelectionContext, instruction: string) => {
@@ -152,22 +153,39 @@ export function ReportLayout({
         const reader = response.body?.getReader();
         const decoder = new TextDecoder();
         let suggestedText = "";
+        let lastUpdate = 0;
+        const UPDATE_INTERVAL_MS = 80;
         if (reader) {
           while (true) {
             const { done, value } = await reader.read();
             if (done) break;
             suggestedText += decoder.decode(value, { stream: true });
+            const now = Date.now();
+            const isFirstChunk = suggestedText.length > 0 && lastUpdate === 0;
+            if (isFirstChunk || now - lastUpdate >= UPDATE_INTERVAL_MS) {
+              lastUpdate = now;
+              setPendingEditSuggestion((prev) => {
+                const base =
+                  prev ??
+                  ({
+                    originalText: context.selection,
+                    suggestedText: "",
+                    reason: instruction,
+                    status: "PENDING",
+                    range: editRange,
+                  } as EditSuggestion);
+                return { ...base, suggestedText };
+              });
+            }
           }
         }
         suggestedText = suggestedText.trim();
         if (suggestedText) {
-          setPendingEditSuggestion({
-            originalText: context.selection,
-            suggestedText,
-            reason: instruction,
-            status: "PENDING",
-            range: editRange,
-          });
+          setPendingEditSuggestion((prev) =>
+            prev ? { ...prev, suggestedText } : null
+          );
+        } else {
+          setPendingEditSuggestion(null);
         }
       } catch (error) {
         console.error("AI Edit (selection) request failed:", error);
@@ -177,40 +195,6 @@ export function ReportLayout({
     },
     [reportId, isGeneratingEdit]
   );
-  
-  // Debounced save function for tiptap_content changes
-  const debouncedSave = useCallback((newContent: string) => {
-    // Clear existing timeout
-    if (saveTimeoutRef.current) {
-      clearTimeout(saveTimeoutRef.current);
-    }
-    
-    // Set new debounced save (2 seconds)
-    saveTimeoutRef.current = setTimeout(async () => {
-      if (reportId && newContent) {
-        try {
-          // Save the updated tiptap_content to the database
-          await fetch(`/api/report/${reportId}`, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ tiptap_content: newContent })
-          });
-          console.log('✅ Report content saved (debounced)');
-        } catch (error) {
-          console.error('❌ Failed to save report content:', error);
-        }
-      }
-    }, 2000);
-  }, [reportId]);
-  
-  // Cleanup debounce timeout on unmount
-  useEffect(() => {
-    return () => {
-      if (saveTimeoutRef.current) {
-        clearTimeout(saveTimeoutRef.current);
-      }
-    };
-  }, []);
   
   // Accept edit: range-based replace in Tiptap (markdown in/out); editor onUpdate triggers save path.
   const handleAcceptEditSuggestion = useCallback(() => {
@@ -267,8 +251,9 @@ export function ReportLayout({
             newSessionId = data.sessionId || data.session?.sessionId || data.id;
             setSessionId(newSessionId);
             if (Array.isArray(data.messages) && data.messages.length > 0) {
-              setInitialChatMessages(data.messages.map((m: { role?: string; content?: string; messageId?: string }) => ({
-                role: m.role ?? "user",
+              setInitialChatMessages(data.messages.map((m: { role?: string; sender?: string; content?: string; messageId?: string }) => ({
+                // ChatSession returns messages with 'sender' field, not 'role'
+                role: m.sender ?? m.role ?? "user",
                 content: m.content ?? "",
                 messageId: m.messageId
               })));
@@ -277,22 +262,6 @@ export function ReportLayout({
             const errBody = await res.json().catch(() => ({}));
             const errMsg = (errBody as { error?: string })?.error ?? res.statusText;
             console.error("ensureSession: POST /api/chat failed", res.status, errMsg);
-          }
-  
-          // STEP 2: Fetch the History using GET /api/chat/sessions/[sessionId]
-          // This ensures we get the correctly formatted 'user'/'assistant' array
-          if (newSessionId) {
-            const historyRes = await fetch(`/api/chat/sessions/${newSessionId}/stream`);
-            if (historyRes.ok) {
-              const historyMessages = await historyRes.json();
-              if (Array.isArray(historyMessages) && historyMessages.length > 0) {
-                setInitialChatMessages(historyMessages.map((m: { id?: string; role?: string; content?: string }) => ({
-                  role: m.role ?? "user",
-                  content: m.content ?? "",
-                  messageId: m.id
-                })));
-              }
-            }
           }
         } catch (error) {
           console.error("ensureSession error:", error);
@@ -371,6 +340,7 @@ export function ReportLayout({
         reportContent={reportContent}
         onContentChange={onContentChange}
         onSectionChange={onSectionChange}
+        onEditorUpdate={onEditorUpdate}
         onBack={onBack}
         backLabel={backLabel}
         reportStatus={reportStatus}
@@ -442,6 +412,25 @@ export function ReportLayout({
         useTiptap={useTiptap}
         onSetDiffContent={setDiffContent}
       />
+
+      {/* Loading overlay: show as soon as user sends a selection edit, until the suggestion is ready.
+          Backend delay causes to check if popup stays slow: (1) generateText waits for full response vs streamText,
+          (2) edit orchestrator stepCountIs(5) allows many tool rounds, (3) edit skills include research tools so model may call search first,
+          (4) model/provider latency. Consider streaming + stepCountIs(2) and showing popup on first chunk. */}
+      {isGeneratingEdit && !pendingEditSuggestion && useTiptap && (
+        <>
+          <div className="fixed inset-0 bg-black/20 z-40" aria-hidden />
+          <div
+            className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-50 bg-white rounded-lg shadow-2xl border border-slate-200 px-8 py-6 flex flex-col items-center gap-4 min-w-[280px]"
+            role="status"
+            aria-live="polite"
+          >
+            <Loader2 className="w-10 h-10 animate-spin text-theme-primary" />
+            <p className="text-sm font-medium text-slate-700">Generating your edit...</p>
+            <p className="text-xs text-slate-500">This usually takes a few seconds</p>
+          </div>
+        </>
+      )}
 
       {/* Diff Popup for AI edit suggestions */}
       {pendingEditSuggestion && (

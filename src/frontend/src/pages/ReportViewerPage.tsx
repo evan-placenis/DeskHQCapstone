@@ -206,6 +206,9 @@ function ReportViewerContent() {
   // 🟢 NEW: Tiptap content state
   const [markdownContent, setMarkdownContent] = useState("");
   const lastSavedContentRef = useRef<string>(""); // Track what was last saved to prevent unnecessary saves
+  // Ref for lightweight keystroke save path — avoids setState on every keypress
+  const latestContentRef = useRef<string>("");
+  const editorSaveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   //  ReportContent structure for ReportLayout (minimal, just for compatibility)
   const [reportContent, setReportContent] = useState<ReportContent>({
@@ -312,36 +315,27 @@ function ReportViewerContent() {
     }
   };
 
-  // 🟢 NEW: Handle section change - update both reportContent and markdownContent
+  // 🟢 Handle section change — used for explicit/external updates (diff accept, AI edit, pending changes).
+  // Updates React state so TiptapEditor picks up the new content via its content prop.
   const handleSectionChange = (sectionId: number | string, newContent: string, newData?: any) => {
-    // Update markdownContent (the source of truth for Tiptap)
     setMarkdownContent(newContent);
+    latestContentRef.current = newContent;
 
-    // Update reportContent structure for ReportLayout
     const updatedSections = reportContent.sections.map(s => {
       if (s.id === sectionId) {
-        return {
-          ...s,
-          content: newContent,
-          ...(newData || {})
-        };
+        return { ...s, content: newContent, ...(newData || {}) };
       }
       return s;
     });
     handleContentChange({ sections: updatedSections });
   };
 
-  // 2. Auto-Save Logic (Debounced)
+  // 2. Auto-Save Logic (Debounced) — called directly, not via useEffect
   const saveToDatabase = useCallback(async (newContent: string) => {
     if (!reportId) return;
+    if (newContent === lastSavedContentRef.current) return;
 
-    // Skip save if content hasn't actually changed
-    if (newContent === lastSavedContentRef.current) {
-      return;
-    }
-    console.log("💾 FIRING SUPABASE UPDATE NOW...");
     setIsSaving(true);
-
     try {
       const { error } = await supabase
         .from('reports')
@@ -352,10 +346,7 @@ function ReportViewerContent() {
         .eq('id', reportId);
 
       if (error) throw error;
-
-      // Update the ref to track what was saved
       lastSavedContentRef.current = newContent;
-      console.log("💾 SAVED CONTENT TO DATABASE:");
     } catch (err) {
       console.error("Failed to save:", err);
     } finally {
@@ -363,32 +354,30 @@ function ReportViewerContent() {
     }
   }, [reportId]);
 
-  // Debounce wrapper for the save function using useRef to properly track timeout
-  const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  // 🟢 Lightweight handler for TiptapEditor's onUpdate (every keystroke).
+  // Does NOT update React state — avoids the setState cascade + re-render on every keypress.
+  // Only stores the latest content in a ref and schedules a debounced save.
+  const handleEditorUpdate = useCallback((newContent: string) => {
+    latestContentRef.current = newContent;
 
+    // Schedule debounced save
+    if (editorSaveTimeoutRef.current) {
+      clearTimeout(editorSaveTimeoutRef.current);
+    }
+    editorSaveTimeoutRef.current = setTimeout(() => {
+      saveToDatabase(newContent);
+      editorSaveTimeoutRef.current = null;
+    }, 2000);
+  }, [saveToDatabase]);
+
+  // Cleanup save timeout on unmount
   useEffect(() => {
-    // Clear any existing timeout
-    if (saveTimeoutRef.current) {
-      clearTimeout(saveTimeoutRef.current);
-    }
-
-    // Only set up debounce if we have content and aren't loading/generating
-    if (markdownContent && !isLoading && !isGenerating && reportId) {
-      // Set new timeout
-      saveTimeoutRef.current = setTimeout(() => {
-        saveToDatabase(markdownContent);
-        saveTimeoutRef.current = null;
-      }, 2000); // Auto-save after 2 seconds of inactivity
-    }
-
-    // Cleanup function
     return () => {
-      if (saveTimeoutRef.current) {
-        clearTimeout(saveTimeoutRef.current);
-        saveTimeoutRef.current = null;
+      if (editorSaveTimeoutRef.current) {
+        clearTimeout(editorSaveTimeoutRef.current);
       }
     };
-  }, [markdownContent, saveToDatabase, isLoading, isGenerating, reportId]);
+  }, []);
 
   const handleRequestPeerReview = (reportId: number, reportTitle: string, projectName: string, assignedToId: number, assignedToName: string, notes: string) => {
     // Mock implementation
@@ -489,6 +478,7 @@ function ReportViewerContent() {
         currentDocumentContent={markdownContent}
         onContentChange={handleContentChange}
         onSectionChange={handleSectionChange}
+        onEditorUpdate={handleEditorUpdate}
         onReportContentSaved={ (content) => { lastSavedContentRef.current = content; } }
         onBack={handleBack}
         backLabel={fromPeerReview ? "Back to Dashboard" : "Back to Project"}

@@ -21,8 +21,8 @@ export const ReportImageComponent = (props: NodeViewProps) => {
             return;
         }
 
-        // Check if it's already a URL (legacy or user upload)
-        if (src.startsWith('http') || src.startsWith('blob:') || src.startsWith('/')) {
+        // Check if it's already a URL (legacy, user upload, or base64 data URL)
+        if (src.startsWith('http') || src.startsWith('blob:') || src.startsWith('/') || src.startsWith('data:')) {
             setPublicUrl(src);
             setResolving(false);
             return;
@@ -56,10 +56,10 @@ export const ReportImageComponent = (props: NodeViewProps) => {
     }, [src]);
 
     return (
-        <NodeViewWrapper className="my-4 flex justify-center w-full">
+        <NodeViewWrapper className="my-4 flex justify-center w-full" data-drag-handle>
             <div
                 className={`
-          relative group rounded-lg overflow-hidden border transition-all duration-200
+          relative group rounded-lg overflow-hidden border transition-all duration-200 cursor-grab active:cursor-grabbing
           ${selected ? 'border-theme-primary ring-2 ring-theme-primary/20' : 'border-slate-200'}
           bg-slate-50 min-h-[100px] min-w-[200px] flex items-center justify-center
           w-full
