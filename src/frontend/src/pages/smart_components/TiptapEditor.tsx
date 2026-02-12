@@ -25,7 +25,7 @@ import {
     DropdownMenuItem,
     DropdownMenuTrigger,
 } from '../ui_components/dropdown-menu'
-import { Check, X, Heading as HeadingIcon, ChevronDown, AlignLeft, AlignCenter, AlignRight, AlignJustify, List, ListOrdered, Image as ImageIcon, FileAudio } from 'lucide-react'
+import { Check, X, Heading as HeadingIcon, ChevronDown, AlignLeft, AlignCenter, AlignRight, AlignJustify, List, ListOrdered, Image as ImageIcon, FileAudio, Table2, Plus, Minus, Trash2, Columns, Rows } from 'lucide-react'
 
 
 // 2. Customize the Image Extension
@@ -188,10 +188,11 @@ export const TiptapEditor = forwardRef<TiptapEditorHandle, TiptapEditorProps>(fu
                 
                 [&_td]:w-1/2
                 
-                [&_td]:p-3
-                
-                prose-table:border-0 prose-tr:border-b-0 
-                [&_td]:border-0
+                [&_td]:p-3 [&_th]:p-3
+
+                [&_table]:border-collapse [&_table]:border [&_table]:border-slate-300 [&_table]:w-full
+                [&_td]:border [&_td]:border-slate-300
+                [&_th]:border [&_th]:border-slate-300 [&_th]:bg-slate-50 [&_th]:font-semibold
             `.replace(/\s+/g, ' ').trim(),
             },
         },
@@ -562,6 +563,61 @@ export const TiptapEditor = forwardRef<TiptapEditorHandle, TiptapEditorProps>(fu
                     >
                         <FileAudio className="w-4 h-4" />
                     </button>
+                    <span className="w-px bg-slate-200 self-stretch" aria-hidden />
+                    <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                            <button
+                                className={`px-2 border rounded flex items-center gap-1 ${editor.isActive('table') ? 'bg-slate-100 border-slate-300' : ''}`}
+                                title="Table"
+                            >
+                                <Table2 className="w-4 h-4" />
+                                <span>Table</span>
+                                <ChevronDown className="w-3.5 h-3.5 opacity-70" />
+                            </button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="start" className="min-w-[180px]">
+                            <DropdownMenuItem onClick={() => editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run()}>
+                                <Plus className="w-4 h-4 mr-2" /> Insert Table (3×3)
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => editor.chain().focus().insertTable({ rows: 2, cols: 2, withHeaderRow: true }).run()}>
+                                <Plus className="w-4 h-4 mr-2" /> Insert Table (2×2)
+                            </DropdownMenuItem>
+                            {editor.isActive('table') && (
+                                <>
+                                    <div className="h-px bg-slate-200 my-1" />
+                                    <DropdownMenuItem onClick={() => editor.chain().focus().addRowBefore().run()}>
+                                        <Rows className="w-4 h-4 mr-2" /> Add Row Above
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem onClick={() => editor.chain().focus().addRowAfter().run()}>
+                                        <Rows className="w-4 h-4 mr-2" /> Add Row Below
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem onClick={() => editor.chain().focus().addColumnBefore().run()}>
+                                        <Columns className="w-4 h-4 mr-2" /> Add Column Left
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem onClick={() => editor.chain().focus().addColumnAfter().run()}>
+                                        <Columns className="w-4 h-4 mr-2" /> Add Column Right
+                                    </DropdownMenuItem>
+                                    <div className="h-px bg-slate-200 my-1" />
+                                    <DropdownMenuItem onClick={() => editor.chain().focus().deleteRow().run()}>
+                                        <Minus className="w-4 h-4 mr-2" /> Delete Row
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem onClick={() => editor.chain().focus().deleteColumn().run()}>
+                                        <Minus className="w-4 h-4 mr-2" /> Delete Column
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem onClick={() => editor.chain().focus().mergeCells().run()}>
+                                        <Table2 className="w-4 h-4 mr-2" /> Merge Cells
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem onClick={() => editor.chain().focus().splitCell().run()}>
+                                        <Table2 className="w-4 h-4 mr-2" /> Split Cell
+                                    </DropdownMenuItem>
+                                    <div className="h-px bg-slate-200 my-1" />
+                                    <DropdownMenuItem onClick={() => editor.chain().focus().deleteTable().run()} className="text-red-600 focus:text-red-600">
+                                        <Trash2 className="w-4 h-4 mr-2" /> Delete Table
+                                    </DropdownMenuItem>
+                                </>
+                            )}
+                        </DropdownMenuContent>
+                    </DropdownMenu>
                 </div>
             )}
             <EditorContent editor={editor} />
