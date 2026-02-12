@@ -99,7 +99,9 @@ You MUST respond with ONLY one short acknowledgment. Examples: "I've suggested a
             systemMessage = `You are helping edit a report section. Current section content:\n\n${contextText}\n\nWhen the user asks to edit this section, use the updateSection tool.`;
         }
 
-        // Generate stream using the orchestrator from Container
+        // Generate stream using the orchestrator from Container.
+        // onFinish is called by the AI SDK after the model finishes generating,
+        // BEFORE the stream closes — guaranteed to run even in serverless environments.
         const streamResult = await Container.chatOrchestrator.generateStream({
             messages: messages || [],
             provider: provider as 'grok' | 'gemini-pro' | 'claude' | 'gemini-cheap',
@@ -109,15 +111,17 @@ You MUST respond with ONLY one short acknowledgment. Examples: "I've suggested a
             reportId,
             selectionEdit: !!selectionEdit,
             systemMessage,
-            client: supabase
+            client: supabase,
+            onFinish: async ({ text }) => {
+                const trimmed = (text ?? '').trim();
+                if (!trimmed) return;
+                try {
+                    await Container.chatService.addMessageToDatabase(effectiveSessionId, 'assistant', trimmed, supabase);
+                } catch (err) {
+                    console.error('Failed to save assistant message:', err);
+                }
+            },
         });
-
-        // Persist assistant reply when stream completes (fire-and-forget)
-        Promise.resolve(streamResult.text).then((fullText) => {
-            const text = (fullText ?? '').trim();
-            if (!text) return;
-            return Container.chatService.addMessageToDatabase(effectiveSessionId, 'assistant', text, supabase);
-        }).catch((err) => console.error('Failed to save assistant message:', err));
 
         // Return streaming response
         return streamResult.toUIMessageStreamResponse();

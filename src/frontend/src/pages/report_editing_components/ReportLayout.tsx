@@ -251,8 +251,9 @@ export function ReportLayout({
             newSessionId = data.sessionId || data.session?.sessionId || data.id;
             setSessionId(newSessionId);
             if (Array.isArray(data.messages) && data.messages.length > 0) {
-              setInitialChatMessages(data.messages.map((m: { role?: string; content?: string; messageId?: string }) => ({
-                role: m.role ?? "user",
+              setInitialChatMessages(data.messages.map((m: { role?: string; sender?: string; content?: string; messageId?: string }) => ({
+                // ChatSession returns messages with 'sender' field, not 'role'
+                role: m.sender ?? m.role ?? "user",
                 content: m.content ?? "",
                 messageId: m.messageId
               })));

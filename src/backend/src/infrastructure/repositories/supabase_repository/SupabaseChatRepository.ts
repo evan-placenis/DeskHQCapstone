@@ -14,8 +14,7 @@ export class SupabaseChatRepository implements ChatRepository {
             .from('chat_messages')
             .select('*')
             .eq('session_id', sessionId)
-            .order('timestamp', { ascending: true })
-            .limit(20);
+            .order('timestamp', { ascending: true });
 
         if (error) return [];
         const messages: ChatMessage[] = (data || []).map((msg: any) => ({
