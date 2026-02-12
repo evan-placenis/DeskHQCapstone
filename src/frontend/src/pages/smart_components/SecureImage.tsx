@@ -20,9 +20,9 @@ export function SecureImage({
   // Only use hook if we have a storage path
   const { signedUrl, isLoading, error } = useSignedUrl(storagePath);
 
-  // If we have a storage path, we use signedUrl.
-  // If not, we fall back to 'src' (public URL).
-  const finalSrc = storagePath ? signedUrl : src;
+  // If we have a storage path, prefer signedUrl but fall back to src if signing fails.
+  // If no storage path, use src directly (public URL).
+  const finalSrc = storagePath ? (signedUrl || src) : src;
 
   // While loading, show spinner
   if (storagePath && isLoading) {

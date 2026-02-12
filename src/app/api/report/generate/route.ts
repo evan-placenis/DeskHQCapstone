@@ -23,7 +23,8 @@ export async function POST(
             title,
             reportType,
             modelName,
-            templateId
+            templateId,
+            workflowType
         } = body;
 
         if (!projectId) {
@@ -39,38 +40,46 @@ export async function POST(
             return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
         }
 
+        // Generate reportId upfront so we can return it to the frontend
+        const reportId = uuidv4();
+        
         console.log("📤 Queuing report generation with:", {
+            reportId,
             projectId,
             title: title ?? '(default)',
             reportType,
             modelName,
+            workflowType,
             selectedImageIdsCount: selectedImageIds.length,
             sectionsCount: sections.length,
             templateId
         });
 
         // Queue the report generation task in Trigger.dev
-        // The Trigger.dev task will handle streaming and broadcast updates via Supabase Realtime
+        // Pass the reportId so the worker uses this specific ID
         await Container.jobQueue.enqueueReportGeneration(
             projectId,
             user.id,
             {
+                reportId: reportId, // Pass the pre-generated ID
                 title: title || undefined,
                 reportType,
                 modelName: modelName,
                 selectedImageIds: selectedImageIds,
                 templateId: templateId || '',
-                sections: sections
+                sections: sections,
+                workflowType: workflowType // Pass through user's selection from modal (undefined = use fallback in job)
             }
         );
 
         console.log("✅ Report generation queued successfully");
 
-        // Return immediately - the frontend will listen to Supabase Realtime for updates
+        // Return immediately with reportId - the frontend can poll or listen to Realtime for updates
         return NextResponse.json({
             message: "Report generation started in background",
             status: "QUEUED",
-            projectId
+            projectId,
+            reportId // Now we return the reportId!
         }, { status: 202 });
 
     } catch (error: any) {
