@@ -23,18 +23,14 @@ import {
   SelectValue,
 } from "../ui_components/select";
 import { Separator } from "../ui_components/separator";
-import { SecureImage } from "../smart_components/SecureImage";
 import { PhotoFolderView } from "../smart_components/PhotoFolderView";
 import { Photo, PhotoFolder, ReportTemplate } from "@/frontend/types";
 import { REPORT_TEMPLATES } from "@/frontend/types/report_template_types";
+import { EditorSection } from "@/frontend/types";
 import {
-  Camera,
   ChevronRight,
   ChevronLeft,
   Sparkles,
-  Plus,
-  X,
-  GripVertical,
   Settings,
   Zap,
   FileText,
@@ -50,13 +46,8 @@ import {
 } from "lucide-react";
 
 
+import { ReportStructureEditor } from '../smart_components/ReportStructureEditor';
 
-interface Section {
-  id: number;
-  title: string;
-  photoIds: string[];
-  isCustom?: boolean; // Flag to identify user-added sections
-}
 
 interface NewReportModalProps {
   open: boolean;
@@ -78,26 +69,52 @@ export function NewReportModal({ open, onOpenChange, projectName, onCreateReport
   const [title, setTitle] = useState("");
   const [selectedPhotoIds, setSelectedPhotoIds] = useState<string[]>([]);
   const [reportMode, setReportMode] = useState<"auto" | "manual">("auto");
-  const [sections, setSections] = useState<Section[]>([]);
+  const [sections, setSections] = useState<EditorSection[]>([]);
   const [reportStyle, setReportStyle] = useState("comprehensive");
   const [processingMode, setProcessingMode] = useState<"TEXT_ONLY" | "IMAGE_AND_TEXT">("IMAGE_AND_TEXT");
   const [modelProvider, setModelProvider] = useState<'grok' | 'claude' | 'gemini-pro' | 'gemini-cheap'>('gemini-cheap');
-  const [draggedPhoto, setDraggedPhoto] = useState<string | null>(null);
+  const [workflowType, setWorkflowType] = useState<string>("simple");
+  const [additionalInstructions, setAdditionalInstructions] = useState("");
 
   // Get the selected template object
   const template = templates.find(t => t.id === selectedTemplate);
 
-  // Helper: Convert template sections to Section objects with IDs
-  const initializeSectionsFromTemplate = (templateId: string): Section[] => {
+  const initializeSectionsFromTemplate = (templateId: string): EditorSection[] => {
     const template = templates.find(t => t.id === templateId);
     if (!template) return [];
     
-    return template.sections.map((section, index) => ({
-      id: Date.now() + index,
-      title: section.title,
-      photoIds: [],
-      isCustom: false // Standard sections are not custom
-    }));
+    // 🛠️ FLATTEN LOGIC: Convert hierarchical template -> flat editor list
+    return template.sections.flatMap((section, index) => {
+      
+      // 1. Create Parent Section
+      // Check if the template implies this is just a container (has subsections) or a real section
+      const mainSection: EditorSection = {
+        id: `section-${Date.now()}-${index}`,
+        title: section.title,
+        photoIds: [],
+        reportOrder: index + 1,
+        isSubsection: false, // It's a parent
+        // If your template type has 'purpose', add it here
+        // purpose: section.purpose 
+      };
+
+      // 2. Create Child Sections (if any)
+      // We check if 'subsections' exists on the template section
+      // You might need to cast 'section' as 'any' if TypeScript complains about subsections 
+      // not being on the default ReportTemplate type yet, OR update your ReportTemplate type.
+      const subSections: EditorSection[] = (section as any).subsections?.map((sub: any, subIndex: number) => ({
+        id: `section-${Date.now()}-${index}-sub-${subIndex}`,
+        title: sub.title,
+        photoIds: [],
+        // Order: 3.1, 3.2, etc. (Just for sorting)
+        reportOrder: (index + 1) + ((subIndex + 1) * 0.01),
+        isSubsection: true, // It's a child
+        purpose: sub.purpose
+      })) || [];
+
+      // 3. Return combined array
+      return [mainSection, ...subSections];
+    });
   };
 
   // Helper: Toggle photo selection
@@ -111,91 +128,6 @@ export function NewReportModal({ open, onOpenChange, projectName, onCreateReport
   };
 
   // Helper: Add new section
-  const addSection = () => {
-    const newSection: Section = {
-      id: Date.now(),
-      title: "New Section",
-      photoIds: [],
-      isCustom: true // User added sections are custom
-    };
-    setSections([...sections, newSection]);
-  };
-
-  // Helper: Remove section
-  const removeSection = (sectionId: number) => {
-    setSections(sections.filter(s => s.id !== sectionId));
-  };
-
-  // Helper: Update section title
-  const updateSectionTitle = (sectionId: number, title: string) => {
-    setSections(sections.map(s =>
-      s.id === sectionId ? { ...s, title, isCustom: true } : s // Renaming a standard section makes it custom
-    ));
-  };
-
-  // Helper: Handle drag start
-  const handleDragStart = (photoId: string | number) => {
-    setDraggedPhoto(String(photoId));
-  };
-
-  // Helper: Handle drop at end of section
-  const handleDrop = (sectionId: number) => {
-    if (draggedPhoto === null) return;
-    
-    setSections(sections.map(section => {
-      if (section.id === sectionId) {
-        if (!section.photoIds.includes(draggedPhoto)) {
-          return { ...section, photoIds: [...section.photoIds, draggedPhoto] };
-        }
-      }
-      return section;
-    }));
-    
-    setDraggedPhoto(null);
-  };
-
-  // Helper: Handle drop at specific position
-  const handleDropAtPosition = (sectionId: number, targetIndex: number) => {
-    if (draggedPhoto === null) return;
-    
-    setSections(sections.map(section => {
-      if (section.id === sectionId) {
-        // Remove the photo if it already exists in this section
-        const filteredPhotoIds = section.photoIds.filter(id => id !== draggedPhoto);
-        // Insert at the target position
-        const newPhotoIds = [...filteredPhotoIds];
-        newPhotoIds.splice(targetIndex, 0, draggedPhoto);
-        return { ...section, photoIds: newPhotoIds };
-      }
-      return section;
-    }));
-    
-    setDraggedPhoto(null);
-  };
-
-  // Helper: Remove photo from section
-  const removePhotoFromSection = (sectionId: number, photoId: string) => {
-    setSections(sections.map(section =>
-      section.id === sectionId
-        ? { ...section, photoIds: section.photoIds.filter(id => id !== photoId) }
-        : section
-    ));
-  };
-
-  // Helper: Duplicate photo in section
-  const duplicatePhotoInSection = (sectionId: number, photoId: string) => {
-    setSections(sections.map(section => {
-      if (section.id === sectionId) {
-        const index = section.photoIds.indexOf(photoId);
-        if (index !== -1) {
-          const newPhotoIds = [...section.photoIds];
-          newPhotoIds.splice(index + 1, 0, photoId);
-          return { ...section, photoIds: newPhotoIds };
-        }
-      }
-      return section;
-    }));
-  };
 
   // Helper: Handle navigation to next step
   const handleNext = () => {
@@ -222,7 +154,9 @@ export function NewReportModal({ open, onOpenChange, projectName, onCreateReport
       style: reportStyle,
       processingMode: processingMode,
       modelName: modelProvider,
-      reportType: selectedTemplate ? selectedTemplate.toUpperCase() : "OBSERVATION" 
+      workflowType: workflowType,
+      reportType: selectedTemplate ? selectedTemplate.toUpperCase() : "OBSERVATION",
+      additionalInstructions: additionalInstructions || undefined
     };
     
     onCreateReport(reportData);
@@ -237,6 +171,9 @@ export function NewReportModal({ open, onOpenChange, projectName, onCreateReport
     setReportStyle("comprehensive");
     setProcessingMode("IMAGE_AND_TEXT");
     setModelProvider("gemini-cheap");
+    setWorkflowType("simple");
+    setAdditionalInstructions("");
+    onOpenChange(false);
   };
 
   const selectedPhotos = photos.filter(p => selectedPhotoIds.includes(String(p.id)));
@@ -449,174 +386,19 @@ export function NewReportModal({ open, onOpenChange, projectName, onCreateReport
                 </div>
               </RadioGroup>
 
-              {/* Photo Library - Sticky at top */}
-              {selectedPhotos.length > 0 && (
-                <div className="border-2 border-theme-hover-border bg-theme-focus-ring-light rounded-lg p-3 sticky top-0 z-10">
-                  <div className="flex items-center justify-between mb-2">
-                    <Label className="text-sm text-slate-900">
-                      📸 Photo Library ({selectedPhotos.length})
-                    </Label>
-                    {reportMode === "manual" && (
-                      <Badge variant="default" className="rounded-md text-xs bg-theme-action-primary">
-                        Drag to sections below
-                      </Badge>
-                    )}
-                  </div>
-                  <div className="flex flex-wrap gap-2">
-                    {selectedPhotos.map(photo => (
-                      <div
-                        key={photo.id}
-                        draggable={reportMode === "manual"}
-                        onDragStart={() => handleDragStart(photo.id)}
-                        className={`relative w-14 h-14 rounded-lg overflow-hidden border-2 transition-all ${
-                          reportMode === "manual"
-                            ? "border-theme-action-primary cursor-move hover:border-theme-hover-secondary hover:scale-110 hover:shadow-lg"
-                            : "border-theme-hover-border"
-                        }`}
-                        title={photo.name}
-                      >
-                        <SecureImage
-                          src={photo.url}
-                          storagePath={photo.storagePath}
-                          alt={photo.name}
-                          className="w-full h-full object-cover"
-                        />
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* Manual Mode - Sections */}
+              {/* Manual Mode - Use ReportStructureEditor */}
               {reportMode === "manual" && (
-                <div>
-                  <div className="flex items-center justify-between mb-2">
-                    <Label className="text-sm">Report Sections ({sections.length})</Label>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={addSection}
-                      className="rounded-lg h-8"
-                    >
-                      <Plus className="w-3 h-3 mr-1" />
-                      Add Section
-                    </Button>
-                  </div>
-
-                  <div className="space-y-3">
-                    {sections.map((section) => (
-                      <div key={section.id} className="border-2 border-slate-200 rounded-lg p-3 bg-white">
-                        <div className="flex items-center gap-2 mb-2">
-                          <GripVertical className="w-4 h-4 text-slate-400 flex-shrink-0" />
-                          <Input
-                            value={section.title}
-                            onChange={(e) => updateSectionTitle(section.id, e.target.value)}
-                            className="rounded-lg flex-1 h-8 text-sm"
-                            placeholder="Section title"
-                          />
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => removeSection(section.id)}
-                            className="rounded-lg h-8 w-8 flex-shrink-0"
-                          >
-                            <X className="w-4 h-4" />
-                          </Button>
-                        </div>
-
-                        <div
-                          className="min-h-[70px] border-2 border-dashed border-slate-300 rounded-lg p-2 bg-slate-50/50"
-                          onDragOver={(e) => e.preventDefault()}
-                          onDrop={() => handleDrop(section.id)}
-                        >
-                          {section.photoIds.length === 0 ? (
-                            <div className="flex items-center justify-center h-[54px] text-xs text-slate-500">
-                              <Camera className="w-3 h-3 mr-2" />
-                              Drop photos here
-                            </div>
-                          ) : (
-                            <div className="flex flex-wrap gap-1">
-                              {section.photoIds.map((photoId, photoIndex) => {
-                                const photo = photos.find(p => String(p.id) === photoId);
-                                if (!photo) return null;
-                                return (
-                                  <div key={`${section.id}-${photoId}-${photoIndex}`} className="inline-flex items-center">
-                                    {/* Drop zone before photo */}
-                                    <div
-                                      className="w-6 h-16 rounded bg-slate-200 hover:bg-theme-action-primary hover:w-8 transition-all cursor-pointer flex-shrink-0"
-                                      onDragOver={(e) => {
-                                        e.preventDefault();
-                                        e.stopPropagation();
-                                      }}
-                                      onDrop={(e) => {
-                                        e.stopPropagation();
-                                        handleDropAtPosition(section.id, photoIndex);
-                                      }}
-                                      title="Drop here to insert before"
-                                    />
-                                    
-                                    {/* Photo thumbnail */}
-                                    <div className="relative w-16 h-16 rounded-lg overflow-hidden border-2 border-slate-200 group mx-1">
-                                      <SecureImage
-                                        src={photo.url}
-                                        storagePath={photo.storagePath}
-                                        alt={photo.name}
-                                        className="w-full h-full object-cover"
-                                      />
-                                      <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-1">
-                                        <Button
-                                          type="button"
-                                          size="icon"
-                                          variant="ghost"
-                                          className="w-5 h-5 text-white hover:bg-white/20 rounded"
-                                          onClick={() => removePhotoFromSection(section.id, photoId)}
-                                          title="Remove"
-                                        >
-                                          <X className="w-3 h-3" />
-                                        </Button>
-                                        <Button
-                                          type="button"
-                                          size="icon"
-                                          variant="ghost"
-                                          className="w-5 h-5 text-white hover:bg-white/20 rounded"
-                                          onClick={() => duplicatePhotoInSection(section.id, photoId)}
-                                          title="Duplicate"
-                                        >
-                                          <Plus className="w-3 h-3" />
-                                        </Button>
-                                      </div>
-                                      <div className="absolute bottom-0.5 right-0.5 bg-theme-action-primary text-white text-xs px-1 rounded">
-                                        {photoIndex + 1}
-                                      </div>
-                                    </div>
-                                    
-                                    {/* Drop zone after last photo */}
-                                    {photoIndex === section.photoIds.length - 1 && (
-                                      <div
-                                        className="w-2 h-16 rounded bg-slate-200 hover:bg-theme-action-primary transition-colors cursor-pointer flex-shrink-0"
-                                        onDragOver={(e) => {
-                                          e.preventDefault();
-                                          e.stopPropagation();
-                                        }}
-                                        onDrop={(e) => {
-                                          e.stopPropagation();
-                                          handleDropAtPosition(section.id, photoIndex + 1);
-                                        }}
-                                        title="Drop here to insert after"
-                                      />
-                                    )}
-                                  </div>
-                                );
-                              })}
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
+                <ReportStructureEditor
+                  sections={sections}
+                  onSectionsChange={setSections}
+                  photos={photos}
+                  selectedPhotoIds={selectedPhotoIds}
+                  showPhotoLibrary={true}
+                  readOnly={false}
+                  additionalInstructions={additionalInstructions}
+                  onAdditionalInstructionsChange={setAdditionalInstructions}
+                  showAdditionalInstructions={true}
+                />
               )}
 
               {/* Auto Mode - Confirmation */}
@@ -742,6 +524,36 @@ export function NewReportModal({ open, onOpenChange, projectName, onCreateReport
                 </Select>
               </div>
 
+              <div className="space-y-3">
+                <Label>Workflow Type</Label>
+                <Select value={workflowType} onValueChange={setWorkflowType}>
+                  <SelectTrigger className="rounded-lg">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent className="rounded-lg">
+                    <SelectItem value="simple" className="rounded-md">
+                      <div>
+                        <p>Simple Workflow</p>
+                        <p className="text-xs text-slate-500">Standard research → write → review flow</p>
+                      </div>
+                    </SelectItem>
+                    <SelectItem value="observation" className="rounded-md">
+                      <div>
+                        <p>Observation Workflow</p>
+                        <p className="text-xs text-slate-500">Plan → Approve → Execute → Review (multi-phase)</p>
+                      </div>
+                    </SelectItem>
+                    {/* Add more workflow types here as you create them */}
+                    {/* <SelectItem value="advanced" className="rounded-md">
+                      <div>
+                        <p>Advanced Workflow</p>
+                        <p className="text-xs text-slate-500">Multi-agent collaboration with quality checks</p>
+                      </div>
+                    </SelectItem> */}
+                  </SelectContent>
+                </Select>
+              </div>
+
               <Separator />
 
               <div className="bg-slate-50 rounded-lg p-4 space-y-3">
@@ -776,6 +588,10 @@ export function NewReportModal({ open, onOpenChange, projectName, onCreateReport
                   <div className="flex justify-between">
                     <span className="text-slate-600">AI Model:</span>
                     <span className="text-slate-900 capitalize">{modelProvider}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-slate-600">Workflow:</span>
+                    <span className="text-slate-900 capitalize">{workflowType}</span>
                   </div>
                 </div>
               </div>

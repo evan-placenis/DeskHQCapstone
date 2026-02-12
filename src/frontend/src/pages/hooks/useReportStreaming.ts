@@ -13,6 +13,8 @@ export function useReportStreaming(projectId: string | null, isGenerating: boole
   const [status, setStatus] = useState("Initializing...");
   const [reportId, setReportId] = useState<string | null>(null);
   const [isComplete, setIsComplete] = useState(false);
+  const [isPaused, setIsPaused] = useState(false);
+  const [reportPlan, setReportPlan] = useState<any>(null);
 
   useEffect(() => {
     if (!isGenerating || !projectId) {
@@ -60,6 +62,15 @@ export function useReportStreaming(projectId: string | null, isGenerating: boole
         setIsComplete(true);
       })
       
+      // Human-in-the-Loop: Graph paused for approval
+      .on('broadcast', { event: 'paused' }, (payload: any) => {
+        console.log("⏸️ Report generation paused for human approval", payload);
+        setReportId(payload.payload.reportId);
+        setReportPlan(payload.payload.reportPlan);
+        setIsPaused(true);
+        setStatus("Waiting for plan approval...");
+      })
+      
       .subscribe();
 
     return () => {
@@ -72,6 +83,8 @@ export function useReportStreaming(projectId: string | null, isGenerating: boole
     reasoningText,
     status,
     reportId,
-    isComplete
+    isComplete,
+    isPaused,
+    reportPlan
   };
 }

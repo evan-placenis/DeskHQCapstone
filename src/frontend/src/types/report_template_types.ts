@@ -5,7 +5,12 @@ import { ClipboardList } from "lucide-react";
 export const OBSERVATION_REPORT_SECTIONS = [
   { title: "Executive Summary" },
   { title: "Site Conditions" },
-  { title: "Observations" },
+  { title: "Observations", 
+    subsections: [
+      { title: "Exterior Observations" },
+      { title: "Interior Observations" }
+    ]
+  },
   { title: "Recommendations" },
 ] as const;
 
