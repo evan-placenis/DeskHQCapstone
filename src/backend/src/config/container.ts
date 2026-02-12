@@ -11,7 +11,7 @@ import { PineconeVectorStore } from '../infrastructure/vector_store/PineconeVect
 import { DocumentStrategyFactory } from '../Document_Strategies/factory/DocumentFactory';
 import { ReportService } from '../Services/ReportService';
 import { ChatService } from '../Services/ChatService';
-import { ChatOrchestrator } from '../AI_Skills/orchestrators/ChatOrchestrator';
+import { ChatOrchestrator } from '../AI_Skills/orchestrators/LangGraphChatOrchestrator';
 import { ReportOrchestrator } from '../AI_Skills/orchestrators/ReportOrchestrator';
 import { KnowledgeService } from '../Services/KnowledgeServivce';
 import { UserService } from '../Services/UserService';

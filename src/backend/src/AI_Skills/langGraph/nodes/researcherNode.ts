@@ -1,5 +1,5 @@
 import { ModelStrategy } from '../models/modelStrategy';
-import { researchSkills } from '../skills/research.skills';
+import { researchSkills } from '../../LangGraph_skills/research.skills';
 import { SystemMessage } from "@langchain/core/messages";
 
 // This is a "Worker" in your factory
@@ -30,9 +30,19 @@ export async function researcherNode(state: any) {
 
 
 
+  // Extract research findings from the response for shared memory
+  // This allows the builder to access research without parsing messages
+  let researchFindings = '';
+  if (response.content) {
+    researchFindings = typeof response.content === 'string' 
+      ? response.content 
+      : JSON.stringify(response.content);
+  }
+
   // Return the result to the state
   return { 
     messages: [response],
-    lastWrittenSection: currentSection 
+    lastWrittenSection: currentSection,
+    researchFindings: researchFindings || undefined, // Only set if we have findings
   };
 }

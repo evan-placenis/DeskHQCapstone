@@ -573,16 +573,16 @@ export function ProjectDetailPage({
       console.log("Backend response:", data);
 
       if (response.ok || response.status === 202) {
-        if (data.status === "QUEUED") {
-          // Background job queued - redirect to report viewer to see streaming updates
-          console.log("Report generation queued. Redirecting to report viewer...");
+        if (data.status === "QUEUED" && data.reportId) {
+          // Background job queued - redirect to report viewer with reportId
+          console.log(`Report generation queued with ID: ${data.reportId}. Redirecting to report viewer...`);
           setIsNewReportModalOpen(false);
-          window.location.href = `/pages/report?id=0&projectId=${project.id}&generating=true`;
+          window.location.href = `/pages/report?id=${data.reportId}&projectId=${project.id}&generating=true`;
         } else if (data.reportId) {
           // Navigate to the new report if ID is returned immediately
           onSelectReport(data.reportId);
         } else {
-          // Default: redirect to report viewer
+          // Fallback: redirect to report viewer without ID (shouldn't happen now)
           console.log("Report generation started. Redirecting to report viewer...");
           setIsNewReportModalOpen(false);
           window.location.href = `/pages/report?id=0&projectId=${project.id}&generating=true`;

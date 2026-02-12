@@ -315,6 +315,51 @@ export class ReportService {
 
 
     /**
+     * Update report plan and status (for Human-in-the-Loop workflows)
+     * 
+     * This is called by the architectNode when it generates a plan
+     * and needs to signal the frontend that approval is required.
+     * 
+     * @param reportId - The report ID
+     * @param updates - Object containing plan and/or status updates
+     * @param client - Supabase client
+     */
+    public async updateReportStatus(
+        reportId: string,
+        updates: {
+            plan?: any;
+            status?: string;
+        },
+        client: SupabaseClient
+    ): Promise<void> {
+        console.log(`📊 Updating report ${reportId} with status: ${updates.status}`);
+        
+        const updateData: any = {
+            updated_at: new Date().toISOString()
+        };
+
+        if (updates.plan) {
+            updateData.plan = updates.plan;
+        }
+
+        if (updates.status) {
+            updateData.status = updates.status;
+        }
+
+        const { error } = await client
+            .from('reports')
+            .update(updateData)
+            .eq('id', reportId);
+
+        if (error) {
+            console.error('Failed to update report status:', error);
+            throw new Error(`Failed to update report status: ${error.message}`);
+        }
+
+        console.log(`✅ Report ${reportId} updated successfully`);
+    }
+
+    /**
      * Helper to save a history snapshot TODO
      */
     private async createVersionSnapshot(report: Report, client: SupabaseClient) {

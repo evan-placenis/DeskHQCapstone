@@ -1,6 +1,6 @@
-import { ModelStrategy } from '../models/modelStrategy';
+import { ModelStrategy } from '../../models/modelStrategy';
 import { SystemMessage } from "@langchain/core/messages";
-import { reportSkills } from '../skills/report.skills';
+import { reportSkills } from '../../../LangGraph_skills/report.skills';
 
 // 1. Move your Mechanics HERE
 const AGENT_MECHANICS = `

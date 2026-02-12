@@ -1,22 +1,17 @@
-import { tool } from 'ai';
-import { z } from 'zod/v3';
+import { tool } from '@langchain/core/tools';
+import { z } from 'zod';
 import { Container } from '../../config/container'; // Assuming your container is here
 
 export const researchSkills = (
   projectId: string, 
-) => ({
+) => [
 
   /**
    * Skill 1: Internal Memory Search
    * Replaces: private searchVectorStore()
    */
-  searchInternalKnowledge: tool({
-    description: 'Search the internal project memory/database for information. ALWAYS try this first as it is the quickest and cheapest way to get information.',
-    inputSchema: z.object({
-      query: z.string().describe('The question or topic to search for'),
-      // reasoning: z.string().optional().describe('A "scratchpad" to think out loud and let the user know what you are thinking.'),
-    }),
-    execute: async ({ query }) => {
+  tool(
+    async ({ query }) => {
       try {
         console.log(`🧠 [Research Skill] Searching Internal Memory: "${query}"`);
         // KnowledgeService.search takes string[] and returns string[]
@@ -32,19 +27,22 @@ export const researchSkills = (
         return "Error accessing internal memory.";
       }
     },
-  }),
+    {
+      name: 'searchInternalKnowledge',
+      description: 'Search the internal project memory/database for information. ALWAYS try this first as it is the quickest and cheapest way to get information.',
+      schema: z.object({
+        query: z.string().describe('The question or topic to search for'),
+        // reasoning: z.string().optional().describe('A "scratchpad" to think out loud and let the user know what you are thinking.'),
+      }),
+    }
+  ),
 
   /**
    * Skill 2: Web Search (with Auto-Learning)
    * Replaces: public searchWeb() AND the "Learning" logic
    */
-  searchWeb: tool({
-    description: 'Search the live web using Exa. Use this if Internal Memory fails.',
-    inputSchema: z.object({
-      query: z.string().describe('The search query optimized for a search engine'),
-      // reasoning: z.string().optional().describe('Brief note for the user (e.g. "Searching web for additional context")'),
-    }),
-    execute: async ({ query}) => {
+  tool(
+    async ({ query}) => {
       try {
         console.log(`🌎 [Skill] Searching Web (Exa): "${query}"`);
 
@@ -78,5 +76,13 @@ export const researchSkills = (
         return "Error executing web search.";
       }
     },
-  })
-});
+    {
+      name: 'searchWeb',
+      description: 'Search the live web using Exa. Use this if Internal Memory fails.',
+      schema: z.object({
+        query: z.string().describe('The search query optimized for a search engine'),
+        // reasoning: z.string().optional().describe('Brief note for the user (e.g. "Searching web for additional context")'),
+      }),
+    }
+  ),
+];

@@ -9,6 +9,14 @@
     "strict": true,
     "skipLibCheck": true,
     "verbatimModuleSyntax": false /* <--- THIS IS THE CULPRIT. Set to false. */,
+    /* 👇 ADD THESE TO MATCH ROOT CONFIG */
+    "baseUrl": "../..", // Point up to the project root
+    "paths": {
+      "@/*": ["./*"],
+      "@/frontend/*": ["src/frontend/src/*"],
+      "@/backend/*": ["src/backend/src/*"],
+      "@/app/*": ["src/app/*"]
+    }
   },
   "include": ["src/**/*", "../../trigger.config.ts"],
   "exclude": ["node_modules"]

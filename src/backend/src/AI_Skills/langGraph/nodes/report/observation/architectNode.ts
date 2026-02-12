@@ -1,0 +1,174 @@
+import { SystemMessage, AIMessage, ToolMessage } from "@langchain/core/messages";
+import { ModelStrategy } from "../../../models/modelStrategy";
+import { tool } from '@langchain/core/tools';
+import { z } from 'zod';
+import { Container } from "@/backend/config/container";
+/**
+ * Phase 1: The Architect
+ * 
+ * Analyzes inputs (photos, notes, instructions) and proposes a Report Plan.
+ * Does NOT write content yet - just organizes structure.
+ */
+export async function architectNode(state: any) {
+  const { 
+    selectedImageIds, 
+    photoNotes, 
+    structureInstructions, 
+    provider, 
+    reportPlan: existingPlan,
+    userFeedback,
+    context,
+    draftReportId,
+    client
+  } = state;
+
+  // Define a tool for the architect to output the plan in structured format
+  const planningTool = tool(
+    async ({ sections, strategy }) => {
+      console.log(`📐 Architect: Plan created with ${sections.length} sections`);
+      return {
+        status: 'SUCCESS',
+        message: 'Report plan created. Awaiting approval.',
+        sections,
+        strategy
+      };
+    },
+    {
+      name: 'submitReportPlan',
+      description: 'Submit the proposed report structure and strategy. Include all sections with their assigned photo IDs.',
+      schema: z.object({
+        reasoning: z.string().describe('Explain WHY you grouped photos this way.'),
+        sections: z.array(z.object({
+          sectionId: z.string().describe('Unique ID for section (e.g., "exec-summary", "observations")'),
+          title: z.string().describe('Section title (e.g., "Executive Summary", "Observations")'),
+          reportOrder: z.number().describe('The position this section should appear in the FINAL report (e.g. Executive Summary = 1, Recommendations = 2, Observations = 3)'),
+          purpose: z.string().optional().describe('Why this section exists'),
+
+          // 1. Parent Photos (Optional)
+          assignedPhotoIds: z.array(z.string()).optional().describe('Photo IDs assigned to the main section (usually empty if using subsections)'),
+
+          // 2. NEW: Subsections (The Nested Structure)
+          subsections: z.array(z.object({
+            subSectionId: z.string().describe('Unique ID (e.g., "obs-roof", "obs-walls")'),
+            title: z.string().describe('Subsection title (e.g., "Roofing System", "Exterior Walls")'),
+            assignedPhotoIds: z.array(z.string()).describe('Photo IDs specific to this subsection'),
+            purpose: z.string().optional()
+          })).optional().describe('Breakdown of this section into specific areas (e.g. Observations -> Roof, Walls, Foundation)')
+        })).describe('List of sections in the report'),
+        strategy: z.string().describe('Overall approach and reasoning for this structure'),
+      }), 
+    }
+  );
+ 
+  const systemPrompt = `${context}
+
+---
+ARCHITECT PHASE: PLANNING
+---
+Your current role is to PLAN the report structure to get initial get feedback from the user. You are NOT writing content yet.
+
+INPUTS YOU HAVE:
+- ${selectedImageIds.length} photos selected for analysis. Selected Image UUIDs: ${selectedImageIds.join(', ')}
+- Photo notes/metadata: ${photoNotes || 'None provided'}
+- Structure instructions: ${structureInstructions || 'Use standard observation report format'}
+${userFeedback ? `!!! ATTENTION: PLAN REVISION !!!
+The user REJECTED your previous plan.
+USER FEEDBACK: "${userFeedback}"
+
+HERE IS YOUR PREVIOUS PLAN (The one that was rejected):
+\`\`\`json
+${JSON.stringify(existingPlan, null, 2)}
+\`\`\`
+
+INSTRUCTIONS FOR REVISION:
+1. Keep the parts of the plan that work.
+2. ONLY change the sections mentioned in the feedback.
+3. Submit the FULL revised plan (all sections) again.
+` : ''} 
+
+YOUR TASK:
+1. Analyze what needs to be covered based on the inputs.
+2. Propose a logical structure (sections) for the report.
+3. Assign photo IDs to relevant sections (photos can appear in multiple sections if needed).
+4. Use the 'submitReportPlan' tool to output your plan in structured format.
+
+GUIDELINES:
+1. **Execution Order (The Array):** You MUST output the 'sections' array in the order we should WRITE them.
+   - Start with Data/Observations (so we have facts).
+   - End with Summaries (so we can summarize the facts).
+
+2. **Report Order (The Field):** For each section, assign the correct 'reportOrder' number for the Final PDF.
+   - Executive Summary should be 'reportOrder: 1'.
+   - Observations should be 'reportOrder: 2'.
+   - Recommendations should be 'reportOrder: 3'.
+
+EXAMPLE OUTPUT STRUCTURE:
+[
+  { title: "Observations", reportOrder: 2 }, // First in array (write first), but 2rd in report
+  { title: "Executive Summary", reportOrder: 1 } // Last in array (write last), but 1st in report
+]
+  ...
+
+${userFeedback ? 'IMPORTANT: Address the user feedback from the previous plan.' : ''}
+
+OUTPUT: Call 'submitReportPlan' with your proposed structure.`;
+
+  const baseModel = ModelStrategy.getModel(provider || 'gemini-cheap');
+
+
+  const model = baseModel?.bindTools?.([planningTool], {
+    tool_choice: "submitReportPlan" // <--- FORCE IT
+  });
+
+  const response = await model?.invoke?.([
+    new SystemMessage(systemPrompt),
+    ...state.messages
+  ]);
+
+  // Extract the plan from tool call
+  let reportPlan = null;
+  let toolResultMsg = null; // Prepare the result message
+  const aiMsg = response as AIMessage;
+  if (aiMsg.tool_calls && aiMsg.tool_calls.length > 0) {
+    const call = aiMsg.tool_calls[0];
+
+    // Create the "Receipt" that closes the loop
+    toolResultMsg = new ToolMessage({
+      tool_call_id: call.id || '', // MUST match the AI's call ID
+      name: call.name,
+      content: "Plan generated and saved successfully. Ready for approval."
+    });
+
+    if (call.name === 'submitReportPlan') {
+      reportPlan = {
+        sections: call.args.sections,
+        strategy: call.args.strategy,
+        reasoning: call.args.reasoning
+      };
+    }
+  }
+
+  // 💾 SAVE TO DB for the Frontend
+  // This signals the frontend to show the approval modal
+  if (draftReportId && client) {
+    try {
+      await Container.reportService.updateReportStatus(draftReportId, {
+        plan: reportPlan,          // Save the JSON plan
+        status: 'AWAITING_APPROVAL' // Signal the frontend to wake up
+      }, client);
+      console.log('✅ Report plan saved to database');
+    } catch (error) {
+      console.error('❌ Failed to save report plan:', error);
+      // Continue execution even if save fails - the plan is still in state
+    }
+  } else {
+    console.warn('⚠️ No draftReportId or client provided - skipping DB save');
+  }
+
+  return {
+    messages: toolResultMsg ? [response, toolResultMsg] : [response], // 👈 FIX IS HERE,
+    reportPlan,
+    approvalStatus: 'PENDING',
+    next_step: 'human_approval'
+  };
+}

@@ -1,6 +1,6 @@
 import { HumanMessage, AIMessage } from "@langchain/core/messages";
-import { chatGraph } from '../langGraph/workflow/chat/chatGraph'; // Adjust path if needed
-import { CustomLangChainAdapter } from '../langGraph/utils/custom-adapter'; // Your manual adapter
+import { chatGraph } from '../LangGraph/workflow/chat/chatGraph'; // Adjust path if needed
+import { CustomLangChainAdapter } from '../LangGraph/utils/custom-adapter'; // Your manual adapter
 import { SupabaseClient } from "@supabase/supabase-js";
 
 interface GenerateChatParams {

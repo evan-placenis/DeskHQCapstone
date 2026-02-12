@@ -1,9 +1,9 @@
 import { SystemMessage } from "@langchain/core/messages";
-import { ModelStrategy } from "../models/modelStrategy";
+import { ModelStrategy } from "../../models/modelStrategy";
 // Import tool factories to bind them
-import { reportSkills } from "../skills/report.skills";
-import { researchSkills } from "../skills/research.skills"; 
-import { chatSkills} from "../skills/chat.skills";
+import { reportSkills } from "../../../LangGraph_skills/report.skills";
+import { researchSkills } from "../../../LangGraph_skills/research.skills"; 
+import { chatSkills} from "../../../LangGraph_skills/chat.skills";
 
 export async function chatNode(state: any) {
   const { messages, context, projectId, userId, client, selectedImageIds, provider, systemMessage } = state;

@@ -181,3 +181,13 @@ export interface EmployeeProductivitySummary {
   weeklyData: Array<{ week: string; reports: number }>;
   avgProjectTime?: number; 
 }
+
+// Internal editor format (flattened for drag-and-drop)
+export interface EditorSection {
+  id: string;
+  title: string;
+  photoIds: string[];
+  reportOrder?: number;
+  purpose?: string;
+  isSubsection: boolean;
+}

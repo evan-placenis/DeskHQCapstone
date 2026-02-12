@@ -1,9 +1,10 @@
-import { tool } from 'ai';
-import { z } from 'zod/v3';
+import { tool } from '@langchain/core/tools';
+import { z } from 'zod';
 import { Container } from '../../config/container';
 import { SupabaseClient } from '@supabase/supabase-js';
+
 // Factory function to inject context (like projectId) into tools
-export const reportSkills = (projectId: string, userId: string, client: SupabaseClient, selectedImageIds: string[] = []) => ({
+export const reportSkills = (projectId: string, userId: string, client: SupabaseClient, selectedImageIds: string[] = []) => [
 //using both "client" and "adminClient" is sus?
 
 // // 🛡️ SECURITY CHECK:
@@ -45,13 +46,8 @@ export const reportSkills = (projectId: string, userId: string, client: Supabase
 
 
 // 🟢 NEW TOOL: The Missing Link
-getProjectImageIDS: tool({
-  description: 'List all available images IDS for this project. Call this FIRST to get the Image IDs needed for other tools.',
-  inputSchema: z.object({
-     unused: z.string().optional(),
-     reasoning: z.string().optional().describe('A "scratchpad" to think out loud and let the user know what you are thinking.'),
-  }),
-  execute: async () => {
+tool(
+  async () => {
     try {
       console.log(`📂 [Tool: ListImages] Listing images for project ${projectId}`);
 
@@ -94,16 +90,19 @@ getProjectImageIDS: tool({
       return { status: "ERROR", message: error instanceof Error ? error.message : "Failed to list project images." };
     }
   },
-}),
+  {
+    name: 'getProjectImageIDS',
+    description: 'List all available images IDS for this project. Call this FIRST to get the Image IDs needed for other tools.',
+    schema: z.object({
+       unused: z.string().optional(),
+       reasoning: z.string().optional().describe('A "scratchpad" to think out loud and let the user know what you are thinking.'),
+    }),
+  }
+),
 
   // TOOL: Get Project Images (for vision analysis)
-  getProjectImageURLsWithIDS: tool({
-    description: 'Get signed, accessible image URLs for selected images. Mandatory step before vision analysis.',
-    inputSchema: z.object({
-      imageIds: z.array(z.string()).describe('Array of image IDs to get URLs for'),
-      reasoning: z.string().optional().describe('A "scratchpad" to think out loud and let the user know what you are thinking.'),
-    }),
-    execute: async ({ imageIds}) => {
+  tool(
+    async ({ imageIds}) => {
       
       try {
         const adminClient = await Container.adminClient; // NEED TO CHANGE THIS FOR SECURITY LATER
@@ -201,15 +200,19 @@ getProjectImageIDS: tool({
         return { status: 'ERROR', message: 'Internal server error while fetching images' };
       }
     },
-  }),
+    {
+      name: 'getProjectImageURLsWithIDS',
+      description: 'Get signed, accessible image URLs for selected images. Mandatory step before vision analysis.',
+      schema: z.object({
+        imageIds: z.array(z.string()).describe('Array of image IDs to get URLs for'),
+        reasoning: z.string().optional().describe('A "scratchpad" to think out loud and let the user know what you are thinking.'),
+      }),
+    }
+  ),
 
   // TOOL: Get Project Details
-  getProjectSpecs: tool({
-    description: 'Get project details, specifications, and context. Use this to understand the project before writing the report.',
-    inputSchema: z.object({
-      reasoning: z.string().optional().describe('A "scratchpad" to think out loud and let the user know what you are thinking.'),
-    }),
-    execute: async () => {
+  tool(
+    async () => {
       try {
         const project = await Container.projectRepo.getById(projectId, client);
         if (!project) {
@@ -234,16 +237,18 @@ getProjectImageIDS: tool({
         return { status: 'ERROR', message: 'Failed to fetch project details' };
       }
     },
-  }),
+    {
+      name: 'getProjectSpecs',
+      description: 'Get project details, specifications, and context. Use this to understand the project before writing the report.',
+      schema: z.object({
+        reasoning: z.string().optional().describe('A "scratchpad" to think out loud and let the user know what you are thinking.'),
+      }),
+    }
+  ),
 
   // TOOL: Get Report
-  getReportStructure: tool({
-    description: 'Get the current report structure and sections. Use this to understand what sections already exist.',
-    inputSchema: z.object({
-      reportId: z.string().optional().describe('The report ID if available'),
-      reasoning: z.string().optional().describe('A "scratchpad" to think out loud and let the user know what you are thinking.'),
-    }),
-    execute: async ({ reportId }) => {
+  tool(
+    async ({ reportId }) => {
       try {
         // If we have a reportId, fetch it
         if (reportId) {
@@ -263,7 +268,7 @@ getProjectImageIDS: tool({
 
         return {
           status: 'NEW',
-          message: 'This is a new report. You can create sections using updateSection.'
+          message: 'This is a new report. You can create sections using generateSection.'
         };
       } catch (error) {
         return {
@@ -272,21 +277,19 @@ getProjectImageIDS: tool({
         };
       }
     },
-  }),
+    {
+      name: 'getReportStructure',
+      description: 'Get the current report structure and sections. Use this to understand what sections already exist.',
+      schema: z.object({
+        reportId: z.string().optional().describe('The report ID if available'),
+        reasoning: z.string().optional().describe('A "scratchpad" to think out loud and let the user know what you are thinking.'),
+      }),
+    }
+  ),
 
   // TOOL: Write/Update Report Section (for incremental writing)
-  updateSection: tool({
-    description: 'Write or update a report section with markdown content. Use this to build sections incrementally as you write the report. The section will be saved to the database immediately so you can reference it later. You can call this multiple times for different sections.',
-    inputSchema: z.object({
-      reportId: z.string().describe('The report ID (get it from getReportStructure or it was provided in context)'),
-      sectionId: z.string().describe('Unique ID for this section (e.g., "executive-summary", "observations-1")'),
-      heading: z.string().describe('The section heading/title'),
-      description: z.string().optional().describe('Optional description or intro text for the section'),
-      content: z.string().describe('The markdown content for this section'),
-      order: z.number().optional().describe('Order/position of this section (0-based)'),
-      reasoning: z.string().optional().describe('A "scratchpad" to think out loud and let the user know what you are thinking.'),
-    }),
-    execute: async ({ reportId, sectionId, heading, content, order }) => {
+  tool(
+    async ({ reportId, sectionId, heading, content, order, metadata }) => {
       try {
         console.log(`📝 [Report Skill] Writing section: ${sectionId} (${heading}) to report ${reportId}`);
 
@@ -297,7 +300,8 @@ getProjectImageIDS: tool({
           heading,
           content,
           order ?? 0,
-          client
+          client,
+          metadata
         );
 
         return {
@@ -306,6 +310,7 @@ getProjectImageIDS: tool({
           sectionId,
           heading,
           message: `Section "${heading}" written and saved to database. You can reference it later using getReportStructure.`,
+          _written: true,
           preview: content.substring(0, 200) + (content.length > 200 ? '...' : ''),
           order: order ?? 0
         };
@@ -317,6 +322,24 @@ getProjectImageIDS: tool({
         };
       }
     },
-  }),
+    {
+      name: 'writeSection',
+      description: 'Write or update a report section with markdown content. Use this to build sections incrementally as you write the report. The section will be saved to the database immediately so you can reference it later. You can call this multiple times for different sections.',
+      schema: z.object({
+        reportId: z.string().describe('The report ID (get it from getReportStructure or it was provided in context)'),
+        sectionId: z.string().describe('Unique ID for this section (e.g., "executive-summary", "observations-1")'),
+        heading: z.string().describe('The section heading/title'),
+        description: z.string().optional().describe('Optional description or intro text for the section'),
+        content: z.string().describe('The markdown content for this section'),
+        order: z.number().optional().describe('Order/position of this section (0-based)'),
+        metadata: z.object({
+          status: z.enum(['compliant', 'non-compliant']),
+          severity: z.enum(['critical', 'major', 'minor']).optional(),
+          trade: z.string().optional()
+        }).optional().describe('Compliance status. REQUIRED if reporting a defect.'),
+        reasoning: z.string().optional().describe('A "scratchpad" to think out loud and let the user know what you are thinking.'),
+      }),
+    }
+  ),
 
-});
+];

@@ -7,6 +7,7 @@ import { Page } from "@/app/pages/config/routes";
 import { Project, PeerReview, ReportContent, Photo } from "@/frontend/types";
 import { RequestPeerReviewModal } from "@/frontend/pages/large_modal_components/RequestPeerReviewModal";
 import { RatingModal } from "@/frontend/pages/large_modal_components/RatingModal";
+import PlanApprovalModal from "@/frontend/pages/large_modal_components/PlanApprovalModal";
 import { ReportLayout } from "@/src/frontend/src/pages/report_editing_components/ReportLayout";
 import { ROUTES, getRoute } from "@/app/pages/config/routes";
 import { supabase } from "@/frontend/lib/supabaseClient";
@@ -167,7 +168,14 @@ function ReportViewerContent() {
   const [isGenerating, setIsGenerating] = useState(generatingParam);
   
   // Use custom hook for streaming
-  const { reasoningText: generationReasoning, status: generationStatus, reportId: streamedReportId, isComplete } = useReportStreaming(projectIdParam, isGenerating);
+  const { 
+    reasoningText: generationReasoning, 
+    status: generationStatus, 
+    reportId: streamedReportId, 
+    isComplete,
+    isPaused,
+    reportPlan 
+  } = useReportStreaming(projectIdParam, isGenerating);
 
 
   const [isLoading, setIsLoading] = useState(false);
@@ -197,7 +205,11 @@ function ReportViewerContent() {
   const [reportStatus, setReportStatus] = useState("Draft");
   const [isRequestPeerReviewModalOpen, setIsRequestPeerReviewModalOpen] = useState(false);
   const [isRatingModalOpen, setIsRatingModalOpen] = useState(false);
+  
+  // Human-in-the-Loop approval modal
+  const [showApprovalModal, setShowApprovalModal] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [polledReportPlan, setPolledReportPlan] = useState<any>(null);
 
   const currentUserId = 2;
   // Use String comparison for IDs
@@ -275,6 +287,63 @@ function ReportViewerContent() {
       setIsGenerating(false);
     }
   }, [isComplete, streamedReportId]);
+
+  // 🔔 Handle plan approval request (Human-in-the-Loop)
+  useEffect(() => {
+    console.log('🔍 Modal check:', { isPaused, hasReportPlan: !!reportPlan, showApprovalModal });
+    if (isPaused && reportPlan) {
+      console.log('📋 Report plan ready for approval:', reportPlan);
+      console.log('✅ Setting showApprovalModal to TRUE');
+      setShowApprovalModal(true);
+    }
+  }, [isPaused, reportPlan]);
+
+  // 🔄 BACKUP POLLING: Poll database for AWAITING_APPROVAL status
+  // This is a fallback in case Realtime events don't fire
+  useEffect(() => {
+    // Use reportId from URL if available, otherwise wait for streamed reportId
+    const pollingReportId = reportId && reportId !== '0' ? reportId : streamedReportId;
+    
+    if (!isGenerating || !pollingReportId) return;
+
+    console.log(`🔄 Starting backup polling for report ${pollingReportId}`);
+
+    const pollInterval = setInterval(async () => {
+      try {
+        const response = await fetch(`/api/report/${pollingReportId}/status`);
+        const result = await response.json();
+        
+        if (result.error) {
+          console.error('Polling error:', result.error);
+          return;
+        }
+
+        console.log(`📊 Poll result: status="${result.status}"`);
+
+        // If status is AWAITING_APPROVAL, fetch the plan and show modal
+        if (result.status === 'AWAITING_APPROVAL' && result.plan) {
+          console.log('✅ Detected AWAITING_APPROVAL via polling!');
+          setPolledReportPlan(result.plan); // Store the plan from polling
+          setShowApprovalModal(true);
+          clearInterval(pollInterval); // Stop polling once we detect approval needed
+        }
+
+        // If status changed to COMPLETED, stop generating
+        if (result.status === 'COMPLETED') {
+          console.log('🎉 Report completed (detected via polling)');
+          setIsGenerating(false);
+          clearInterval(pollInterval);
+        }
+      } catch (err) {
+        console.error('Polling exception:', err);
+      }
+    }, 3000); // Poll every 3 seconds
+
+    return () => {
+      console.log('🛑 Stopping backup polling');
+      clearInterval(pollInterval);
+    };
+  }, [isGenerating, reportId, streamedReportId]);
 
   const handleNavigate = (page: Page) => {
     router.push(getRoute(page));
@@ -430,6 +499,63 @@ function ReportViewerContent() {
     console.log("Exporting PDF for report:", reportContent.title);
   };
 
+  // 1. Add State for Photos
+  const [photos, setPhotos] = useState<Photo[]>([]); // The actual image objects (url, id, etc.)
+  // Fetch Report & Photos
+  useEffect(() => {
+    if (isGenerating && !reportId) return; // Wait if we don't have an ID yet
+
+    const fetchReportData = async () => {
+      if (!reportId || reportId === "0") return;
+      
+      setIsLoading(true);
+      try {
+        // ---------------------------------------------------------
+      // 1. FAST PATH: Fetch Photos using Project ID from URL
+      // ---------------------------------------------------------
+      const targetProjectId = projectIdParam; // Grab directly from URL
+
+      if (targetProjectId) {
+        const { data: photosData, error: photosError } = await supabase
+          .from('project_images') 
+          .select('*')
+          .eq('project_id', targetProjectId);
+
+          if (photosData) {
+            console.log("🔍 RAW PHOTO DATA SAMPLE:", photosData[0]); 
+            // ^ Look at this object in the console. 
+            // Does it have a 'url' property? Or is it 'file_path'?
+         }
+
+        if (photosError) {
+          console.error("❌ Error fetching photos:", photosError);
+        } else if (photosData) {
+          console.log(`📸 Loaded ${photosData.length} photos for Project: ${targetProjectId}`);
+          // 🛠️ COPY THE MAPPING LOGIC FROM ProjectDetailPage HERE:
+          const cleanPhotos = photosData.map((img: any) => ({
+            id: String(img.id),         // Ensure string ID
+            url: img.public_url,        // 👈 KEY FIX: Map DB 'public_url' -> UI 'url'
+            storagePath: img.storage_path, // Keep this for SecureImage
+            name: img.file_name || "Image",
+            date: img.created_at,
+            // You can add other fields if needed, or leave them optional
+            description: img.description || "",
+            folderId: 0 // Default if you don't have folder logic here yet
+        }));
+          setPhotos(cleanPhotos); // <--- State updated! Modal will now work.
+        }
+      }
+
+      } catch (err) {
+        console.error("Error fetching report data:", err);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchReportData();
+  }, [reportId, isGenerating]);
+
   if (isGenerating) {
     return (
       <div className="min-h-screen bg-slate-50 flex flex-col">
@@ -446,6 +572,27 @@ function ReportViewerContent() {
             isComplete={isComplete}
           />
         </div>
+
+        {/* Human-in-the-Loop Plan Approval Modal - Must be rendered during generation! */}
+        <PlanApprovalModal
+          open={showApprovalModal}
+          onClose={() => setShowApprovalModal(false)}
+          reportPlan={reportPlan || polledReportPlan}
+          reportId={reportId && reportId !== '0' ? reportId : (streamedReportId || '')}
+          onApprove={() => {
+            console.log("✅ Plan approved, resuming generation");
+            setShowApprovalModal(false);
+            setPolledReportPlan(null);
+            // Keep isGenerating true so we continue listening for streaming updates
+          }}
+          onReject={(feedback) => {
+            console.log("🔄 Plan rejected with feedback:", feedback);
+            setShowApprovalModal(false);
+            setPolledReportPlan(null);
+            // Keep isGenerating true so we continue listening for the revised plan
+          }}
+          photos={photos}
+        />
       </div>
     );
   }
@@ -503,6 +650,29 @@ function ReportViewerContent() {
         onOpenChange={setIsRatingModalOpen}
         reportTitle={reportContent.title}
         onSubmitReview={handleSubmitReviewWithRating}
+      />
+
+      {/* Human-in-the-Loop Plan Approval Modal */}
+      {/* Use Realtime plan or fallback to polled plan */}
+      <PlanApprovalModal
+        open={showApprovalModal}
+        onClose={() => setShowApprovalModal(false)}
+        reportPlan={reportPlan || polledReportPlan}
+        reportId={reportId && reportId !== '0' ? reportId : (streamedReportId || '')}
+        onApprove={() => {
+          console.log("✅ Plan approved, resuming generation");
+          setShowApprovalModal(false);
+          setPolledReportPlan(null); // Clear polled plan
+          // Keep isGenerating true so we continue listening for streaming updates
+        }}
+        onReject={(feedback) => {
+          console.log("🔄 Plan rejected with feedback:", feedback);
+          setShowApprovalModal(false);
+          setPolledReportPlan(null); // Clear polled plan
+          // Keep isGenerating true so we continue listening for the revised plan
+          
+        }}
+        photos={photos}
       />
     </div>
   );

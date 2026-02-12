@@ -1,10 +1,10 @@
 import { StateGraph, END } from "@langchain/langgraph";
-import { TeamState } from "../../state/TeamState";
+import { TeamState } from "../../LangGraph/state/report/TeamState";
 // Import your nodes (we assume you have created these files based on previous steps)
-import { researcherNode } from "../../nodes/researcherNode";
-import { writerNode } from "../../nodes/writerNode";
-import { supervisorNode } from "../../nodes/supervisorNode";
-import { toolNode } from "../../nodes/toolNode";
+import { researcherNode } from "../../LangGraph/nodes/researcherNode";
+import { writerNode } from "../../LangGraph/nodes/report/writerNode";
+import { supervisorNode } from "../../LangGraph/nodes/supervisorNode";
+import { toolNode } from "../../LangGraph/nodes/toolNode";
 
 import { AIMessage } from "@langchain/core/messages";
 

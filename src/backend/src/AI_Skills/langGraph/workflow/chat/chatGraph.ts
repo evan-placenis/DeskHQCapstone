@@ -1,11 +1,11 @@
 import { StateGraph, END } from "@langchain/langgraph";
-import { TeamState } from "../../state/TeamState"; // Reuse your existing state!
+import { TeamState } from "../../state/report/TeamState"; // Reuse your existing state!
 // Import your nodes (we assume you have created these files based on previous steps)
 import { researcherNode } from "../../nodes/researcherNode";
-import { writerNode } from "../../nodes/writerNode";
+import { writerNode } from "../../nodes/report/writerNode";
 import { supervisorNode } from "../../nodes/supervisorNode";
 import { toolNode } from "../../nodes/toolNode";
-import { chatNode } from "../../nodes/chatNode";
+import { chatNode } from "../../nodes/chat/chatNode";
 import { AIMessage } from "@langchain/core/messages";
 
 const workflow = new StateGraph(TeamState)

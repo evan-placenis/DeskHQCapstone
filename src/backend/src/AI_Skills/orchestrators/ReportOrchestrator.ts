@@ -1,8 +1,8 @@
 
 import { HumanMessage, AIMessage } from "@langchain/core/messages";
 import { Container } from '../../config/container'; // Your generic Supabase server client
-import { getWorkflow } from '../langGraph/workflow'; // Dynamic workflow selector
-import { CustomLangChainAdapter } from '../langGraph/utils/custom-adapter';
+import { getWorkflow } from '../LangGraph/workflow'; // Dynamic workflow selector
+import { CustomLangChainAdapter } from '../LangGraph/utils/custom-adapter';
 
 import { SupabaseClient } from "@supabase/supabase-js";
 interface GenerateParams {

@@ -1,8 +1,8 @@
 import { ToolMessage, AIMessage} from "@langchain/core/messages";
-import { reportSkills } from "../skills/report.skills";
-import { researchSkills } from "../skills/research.skills"; 
-import { chatSkills} from "../skills/chat.skills";
-import { visionSkills } from "../skills/vision.skills";
+import { reportSkills } from "../../LangGraph_skills/report.skills";
+import { researchSkills } from "../../LangGraph_skills/research.skills"; 
+import { chatSkills} from "../../LangGraph_skills/chat.skills";
+import { visionSkills } from "../../LangGraph_skills/vision.skills";
 
 export async function toolNode(state: any) {
   const { messages, projectId, userId, client, selectedImageIds } = state;

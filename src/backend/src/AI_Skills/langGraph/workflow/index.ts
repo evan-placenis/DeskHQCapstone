@@ -1,4 +1,5 @@
 import { simpleReportGraph } from "./report/simpleReportGraph";
+import { observationReportGraph } from "./report/observationReportGraph";
 import { CompiledStateGraph } from "@langchain/langgraph";
 
 // This is your Strategy Registry
@@ -6,11 +7,11 @@ import { CompiledStateGraph } from "@langchain/langgraph";
 // Use type assertion so different graph shapes (node names, state) are accepted in the registry
 const WORKFLOWS: Record<string, CompiledStateGraph<any, any>> = {
   "simple": simpleReportGraph as CompiledStateGraph<any, any>,
+  "observation": observationReportGraph as CompiledStateGraph<any, any>,
 
-  // Easy to add new strategies later:
+  // Easy to add more strategies:
   // "advanced": advancedReportGraph as CompiledStateGraph<any, any>,
   // "quick": quickReportGraph as CompiledStateGraph<any, any>,
-  // "detailed": detailedReportGraph as CompiledStateGraph<any, any>,
 };
 
 export type WorkflowType = keyof typeof WORKFLOWS;
