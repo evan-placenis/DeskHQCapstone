@@ -13,6 +13,7 @@ export async function architectNode(state: any) {
   const { 
     selectedImageIds, 
     photoNotes, 
+    systemPrompt,
     structureInstructions, 
     provider, 
     reportPlan: existingPlan,
@@ -44,14 +45,23 @@ export async function architectNode(state: any) {
           reportOrder: z.number().describe('The position this section should appear in the FINAL report (e.g. Executive Summary = 1, Recommendations = 2, Observations = 3)'),
           purpose: z.string().optional().describe('Why this section exists'),
 
-          // 1. Parent Photos (Optional)
-          assignedPhotoIds: z.array(z.string()).optional().describe('Photo IDs assigned to the main section (usually empty if using subsections)'),
+          // // 1. Parent Photos (Optional)
+          // assignedPhotoIds: z.array(z.string()).optional().describe('Photo IDs assigned to the main section (usually empty if using subsections)'),
+          // // ✅ NEW FIELD: The "Tuple" Strategy
+          photoContext: z.array(z.object({
+            photoId: z.string().describe('The UUID of the photo'),
+            note: z.string().describe('The specific human note for this photo (if any)')
+         })).optional().describe('Map specific notes to photos for this section'),
 
           // 2. NEW: Subsections (The Nested Structure)
           subsections: z.array(z.object({
             subSectionId: z.string().describe('Unique ID (e.g., "obs-roof", "obs-walls")'),
             title: z.string().describe('Subsection title (e.g., "Roofing System", "Exterior Walls")'),
-            assignedPhotoIds: z.array(z.string()).describe('Photo IDs specific to this subsection'),
+            // assignedPhotoIds: z.array(z.string()).describe('Photo IDs specific to this subsection'),
+            photoContext: z.array(z.object({
+              photoId: z.string(),
+              note: z.string()
+           })).optional(),
             purpose: z.string().optional()
           })).optional().describe('Breakdown of this section into specific areas (e.g. Observations -> Roof, Walls, Foundation)')
         })).describe('List of sections in the report'),
@@ -59,32 +69,78 @@ export async function architectNode(state: any) {
       }), 
     }
   );
+
+    // FETCH PHOTOS FROM DB — `photos` is not in LangGraph state, so we query directly
+  let selectedImages: any[] = [];
+  if (client && selectedImageIds && selectedImageIds.length > 0) {
+    try {
+      const { data, error } = await client
+        .from('project_images')
+        .select('*')
+        .in('id', selectedImageIds);
+      if (error) {
+        console.error('❌ Architect: Failed to fetch photos:', error);
+      } else {
+        selectedImages = data || [];
+        console.log(`📷 Architect: Fetched ${selectedImages.length} photos from DB`);
+      }
+    } catch (err) {
+      console.error('❌ Architect: Exception fetching photos:', err);
+    }
+  }
+
+  // Parse photoNotes into a per-photo lookup if it's a JSON map, otherwise ignore
+  let photoNotesMap: Record<string, string> = {};
+  if (photoNotes) {
+    try {
+      const parsed = JSON.parse(photoNotes);
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        photoNotesMap = parsed;
+      }
+    } catch {
+      // photoNotes is plain text — not a JSON map, ignore it
+    }
+  }
+
+  const photoContext = selectedImages.map((img: any, index: number) => {
+    // 🛡️ Safe extraction of text — DB columns: description, ai_description, user_note, file_name
+    const desc = img.description || img.ai_description || img.file_name || "No description";
+    const note = photoNotesMap[img.id] || img.user_note || "";
+    
+    // 🔑 PUT THE UUID IN BRACKETS so the AI can copy it exactly
+    return `[ID: ${img.id}] Photo ${index + 1}: ${desc}${note ? ` | User Note: "${note}"` : ''}`;
+}).join('\n');
+
  
-  const systemPrompt = `${context}
+  // 👇 PROMPT CONSTRUCTION
+  const promptContext = `${systemPrompt}
 
 ---
 ARCHITECT PHASE: PLANNING
 ---
 Your current role is to PLAN the report structure to get initial get feedback from the user. You are NOT writing content yet.
 
-INPUTS YOU HAVE:
-- ${selectedImageIds.length} photos selected for analysis. Selected Image UUIDs: ${selectedImageIds.join(', ')}
-- Photo notes/metadata: ${photoNotes || 'None provided'}
-- Structure instructions: ${structureInstructions || 'Use standard observation report format'}
+INPUTS:
+- Structure Requirements: ${structureInstructions} 
+- Photo Count: ${selectedImageIds.length}
+
+AVAILABLE PHOTOS (use the [ID: ...] UUIDs exactly as shown):
+${photoContext}
+
 ${userFeedback ? `!!! ATTENTION: PLAN REVISION !!!
-The user REJECTED your previous plan.
-USER FEEDBACK: "${userFeedback}"
-
-HERE IS YOUR PREVIOUS PLAN (The one that was rejected):
-\`\`\`json
-${JSON.stringify(existingPlan, null, 2)}
-\`\`\`
-
-INSTRUCTIONS FOR REVISION:
-1. Keep the parts of the plan that work.
-2. ONLY change the sections mentioned in the feedback.
-3. Submit the FULL revised plan (all sections) again.
-` : ''} 
+  The user REJECTED your previous plan.
+  USER FEEDBACK: "${userFeedback}"
+  
+  HERE IS YOUR PREVIOUS PLAN (The one that was rejected):
+  \`\`\`json
+  ${JSON.stringify(existingPlan, null, 2)}
+  \`\`\`
+  
+  INSTRUCTIONS FOR REVISION:
+  1. Keep the parts of the plan that work.
+  2. ONLY change the sections mentioned in the feedback.
+  3. Submit the FULL revised plan (all sections) again.
+  ` : ''} 
 
 YOUR TASK:
 1. Analyze what needs to be covered based on the inputs.
@@ -102,14 +158,30 @@ GUIDELINES:
    - Observations should be 'reportOrder: 2'.
    - Recommendations should be 'reportOrder: 3'.
 
-EXAMPLE OUTPUT STRUCTURE:
-[
-  { title: "Observations", reportOrder: 2 }, // First in array (write first), but 2rd in report
-  { title: "Executive Summary", reportOrder: 1 } // Last in array (write last), but 1st in report
-]
+### EXAMPLE OUTPUT FORMAT
+  {
+    "reasoning": "...",
+    "sections": [
+      { 
+        "sectionId": "obs-roof", 
+        "title": "Roof Observations", 
+        "reportOrder": 2,
+        "purpose": "To document membrane deficiencies",
+        "photoContext": [
+           { "photoId": "aa54020a-...", "note": "Active leak observed at drain." },
+           { "photoId": "bb12345b-...", "note": "Overview of south elevation." }
+        ]
+      },
+      {
+        "sectionId": "exec-summary",
+        "title": "Executive Summary",
+        "reportOrder": 1,
+        "photoContext": []
+        
+      }
+    ]
+  }
   ...
-
-${userFeedback ? 'IMPORTANT: Address the user feedback from the previous plan.' : ''}
 
 OUTPUT: Call 'submitReportPlan' with your proposed structure.`;
 
@@ -121,7 +193,7 @@ OUTPUT: Call 'submitReportPlan' with your proposed structure.`;
   });
 
   const response = await model?.invoke?.([
-    new SystemMessage(systemPrompt),
+    new SystemMessage(promptContext),
     ...state.messages
   ]);
 

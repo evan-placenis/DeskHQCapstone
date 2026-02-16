@@ -48,6 +48,8 @@ export default function PlanApprovalModal({
     }
   }, [reportPlan]);
 
+  
+
   const selectedPhotoIds = useMemo(() => {
     if (!sections || sections.length === 0) return [];
     const allIds = sections.flatMap(section => section.photoIds || []);

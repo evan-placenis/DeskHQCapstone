@@ -33,11 +33,11 @@ export async function researcherNode(state: any) {
   // Extract research findings from the response for shared memory
   // This allows the builder to access research without parsing messages
   let researchFindings = '';
-  if (response.content) {
-    researchFindings = typeof response.content === 'string' 
-      ? response.content 
-      : JSON.stringify(response.content);
-  }
+  if (response.content && typeof response.content === 'string' && response.content.length > 10) {
+    researchFindings = response.content;
+}
+// OPTIONAL: If you want to capture the RAW tool output (e.g. strict specs),
+// you might need a reducer or a separate 'research_summary' node that runs AFTER tools.
 
   // Return the result to the state
   return { 

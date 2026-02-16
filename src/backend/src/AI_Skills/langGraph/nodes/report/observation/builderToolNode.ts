@@ -1,6 +1,7 @@
 import { ToolMessage } from "@langchain/core/messages";
 import { reportSkills } from "../../../../LangGraph_skills/report.skills";
 import { visionSkills } from "../../../../LangGraph_skills/vision.skills";
+import { researchSkills } from "../../../../LangGraph_skills/research.skills";
 import { Container } from "@/backend/config/container";
 export async function builderToolsNode(state: any) {
   const { messages, projectId, userId, selectedImageIds } = state;
@@ -13,7 +14,8 @@ export async function builderToolsNode(state: any) {
   // 1. Only load BUILDER skills
   const builderTools = [
      ...reportSkills(projectId, userId, freshClient, selectedImageIds),
-     ...visionSkills
+     ...visionSkills,
+     ...researchSkills(projectId)
   ];
 
   // 2. Map them

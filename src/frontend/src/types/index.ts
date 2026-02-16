@@ -191,4 +191,6 @@ export interface EditorSection {
   reportOrder?: number;
   purpose?: string;
   isSubsection: boolean;
+  /** The "Backpack": preserves photoContext notes while the user edits the structure */
+  originalNotesMap?: Record<string, string>;
 }

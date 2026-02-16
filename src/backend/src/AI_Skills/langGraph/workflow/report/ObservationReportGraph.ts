@@ -16,11 +16,11 @@ const workflow = new StateGraph(ObservationState)
   // Nodes
   .addNode("architect", architectNode)
   .addNode("human_approval", humanApprovalNode)
-  // .addNode("researcher", researcherNode)
   .addNode("builder", builderNode)
   .addNode("builder_continue", builderContinueNode)
   .addNode("builder_tools", builderToolsNode)
   // .addNode("reviewer", reviewerNode)
+  // .addNode("researcher", researcherNode)
   
 
   // --- EDGES ---
@@ -73,7 +73,6 @@ const workflow = new StateGraph(ObservationState)
   }, {
     "builder": "builder",
     "tools": "builder_tools",
-    "reviewer": END, // Reviewer is commented out, but handle gracefully
     "FINISH": END,
   })
 

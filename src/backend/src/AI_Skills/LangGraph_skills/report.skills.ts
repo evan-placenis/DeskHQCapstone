@@ -330,7 +330,11 @@ tool(
         sectionId: z.string().describe('Unique ID for this section (e.g., "executive-summary", "observations-1")'),
         heading: z.string().describe('The section heading/title'),
         description: z.string().optional().describe('Optional description or intro text for the section'),
-        content: z.string().describe('The markdown content for this section'),
+        content: z.string().describe(`The markdown content for this section
+          CRITICAL FORMATTING: 
+          - If this is an Observations section, you MUST use a Markdown Table (Columns: Description | Photo).
+          - NEVER use bullet points in the table, use <br> for line breaks inside table cells.
+          - Include the photo UUID like this: ![Alt Text](UUID)`),
         order: z.number().optional().describe('Order/position of this section (0-based)'),
         metadata: z.object({
           status: z.enum(['compliant', 'non-compliant']),

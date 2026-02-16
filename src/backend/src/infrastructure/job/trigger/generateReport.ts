@@ -134,7 +134,7 @@ export const generateReportTask = task({
           organization_id: organizationId,
           project_id: payload.projectId,
           title: title,
-          status: 'DRAFT',
+          status: 'GENERATING',
           template_id: payload.input.templateId || null,
           created_by: payload.userId,
           created_at: new Date().toISOString(),
@@ -489,8 +489,8 @@ async function handleResumeAction(
         streamingAdapter
       });
       // Debounced reasoning broadcast (so text flows smoothly)
-      if (textBuffer.length > 0 && Date.now() - lastUpdate > UPDATE_INTERVAL) {
-        await broadcast(supabase, payload.projectId!, 'reasoning', { chunk: textBuffer });
+      if (textBuffer.length > 0 && projectId && Date.now() - lastUpdate > UPDATE_INTERVAL) {
+        await broadcast(supabase, projectId, 'reasoning', { chunk: textBuffer });
         textBuffer = "";
         lastUpdate = Date.now();
       }

@@ -9,12 +9,23 @@ import { ReportPlan } from "@/app/shared/types/report-schemas";
  */
 export const ObservationState = Annotation.Root({
   // 1. Core Context (inherited concept from TeamState)
+
+  systemPrompt: Annotation<string>({
+    reducer: (x, y) => y ?? x,
+    default: () => "",
+  }),
+
+  structureInstructions: Annotation<string>({
+    reducer: (x, y) => y ?? x,
+    default: () => "",
+  }),
+
   messages: Annotation<BaseMessage[]>({
     reducer: (x, y) => x.concat(y),
     default: () => [],
   }),
 
-  context: Annotation<string>({
+  additionalContextFromTools: Annotation<string>({
     reducer: (x, y) => y ?? x,
     default: () => "",
   }),
@@ -34,11 +45,6 @@ export const ObservationState = Annotation.Root({
   }),
 
   photoNotes: Annotation<string>({
-    reducer: (x, y) => y ?? x,
-    default: () => "",
-  }),
-
-  structureInstructions: Annotation<string>({
     reducer: (x, y) => y ?? x,
     default: () => "",
   }),

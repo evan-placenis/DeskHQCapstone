@@ -4,19 +4,27 @@ import { z } from 'zod';
  * Report Plan Structure
  * The Architect creates this in Phase 1
  */
+// 1. Define the Context Item (The "Tuple")
+// This represents { photoId: "uuid", note: "Look at the crack" }
+const PhotoContextItemSchema = z.object({
+  photoId: z.string(),
+  note: z.string()
+});
 
 // 1. Define the Zod Schema (Runtime Validation)
 export const ReportSubsectionSchema = z.object({
   subSectionId: z.string(),
   title: z.string(),
-  assignedPhotoIds: z.array(z.string()),
+  photoContext: z.array(PhotoContextItemSchema).optional(),
+  assignedPhotoIds: z.array(z.string()).optional(), // Deprecated: derived from photoContext for backward compat
   purpose: z.string().optional()
 });
 
 export const ReportSectionSchema = z.object({
   sectionId: z.string(),
   title: z.string(),
-  assignedPhotoIds: z.array(z.string()).optional(),
+  photoContext: z.array(PhotoContextItemSchema).optional(),
+  assignedPhotoIds: z.array(z.string()).optional(), // Deprecated: derived from photoContext for backward compat
   reportOrder: z.number(), // The sorting field
   purpose: z.string().optional(),
   subsections: z.array(ReportSubsectionSchema).optional()
