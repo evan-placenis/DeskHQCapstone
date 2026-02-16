@@ -24,8 +24,11 @@ export async function POST(
             reportType,
             modelName,
             templateId,
-            workflowType
+            workflowType,
+            processingMode: bodyProcessingMode,
+            modeName: bodyModeName, // legacy key from frontend
         } = body;
+        const processingMode = bodyProcessingMode ?? bodyModeName ?? 'IMAGE_AND_TEXT';
 
         if (!projectId) {
             return NextResponse.json(
@@ -50,6 +53,7 @@ export async function POST(
             reportType,
             modelName,
             workflowType,
+            processingMode,
             selectedImageIdsCount: selectedImageIds.length,
             sectionsCount: sections.length,
             templateId
@@ -61,14 +65,15 @@ export async function POST(
             projectId,
             user.id,
             {
-                reportId: reportId, // Pass the pre-generated ID
+                reportId: reportId,
                 title: title || undefined,
                 reportType,
                 modelName: modelName,
                 selectedImageIds: selectedImageIds,
                 templateId: templateId || '',
                 sections: sections,
-                workflowType: workflowType // Pass through user's selection from modal (undefined = use fallback in job)
+                workflowType: workflowType,
+                processingMode: processingMode === 'TEXT_ONLY' ? 'TEXT_ONLY' : 'IMAGE_AND_TEXT',
             }
         );
 

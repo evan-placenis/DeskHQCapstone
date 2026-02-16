@@ -1,13 +1,13 @@
 import { DocumentStrategy } from './interfaces';
 import mammoth from 'mammoth';
-
-// Mock function - in reality, this calls OpenAI/Supabase TODO
-async function generateImageDescription(buffer: Buffer): Promise<string> {
-    // 1. Upload buffer to Supabase Storage -> Get URL
-    // 2. Send URL to GPT-4o-Vision -> Get Description
-    // 3. Return Description
-    return "A diagram showing the cross-section of a concrete foundation wall with proper drainage."; 
-}
+import { Container } from '../../config/container';
+import { v4 as uuidv4 } from 'uuid';
+import { SupabaseClient } from '@supabase/supabase-js'; // authenticated client
+interface PendingImage {
+    id: string;
+    buffer: Buffer;
+    contentType: string;
+  }
 
 const CHUNK_SIZE_LIMIT = 2000;
 
@@ -17,42 +17,114 @@ export class SpecStrategy implements DocumentStrategy {
      * EXTRACT TEXT
      * Validates DOCX signature and extracts raw text for regex parsing.
      */
-    async extractText(buffer: Buffer): Promise<string> {
+    async extractText(buffer: Buffer, projectId: string, organizationId: string, client: SupabaseClient, kId?: string, fileName?: string): Promise<string> {
         // 1. Validation: Check magic bytes to ensure it's a real DOCX
         if (!this.isValidDocx(buffer)) {
              throw new Error('Invalid file signature: This does not appear to be a valid DOCX file.');
         }
 
+        // We will store images here as Mammoth finds them
+        const pendingImages: PendingImage[] = [];
+
         // 🚀 THE MAGIC: Custom Image Handler
         const options = {
             convertImage: mammoth.images.imgElement(async (image) => {
-                
-                
                 try {
-                    // 1. Get AI Description
-                    // const imageBuffer = await image.read();
-                    // console.log("📷 Image found! Generating description...");
-                    // const description = await generateImageDescription(imageBuffer);
-                    // console.log("📷 Description generated:", description);
-                    
-                    // 2. Insert a special marker into the text flow via the ALT tag
-                    const description = "Image Placeholder (AI Image processing Disabled)";
-                    return { 
-                        src: "", 
-                        alt: `[[IMAGE_DESCRIPTION: ${description}]]` 
-                    };
+                  const imageBuffer = await image.read();
+                  const imageId = uuidv4();
+                  
+                  // Store for batch processing later
+                  pendingImages.push({
+                    id: imageId,
+                    buffer: imageBuffer,
+                    contentType: image.contentType,
+                  });
+        
+                  // Insert a UNIQUE placeholder that we can easily find and replace later
+                  // We use a simplified alt tag that cleanHtmlToText will preserve
+                  return { 
+                    src: "", 
+                    alt: `[[PENDING_IMAGE_ID:${imageId}]]` 
+                  };
                 } catch (err) {
-                    console.warn("Failed to process image", err);
-                    return { src: "", alt: "[[IMAGE: Processing Failed]]" };
+                  console.warn("Failed to extract image buffer", err);
+                  return { src: "", alt: "[[IMAGE: Extraction Failed]]" };
                 }
-            })
-        };
+              })
+            };
 
         // We use convertToHtml because extractRawText ignores images completely
         const result = await mammoth.convertToHtml({ buffer }, options);
 
+        let documentText = this.cleanHtmlToText(result.value);
+
+        if (fileName && fileName.toLowerCase().includes("scope of work")) {
+            console.log(`🚫 Skipping image analysis for "${fileName}" (Hardcoded Rule)`);
+            pendingImages.length = 0;
+        }
+
+        // --- PHASE 2: BATCH PROCESSING ---
+        if (pendingImages.length > 0) {
+        console.log(`👁️ Found ${pendingImages.length} images. Starting batch analysis...`);
+        
+        // A. Parallel Upload to Supabase Storage bucket and get URLs
+        const uploadPromises = pendingImages.map(async (img) => {
+            const path = `${organizationId}/${projectId}/spec-images/${img.id}.${img.contentType.split('/')[1]}`;
+            const signedUrl = await this.uploadAndSign(img.buffer, img.contentType, path, client);
+
+            return { 
+            id: img.id, 
+            url: signedUrl, 
+            path: path 
+            };
+        });
+
+        // Wait for uploads
+        const allUploads = await Promise.all(uploadPromises);
+
+        // 🟢 CRITICAL FIX: Remove failed uploads (where url is "") BEFORE sending to Vision Agent
+        const uploadedImages = allUploads.filter(img => img.url && img.url.length > 0);
+
+        // B. Analyze Batch (Using your VisionAgent)
+        // Note: We use 'specImageAnalysis' to trigger the specific system prompt
+        // analyzeBatch expects { id, url }
+        const analyses = await Container.visionAgent.analyzeBatch(uploadedImages, 'specImageAnalysis');
+
+
+            // C. Save Metadata to SQL (Standalone Table); link to knowledge item for cascade delete
+        const imageRecords = analyses.map((analysis) => {
+            const uploadData = uploadedImages.find(u => u.id === analysis.imageId);
+            return {
+                id: analysis.imageId,
+                project_id: projectId,
+                ...(kId && { k_id: kId }),
+                url: uploadData?.url || "",
+                storage_path: uploadData?.path || "",
+                description: analysis.description 
+            };
+        });
+
+        // Save to DB using authenticated client so RLS allows the insert
+        await Container.storageService.saveSpecImages(imageRecords, client);
+
+        // --- PHASE 3: STITCHING ---
+        console.log(`📝 Stitching ${analyses.length} descriptions back into document...`);
+        
+        for (const analysis of analyses) {
+            const placeholder = `[[PENDING_IMAGE_ID:${analysis.imageId}]]`;
+            
+            // Create the final format intended for your database/LLM
+            // We wrap it clearly so downstream parsers know this is visual context
+            const finalDescription = `\n\n[IMAGE CONTEXT START]\n${analysis.description}\n[IMAGE CONTEXT END]\n\n`;
+            console.log(finalDescription);
+            
+            // Replace the placeholder in the main text
+            documentText = documentText.replace(placeholder, finalDescription);
+        }
+    }
+
         // Clean the HTML but preserve our special image descriptions
-        return this.cleanHtmlToText(result.value);
+        return documentText
     }
 
     /**
@@ -196,10 +268,10 @@ export class SpecStrategy implements DocumentStrategy {
     private cleanHtmlToText(html: string): string {
         let text = html;
 
-        // 🟢 FIX: Extract Image Descriptions BEFORE stripping tags
-        // This Regex finds <img ... alt="[[IMAGE...]]" ...> and replaces the whole tag 
-        // with just the content inside the alt attribute.
-        text = text.replace(/<img[^>]*alt="([^"]+)"[^>]*\/?>/gi, '\n$1\n');
+        // 🟢 UPDATED FIX: Preserve our specific PENDING placeholders
+        // This finds <img ... alt="[[PENDING_IMAGE_ID:...]]" ...> 
+        // and extracts just the alt text part to be part of the plain text.
+        text = text.replace(/<img[^>]*alt="(\[\[PENDING_IMAGE_ID:[^"]+\]\])"[^>]*\/?>/gi, '\n$1\n');
 
         // 1. Force Newlines on BLOCK boundaries
         const blockTags = ['p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'div', 'li', 'ol', 'ul', 'br'];
@@ -258,6 +330,41 @@ export class SpecStrategy implements DocumentStrategy {
             ...this.splitTextRecursively(firstHalf, limit),
             ...this.splitTextRecursively(secondHalf, limit)
         ];
+    }
+
+  
+
+    //HELPER: Upload + Create Signed URL
+    private async uploadAndSign(
+        buffer: Buffer, 
+        contentType: string, 
+        path: string, 
+        client: SupabaseClient
+    ): Promise<string> {
+        try {
+            // 1. Upload (Standard)
+            const { error: uploadError } = await client.storage 
+                .from('project-images') 
+                .upload(path, buffer, {
+                    contentType: contentType,
+                    upsert: true
+                });
+
+            if (uploadError) throw uploadError;
+
+            // 2. Create Signed URL (The Fix)
+            // We set expiry to 3600 seconds (1 hour) - plenty of time for Gemini to read it
+            const { data, error: signError } = await client.storage
+                .from('project-images')
+                .createSignedUrl(path, 3600);
+
+            if (signError) throw signError;
+
+            return data.signedUrl; // This URL works for 1 hour
+        } catch (error) {
+            console.error("Upload/Sign failed:", error);
+            return "";
+        }
     }
 }
 

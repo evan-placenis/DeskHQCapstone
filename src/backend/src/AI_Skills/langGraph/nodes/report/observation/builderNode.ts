@@ -1,7 +1,7 @@
 import { SystemMessage, AIMessage, ToolMessage, HumanMessage, BaseMessage } from "@langchain/core/messages";
 import { ModelStrategy } from "../../../models/modelStrategy";
 import { reportSkills } from "../../../../LangGraph_skills/report.skills";
-import { visionSkills } from "../../../../LangGraph_skills/vision.skills";
+import { visionSkillsWithReport } from "../../../../LangGraph_skills/vision.skills";
 import { researchSkills } from "../../../../LangGraph_skills/research.skills";
 import { Container } from "@/backend/config/container";
 // 🛠️ HELPER: Turn the nested tree into a flat list of tasks
@@ -70,9 +70,9 @@ export async function builderNode(state: any) {
     selectedImageIds,
     messages, // <--- The heavy "Snowball" history
     builderRetries,
-
-    systemPrompt,          // "John's Spiel" (Liability)
-    structureInstructions  // "The Blueprint" (Formatting/Tables)
+    processingMode,       // 'TEXT_ONLY' | 'IMAGE_AND_TEXT' from NewReportModal
+    systemPrompt,         // "John's Spiel" (Liability)
+    structureInstructions // "The Blueprint" (Formatting/Tables)
   } = state;
 
   // 1. 🛡️ Safety Checks
@@ -132,10 +132,11 @@ export async function builderNode(state: any) {
   //   .map(([id, content]) => `## Previously Written (${id}):\n${content}`)
   //   .join('\n\n---\n\n');
 
-  // 5. Bind Tools (Same as before)
+  // 5. Bind Tools — include vision skills only when user chose "Image & Text" (exclude for "Text Only")
+  const includeVision = processingMode !== 'TEXT_ONLY';
   const tools = [
     ...reportSkills(projectId, userId, client, selectedImageIds),
-    ...visionSkills,
+    ...(includeVision ? visionSkillsWithReport(draftReportId, client) : []),
     ...researchSkills(projectId)
   ];
   // 2. Generate a "Cheat Sheet" string programmatically

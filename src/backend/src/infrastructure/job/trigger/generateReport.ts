@@ -38,6 +38,9 @@ for (const envPath of envPaths) {
 }
 console.log("Environment loaded. Service Key exists?", !!process.env.SUPABASE_SERVICE_ROLE_KEY);
 
+// Set to true to log every stream event and reasoning extraction (helps debug missing reasoning)
+const STREAM_DEBUG = process.env.STREAM_DEBUG === 'true' || process.env.DEBUG_STREAM === 'true';
+
 // 1. Define what the Queue sends (Lightweight)
 export interface TriggerPayload {
   projectId?: string;
@@ -47,14 +50,15 @@ export interface TriggerPayload {
   approvalStatus?: "APPROVED" | "REJECTED"; // For resume actions
   userFeedback?: string; // For resume actions
   input?: {
-    reportId?: string; // Pre-generated reportId from API route
-    title?: string; // User-selected report title
+    reportId?: string;
+    title?: string;
     reportType: string;
-    modelName: string; // 'grok', 'gemini', 'claude'
+    modelName: string;
     selectedImageIds: string[];
     templateId: string;
     sections?: any[]; // Custom sections from frontend
-    workflowType?: string; // Workflow type: 'simple', 'advanced', etc. 
+    workflowType?: string;
+    processingMode?: 'TEXT_ONLY' | 'IMAGE_AND_TEXT'; // From NewReportModal: TEXT_ONLY = no vision tools
   };
 }
 
@@ -177,19 +181,20 @@ export const generateReportTask = task({
       // 7. PREPARE LANGGRAPH STATE
       // Instead of calling reportService.generateReportStream, we prepare the Graph Input
       const inputState = {
-        messages: [new HumanMessage("Generate the report.")], // Trigger the graph
-        context: contextPrompt, // System prompt from template
+        messages: [new HumanMessage("Generate the report.")],
+        context: contextPrompt,
         projectId: payload.projectId,
         userId: payload.userId,
         reportType: payload.input.reportType,
         title: payload.input.title,
         provider: payload.input.modelName,
         selectedImageIds: payload.input.selectedImageIds,
-        draftReportId: draftReportId, // Pass the ID so agents know where to write
-        client: supabase, // Pass Supabase client for database operations
-        photoNotes: "", // Optional: Could come from frontend in future
-        structureInstructions: structureInstructions, // From template
-        currentSection: "init"
+        draftReportId: draftReportId,
+        client: supabase,
+        photoNotes: "",
+        structureInstructions: structureInstructions,
+        currentSection: "init",
+        processingMode: payload.input.processingMode ?? "IMAGE_AND_TEXT", // TEXT_ONLY = no vision tools
       };
 
       // 8. RUN THE GRAPH STREAM
@@ -204,7 +209,14 @@ export const generateReportTask = task({
       const streamingAdapter = new StreamingAdapter();
 
       // 9. THE NEW LOOP (Adapting LangGraph events to your logic)
+      let eventCount = 0;
       for await (const event of eventStream) {
+        eventCount++;
+        if (STREAM_DEBUG) {
+          const eventType = (event as any).event;
+          const dataKeys = event?.data ? Object.keys((event as any).data) : [];
+          console.log(`[STREAM #${eventCount}] event="${eventType}" dataKeys=[${dataKeys.join(', ')}]`);
+        }
         textBuffer = await processStreamEvent({
           event,
           supabase,
@@ -219,6 +231,7 @@ export const generateReportTask = task({
           lastUpdate = Date.now();
         }
       }
+      if (STREAM_DEBUG) console.log(`[STREAM] Total events processed: ${eventCount}`);
 
       // 11. CHECK IF GRAPH PAUSED (Human-in-the-Loop)
       // After the event stream ends, check if we paused at human_approval
@@ -361,55 +374,78 @@ async function processStreamEvent({
   streamingAdapter: StreamingAdapter;
 }): Promise<string> {
   let updatedBuffer = textBuffer;
+  const data = event?.data ?? {};
+  const evName = event?.name ?? data?.name ?? data?.tool ?? 'unknown';
+  const evType = event?.event;
 
   // 1. RAW TOKEN STREAMING
-  if (event.event === "on_chat_model_stream") {
-    const token = event.data.chunk?.content;
+  if (evType === "on_chat_model_stream") {
+    const token = data.chunk?.content ?? data.content;
     if (typeof token === "string" && token.length > 0) {
       updatedBuffer += token;
+      if (STREAM_DEBUG && updatedBuffer.length <= 200) {
+        console.log(`[STREAM] token chunk (${token.length} chars): "${token.slice(0, 80)}..."`);
+      }
+    } else if (STREAM_DEBUG && data.chunk) {
+      console.log(`[STREAM] on_chat_model_stream chunk keys:`, Object.keys(data.chunk));
     }
-  } 
+  }
 
   // 2. TOOL CALL STREAMING (The Logic Hub)
-  else if (event.event === "on_tool_start") {
-    
-    // 🛠️ DATA EXTRACTION (Gemini Fix)
-    let args = event.data.input;
+  else if (evType === "on_tool_start") {
+    if (STREAM_DEBUG) {
+      console.log(`[STREAM] on_tool_start name="${evName}" data keys:`, Object.keys(data));
+      console.log(`[STREAM] raw data.input type:`, typeof data.input, Array.isArray(data.input) ? 'array' : '');
+      if (data.input !== undefined) {
+        const raw = typeof data.input === 'string' ? data.input.slice(0, 200) : JSON.stringify(data.input).slice(0, 200);
+        console.log(`[STREAM] raw data.input preview:`, raw);
+      }
+    }
+
+    // Try multiple possible locations for tool args (model-dependent)
+    let args = data.input ?? data.args ?? data;
     if (typeof args === 'string') {
       try {
         args = JSON.parse(args);
-        console.log("✅ JSON parsed successfully from string.");
+        if (STREAM_DEBUG) console.log("[STREAM] Parsed args from string, keys:", Object.keys(args || {}));
       } catch (e) {
-        console.log("⚠️ Input was string but NOT JSON.");
+        if (STREAM_DEBUG) console.log("[STREAM] data.input was string but NOT valid JSON:", (e as Error).message);
       }
     } else if (args?.input && typeof args.input === 'string') {
       try {
         args = JSON.parse(args.input);
-        console.log("✅ JSON parsed from nested input string.");
+        if (STREAM_DEBUG) console.log("[STREAM] Parsed args from nested .input, keys:", Object.keys(args || {}));
       } catch (e) {}
     }
 
-    const reasoning = args?.reasoning;
-    if (reasoning) console.log(` "${reasoning.substring(0, 50)}..."`);
+    const reasoning = args?.reasoning ?? args?.reason ?? args?.scratchpad;
+    if (STREAM_DEBUG) {
+      console.log(`[STREAM] tool="${evName}" reasoning present: ${!!reasoning}`, reasoning ? `value length=${String(reasoning).length}` : '');
+      if (args && !reasoning) console.log("[STREAM] args keys (no reasoning found):", Object.keys(args));
+    }
+    if (reasoning) {
+      console.log(`[STREAM] 💭 Reasoning (${evName}): "${String(reasoning).substring(0, 80)}..."`);
+    }
 
-    // 🛠️ ADAPTER CHECK
-    const friendlyStatus = streamingAdapter.getFriendlyStatus(event.name, args);
+    const friendlyStatus = streamingAdapter.getFriendlyStatus(evName, args);
 
     if (friendlyStatus) {
-      // BROADCAST 1: The Thought
       if (reasoning) {
         const thoughtProcess = `\n\n **Reasoning:** *${reasoning}*\n\n`;
         await broadcast(supabase, projectId, 'reasoning', { chunk: thoughtProcess });
+        if (STREAM_DEBUG) console.log(`[STREAM] Broadcast reasoning chunk (${thoughtProcess.length} chars)`);
       }
-
-      // BROADCAST 2: The UI Bar
       await broadcast(supabase, projectId, 'status', { chunk: friendlyStatus });
-
-      // BROADCAST 3: The Header
       const actionHeader = `#### ${friendlyStatus}\n`;
       await broadcast(supabase, projectId, 'reasoning', { chunk: actionHeader });
-      
+    } else if (STREAM_DEBUG && evName) {
+      console.log(`[STREAM] No friendlyStatus for tool "${evName}" (adapter returned null)`);
     }
+  }
+
+  // Debug: log other event types so we can see if reasoning comes from elsewhere
+  else if (STREAM_DEBUG && evType && !evType.includes('chat_model')) {
+    console.log(`[STREAM] Unhandled event type: "${evType}" name="${evName}"`);
   }
 
   return updatedBuffer;
@@ -479,8 +515,15 @@ async function handleResumeAction(
     let lastUpdate = Date.now();
     const UPDATE_INTERVAL = 200;
     const streamingAdapter = new StreamingAdapter();
+    let resumeEventCount = 0;
 
     for await (const event of eventStream) {
+      resumeEventCount++;
+      if (STREAM_DEBUG) {
+        const eventType = (event as any).event;
+        const dataKeys = (event as any).data ? Object.keys((event as any).data) : [];
+        console.log(`[STREAM resume #${resumeEventCount}] event="${eventType}" dataKeys=[${dataKeys.join(', ')}]`);
+      }
       textBuffer = await processStreamEvent({
         event,
         supabase,
@@ -488,13 +531,13 @@ async function handleResumeAction(
         textBuffer,
         streamingAdapter
       });
-      // Debounced reasoning broadcast (so text flows smoothly)
       if (textBuffer.length > 0 && projectId && Date.now() - lastUpdate > UPDATE_INTERVAL) {
         await broadcast(supabase, projectId, 'reasoning', { chunk: textBuffer });
         textBuffer = "";
         lastUpdate = Date.now();
       }
     }
+    if (STREAM_DEBUG) console.log(`[STREAM resume] Total events: ${resumeEventCount}`);
 
     // 7. Flush remaining buffer
     if (textBuffer.length > 0 && projectId) {

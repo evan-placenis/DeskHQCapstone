@@ -133,6 +133,7 @@ CREATE TABLE public.report_images (
     
     -- Context specific to THIS report
     caption TEXT,                -- "Crack in north wall" (Specific to this report)
+    ai_description TEXT,         -- AI-generated description from vision analysis (report builder)
     sort_order INTEGER DEFAULT 0, -- To keep images in order
     
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),

@@ -38,6 +38,12 @@ export const ObservationState = Annotation.Root({
     default: () => "gemini-cheap",
   }),
 
+  /** 'TEXT_ONLY' = no vision tools; 'IMAGE_AND_TEXT' = include analyze_batch_images etc. (from NewReportModal) */
+  processingMode: Annotation<string>({
+    reducer: (x, y) => y ?? x,
+    default: () => "IMAGE_AND_TEXT",
+  }),
+
   // 2. Inputs for Architect Phase
   selectedImageIds: Annotation<string[]>({
     reducer: (x, y) => y ?? x,

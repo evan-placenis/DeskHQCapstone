@@ -1,5 +1,6 @@
 import { SupabaseClient } from '@supabase/supabase-js';
 import { v4 as uuidv4 } from 'uuid';
+import { SpecImageRecord } from '../domain/storage/spec';
 
 export class StorageService {
     /**
@@ -86,6 +87,59 @@ export class StorageService {
 
         if (error) throw new Error(error.message);
         return data || [];
+    }
+
+    async saveSpecImages(images: SpecImageRecord[], client: SupabaseClient): Promise<void> {
+        if (images.length === 0) return;
+    
+        const { error } = await client
+          .from('spec_images') 
+          .insert(images);
+    
+        if (error) {
+          console.error("❌ Failed to save spec images:", error);
+          // We log but don't throw, so the text extraction doesn't fail entirely
+        } else {
+          console.log(`✅ Saved ${images.length} spec images to DB.`);
+        }
+    }
+
+    /**
+     * Deletes all spec images linked to a knowledge document: removes DB rows and their files from storage.
+     * Call this when deleting a knowledge item so extracted spec images are cleaned up.
+     */
+    async deleteSpecImagesByKnowledgeId(kId: string, client: SupabaseClient): Promise<void> {
+        const { data: rows, error: selectError } = await client
+            .from('spec_images')
+            .select('id, storage_path')
+            .eq('k_id', kId);
+
+        if (selectError) {
+            console.warn(`⚠️ Could not fetch spec images for k_id ${kId}:`, selectError.message);
+            return;
+        }
+        if (!rows || rows.length === 0) return;
+
+        const paths = rows.map((r: { storage_path: string }) => r.storage_path).filter(Boolean);
+        if (paths.length > 0) {
+            const { error: storageError } = await client.storage
+                .from('project-images')
+                .remove(paths);
+            if (storageError) {
+                console.warn(`⚠️ Could not delete spec image files from storage:`, storageError.message);
+            }
+        }
+
+        const { error: deleteError } = await client
+            .from('spec_images')
+            .delete()
+            .eq('k_id', kId);
+
+        if (deleteError) {
+            console.warn(`⚠️ Could not delete spec_images rows for k_id ${kId}:`, deleteError.message);
+            return;
+        }
+        console.log(`✅ Deleted ${rows.length} spec image(s) for document ${kId}.`);
     }
 }
 

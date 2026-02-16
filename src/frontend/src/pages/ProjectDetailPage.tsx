@@ -542,13 +542,13 @@ export function ProjectDetailPage({
         projectId: project.id,
         title: reportData.title,
         templateId: reportData.templateId,
-        modeName: reportData.processingMode,
+        processingMode: reportData.processingMode, // TEXT_ONLY | IMAGE_AND_TEXT — controls whether vision tools are included
         selectedImageIds: reportData.photoIds,
         sections: reportData.sections,
         style: reportData.style,
         modelName: reportData.modelName || 'gemini-cheap',
         reportType: reportData.reportType,
-        workflowType: reportData.workflowType, // User's selection from modal (modal default is "simple")
+        workflowType: reportData.workflowType,
       };
 
       // Start the streaming request (don't await - it's a stream)

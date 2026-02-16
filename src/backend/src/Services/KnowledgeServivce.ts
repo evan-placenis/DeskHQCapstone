@@ -4,7 +4,11 @@ import { SupabaseClient } from '@supabase/supabase-js';
 import { v4 as uuidv4 } from 'uuid';
 import { KnowledgeRepository } from '../domain/interfaces/KnowledgeRepository';
 import { VectorStore } from '../domain/interfaces/VectorStore';
-import { DocumentChunk, KnowledgeItem } from '../domain/knowledge/rag.types';
+import { DocumentChunk, KnowledgeItem, VectorMetadata } from '../domain/knowledge/rag.types';
+import { StorageService } from './StorageService';
+import { file } from 'zod';
+
+export type { VectorMetadata } from '../domain/knowledge/rag.types';
 
 export class KnowledgeService {
 
@@ -12,7 +16,8 @@ export class KnowledgeService {
         private repo: KnowledgeRepository,
         private vectorStore: VectorStore,
         private documentFactory: DocumentStrategyFactory, // Injected dependency
-        private adminClient: SupabaseClient // Injected Admin Client for RAG operations
+        private adminClient: SupabaseClient, // Injected Admin Client for RAG operations
+        private storageService: StorageService
     ) { }
 
     public async processDocument(
@@ -23,23 +28,23 @@ export class KnowledgeService {
         client: SupabaseClient
     ): Promise<KnowledgeItem> {
 
-        // 1. Get Organization Name for Namespace
-        const orgNamespace = await this.repo.getOrgNamespace(projectId, client); //this should just be the project id?
-        if (!orgNamespace) {
-            console.error(`Organization namespace not found for project ${projectId}`);
-            throw new Error("Organization namespace not found");
+        const organizationId = await this.repo.getOrgId(projectId, client);
+        const projectNamespace = await this.repo.getProjectNamespace(projectId, client);
+        if (!projectNamespace) {
+            console.error(`Project namespace not found for project ${projectId}`);
+            throw new Error("Project namespace not found");
         }
 
         const kId = uuidv4();
-        console.log(`Processing file: ${fileName} (${kId}) as ${docType} for Org: ${orgNamespace}`);
+        console.log(`Processing file: ${fileName} (${kId}) as ${docType} for namespace: ${projectNamespace}`);
 
         // 2. GET STRATEGY 🧠
         // Use the injected factory instance
         const strategy = this.documentFactory.getStrategy(docType);
 
         // 3. DELEGATE WORK 👷
-        // Extract text (HTML for Spec, Raw Text for Report)
-        const extractedContent = await strategy.extractText(fileBuffer);
+        // Extract text (HTML for Spec, Raw Text for Report); pass client and kId so spec images are linked for cascade delete
+        const extractedContent = await strategy.extractText(fileBuffer, projectId, organizationId, client, kId, fileName);
 
         // Chunk the content
         const rawChunks = strategy.chunkText(extractedContent);
@@ -59,24 +64,25 @@ export class KnowledgeService {
         await this.repo.save(knowledgeItem, client);
 
         try {
-            // 5. PREPARE CHUNKS 
-            const documentChunks: DocumentChunk[] = rawChunks.map((text) => ({
+            const fetchedAt = new Date().toISOString();
+            const documentChunks: DocumentChunk[] = rawChunks.map((text, index) => ({
                 chunkId: uuidv4(),
                 kId: kId,
                 textSegment: text,
                 embeddingVector: [],
                 metadata: {
-                    pageNumber: 0,
-                    sectionTitle: "General",
-                    documentName: fileName,
-                    projectId: projectId
-                }
+                    projectId,
+                    source_type: 'spec_upload',
+                    source_reference: fileName,
+                    title: fileName,
+                    chunkIndex: index,
+                    fetched_at: fetchedAt,
+                } satisfies VectorMetadata,
             }));
 
-            // 6. SAVE TO PINECONE
+            // 6. SAVE TO PINECONE (namespace = projectName/projectId)
             console.log(`🔍 [DEBUG] Generated ${documentChunks.length} chunks.`);
-
-            await this.vectorStore.upsertChunks(documentChunks, orgNamespace);
+            await this.vectorStore.upsertChunks(documentChunks, projectNamespace);
 
             // 7. UPDATE STATUS
             await this.repo.updateStatus(kId, 'INDEXED', client);
@@ -102,28 +108,29 @@ export class KnowledgeService {
             return;
         }
 
-        const orgNamespace = await this.repo.getOrgNamespace(doc.projectId, client);
-        console.log(`Deleting document ${kId} from Org ${orgNamespace}`);
+        const projectNamespace = await this.repo.getProjectNamespace(doc.projectId, client);
+        console.log(`Deleting document ${kId} from namespace ${projectNamespace}`);
 
-        // 2. Delete from Pinecone
-        if (orgNamespace) {
-            await this.vectorStore.deleteDocumentChunks(kId, orgNamespace);
+        if (projectNamespace) {
+            await this.vectorStore.deleteDocumentChunks(kId, projectNamespace);
         } else {
-            console.warn(`Org Namespace missing for doc ${kId}, checking default namespace.`);
+            console.warn(`Project namespace missing for doc ${kId}, checking default namespace.`);
             await this.vectorStore.deleteDocumentChunks(kId);
         }
 
-        // 3. Delete from Postgres
+        // 3. Delete spec images (DB rows + storage files) linked to this document
+        await this.storageService.deleteSpecImagesByKnowledgeId(kId, client);
+
+        // 4. Delete from Postgres
         await this.repo.delete(kId, client);
     }
 
     public async deleteProjectDocuments(projectId: string, client: SupabaseClient): Promise<void> {
-        const orgNamespace = await this.repo.getOrgNamespace(projectId, client);
-        console.log(`Deleting all documents for project ${projectId} from Org ${orgNamespace}`);
+        const projectNamespace = await this.repo.getProjectNamespace(projectId, client);
+        console.log(`Deleting all documents for project ${projectId} from namespace ${projectNamespace}`);
 
-        // 1. Delete from Pinecone
-        if (orgNamespace) {
-            await this.vectorStore.deleteProjectChunks(projectId, orgNamespace);
+        if (projectNamespace) {
+            await this.vectorStore.deleteProjectChunks(projectId, projectNamespace);
         }
 
         // 2. Postgres deletion handled by cascade if project is deleted, 
@@ -131,17 +138,17 @@ export class KnowledgeService {
     }
 
     // --- NEW: SEARCH ---
-    public async search(queries: string[], projectId: string): Promise<string[]> {
+    public async search(queries: string[], projectId: string, client?: SupabaseClient): Promise<string[]> {
         const uniqueSpecs = new Set<string>();
+        const supabase = client ?? this.adminClient;
 
-        // Use projectId as namespace so search matches saveWebDataToDatabase (and doc uploads if aligned)
-        const searchNamespace = projectId;
-        if (!searchNamespace) {
-            console.warn(`No projectId provided, skipping RAG search.`);
+        const projectNamespace = await this.repo.getProjectNamespace(projectId, supabase);
+        if (!projectNamespace) {
+            console.warn(`No project namespace for projectId ${projectId}, skipping RAG search.`);
             return [];
         }
 
-        console.log(`🔍 Searching Knowledge Base for Project ${projectId} (namespace: ${searchNamespace})`);
+        console.log(`🔍 Searching Knowledge Base for Project ${projectId} (namespace: ${projectNamespace})`);
 
         for (const query of queries) {
             if (!query || query.trim() === "") continue;
@@ -149,7 +156,7 @@ export class KnowledgeService {
             // Basic logic: Search for each description
             // Limit to top 2 results per image description to avoid context bloat
             try {
-                const results = await this.vectorStore.similaritySearch(query, 2, searchNamespace);
+                const results = await this.vectorStore.similaritySearch(query, 2, projectNamespace);
                 results.forEach(doc => {
                     uniqueSpecs.add(doc.textSegment);
                 });
@@ -171,27 +178,27 @@ export class KnowledgeService {
         // This groups all chunks from this ONE search result together
         const knowledgeId = uuidv4();
 
-        // 3. Format for your Vector Store
-        // We leave embeddingVector empty [] as your store handles it
-        const finalData = textSegments.map((segment, index) => ({
+        const fetchedAt = new Date().toISOString();
+        const webTitle = sourceUrl ? new URL(sourceUrl).hostname : "Web Search";
+        const finalData: DocumentChunk[] = textSegments.map((segment, index) => ({
             chunkId: uuidv4(),
-            kId: knowledgeId, // Shared ID for the whole document
+            kId: knowledgeId,
             textSegment: segment,
-            embeddingVector: [], // 👈 Empty, gets done in the upsertChunks function
+            embeddingVector: [],
             metadata: {
-                pageNumber: 1,  //may want to change the records to be more general(not have a page number)
-                sectionTitle: "Web Research",
-                documentName: sourceUrl || "External Search",
-                projectId: projectId,
-                chunkIndex: index
-            }
+                projectId,
+                source_type: 'web_search',
+                source_reference: sourceUrl || "unknown",
+                title: webTitle,
+                chunkIndex: index,
+                fetched_at: fetchedAt,
+            } satisfies VectorMetadata,
         }));
 
-        // 4. Send to store
+        // 4. Send to store (same namespace as doc uploads: projectName/projectId)
         if (finalData.length > 0) {
-            // This function will presumably loop through finalData and 
-            // call openai.embeddings.create for each item before saving
-            await this.vectorStore.upsertChunks(finalData, projectId);
+            const projectNamespace = await this.repo.getProjectNamespace(projectId, this.adminClient);
+            await this.vectorStore.upsertChunks(finalData, projectNamespace || projectId);
         }
     }
 

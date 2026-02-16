@@ -20,7 +20,7 @@ import { UserService } from '../Services/UserService';
 import { StorageService } from '../Services/StorageService';
 import { StatsService } from '../Services/StatsService';
 import Exa from "exa-js";
-import { VisionAgent } from '../AI_Skills/llm/VisonAgent/GPT4o';
+import { VisionAgent } from '../AI_Skills/llm/VisonAgent/VisionAgent';
 
 import { TriggerJobQueue } from '../infrastructure/job/trigger/TriggerJobQueue';
 import { createClient, SupabaseClient } from "@supabase/supabase-js";
@@ -121,7 +121,8 @@ export class Container {
         this.knowledgeRepo,
         this.vectorStore,
         this.documentFactory,
-        this.adminClient
+        this.adminClient,
+        this.storageService
       );
     }
     return this._knowledgeService;

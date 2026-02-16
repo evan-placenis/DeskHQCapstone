@@ -51,7 +51,7 @@ export async function POST(request: Request) {
         name: name,
         status: 'ACTIVE',
         metadata: {
-            createdDate: now,
+            createdAt: now,
             lastModifiedDate: now,
             status: 'ACTIVE',
             createdByUserId: resolvedUserId

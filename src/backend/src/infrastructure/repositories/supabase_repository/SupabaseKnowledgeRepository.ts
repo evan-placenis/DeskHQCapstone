@@ -130,4 +130,17 @@ export class SupabaseKnowledgeRepository implements KnowledgeRepository {
         // 3. Return sanitized name (e.g. "My_Organization")
         return org?.name ? org.name.trim().replace(/\s+/g, '_') : '';
     }
+
+    /** Project-scoped namespace for Pinecone: "projectName/projectId" (slash kept; Pinecone allows it in namespace). */
+    async getProjectNamespace(projectId: string, client: SupabaseClient): Promise<string> {
+        const { data: project } = await client
+            .from('projects')
+            .select('name')
+            .eq('id', projectId)
+            .single();
+
+        if (!project?.name) return projectId;
+        const safeName = project.name.trim().replace(/\s+/g, '_').replace(/[/\\]/g, '_').slice(0, 100);
+        return `${safeName}/${projectId}`;
+    }
 }

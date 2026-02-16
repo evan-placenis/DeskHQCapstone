@@ -17,7 +17,7 @@ export interface Project {
 }
 
 export interface ProjectMetadata {
-    createdDate: Date;
+    createdAt: Date;
     createdByUserId: string;
     lastModifiedDate: Date;
     status: string

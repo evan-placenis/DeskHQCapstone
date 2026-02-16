@@ -149,17 +149,17 @@ export function PhotoUploadModal({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[650px] rounded-xl max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
+      <DialogContent className="w-[min(650px,95vw)] max-w-[95vw] rounded-xl max-h-[90vh] overflow-x-hidden overflow-y-auto">
+        <DialogHeader className="min-w-0">
           <DialogTitle>Upload Photos</DialogTitle>
           <DialogDescription>
             Upload site photos and organize them into folders
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-6 py-4">
+        <div className="space-y-6 py-4 min-w-0">
           {/* Folder Selection */}
-          <div>
+          <div className="min-w-0">
             <label className="text-sm text-slate-700 mb-3 block">Organize Into Folder</label>
             <div className="grid grid-cols-2 gap-3 mb-4">
               <button
@@ -221,8 +221,8 @@ export function PhotoUploadModal({
           </div>
 
           {/* File Upload Area */}
-          <div>
-            <div className="flex items-center justify-between mb-2">
+          <div className="min-w-0">
+            <div className="flex items-center justify-between mb-2 min-w-0 gap-2">
               <label className="text-sm text-slate-700 block">Photos</label>
               <div className="flex items-center space-x-2">
                 <Checkbox 
@@ -236,7 +236,7 @@ export function PhotoUploadModal({
               </div>
             </div>
             <div
-              className={`border-2 border-dashed rounded-xl p-8 text-center transition-all ${
+              className={`border-2 border-dashed rounded-xl p-4 sm:p-6 text-center transition-all min-w-0 overflow-hidden ${
                 isDragging
                   ? "border-theme-action-primary bg-theme-primary-5"
                   : selectedFiles.length > 0
@@ -276,10 +276,10 @@ export function PhotoUploadModal({
           </div>
 
           {/* Audio File Upload Area */}
-          <div>
+          <div className="min-w-0">
             <label className="text-sm text-slate-700 mb-2 block">Audio Files</label>
             <div
-              className={`border-2 border-dashed rounded-xl p-8 text-center transition-all ${
+              className={`border-2 border-dashed rounded-xl p-4 sm:p-6 text-center transition-all min-w-0 overflow-hidden ${
                 isAudioDragging
                   ? "border-theme-action-primary bg-theme-primary-5"
                   : selectedAudioFiles.length > 0
@@ -320,23 +320,23 @@ export function PhotoUploadModal({
 
           {/* Selected Files List */}
           {selectedFiles.length > 0 && (
-            <div>
+            <div className="min-w-0">
               <label className="text-sm text-slate-700 mb-2 block">
                 Selected Photos ({selectedFiles.length})
               </label>
-              <div className="space-y-2 max-h-[200px] overflow-y-auto border border-slate-200 rounded-lg p-3">
+              <div className="space-y-2 max-h-[200px] overflow-y-auto overflow-x-hidden border border-slate-200 rounded-lg p-3 min-w-0">
                 {selectedFiles.map((file, index) => (
                   <div
                     key={index}
-                    className="flex items-center justify-between p-2 bg-slate-50 rounded-lg"
+                    className="flex items-center justify-between gap-2 p-2 bg-slate-50 rounded-lg min-w-0"
                   >
-                    <div className="flex items-center gap-3 flex-1 min-w-0">
-                      <div className="w-10 h-10 bg-theme-primary-10 rounded-lg flex items-center justify-center flex-shrink-0">
-                        <ImageIcon className="w-5 h-5 text-theme-primary" />
+                    <div className="flex items-center gap-2 flex-1 min-w-0 overflow-hidden">
+                      <div className="w-8 h-8 sm:w-10 sm:h-10 bg-theme-primary-10 rounded-lg flex items-center justify-center flex-shrink-0">
+                        <ImageIcon className="w-4 h-4 sm:w-5 sm:h-5 text-theme-primary" />
                       </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm text-slate-900 truncate">{file.name}</p>
-                        <p className="text-xs text-slate-500">{formatFileSize(file.size)}</p>
+                      <div className="flex-1 min-w-0 overflow-hidden">
+                        <p className="text-sm text-slate-900 truncate" title={file.name}>{file.name}</p>
+                        <p className="text-xs text-slate-500 truncate">{formatFileSize(file.size)}</p>
                       </div>
                     </div>
                     <Button
@@ -355,23 +355,23 @@ export function PhotoUploadModal({
 
           {/* Selected Audio Files List */}
           {selectedAudioFiles.length > 0 && (
-            <div>
+            <div className="min-w-0">
               <label className="text-sm text-slate-700 mb-2 block">
                 Selected Audio Files ({selectedAudioFiles.length})
               </label>
-              <div className="space-y-2 max-h-[200px] overflow-y-auto border border-slate-200 rounded-lg p-3">
+              <div className="space-y-2 max-h-[200px] overflow-y-auto overflow-x-hidden border border-slate-200 rounded-lg p-3 min-w-0">
                 {selectedAudioFiles.map((file, index) => (
                   <div
                     key={index}
-                    className="flex items-center justify-between p-2 bg-slate-50 rounded-lg"
+                    className="flex items-center justify-between gap-2 p-2 bg-slate-50 rounded-lg min-w-0"
                   >
-                    <div className="flex items-center gap-3 flex-1 min-w-0">
-                      <div className="w-10 h-10 bg-theme-primary-10 rounded-lg flex items-center justify-center flex-shrink-0">
-                        <Music className="w-5 h-5 text-theme-primary" />
+                    <div className="flex items-center gap-2 flex-1 min-w-0 overflow-hidden">
+                      <div className="w-8 h-8 sm:w-10 sm:h-10 bg-theme-primary-10 rounded-lg flex items-center justify-center flex-shrink-0">
+                        <Music className="w-4 h-4 sm:w-5 sm:h-5 text-theme-primary" />
                       </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm text-slate-900 truncate">{file.name}</p>
-                        <p className="text-xs text-slate-500">{formatFileSize(file.size)}</p>
+                      <div className="flex-1 min-w-0 overflow-hidden">
+                        <p className="text-sm text-slate-900 truncate" title={file.name}>{file.name}</p>
+                        <p className="text-xs text-slate-500 truncate">{formatFileSize(file.size)}</p>
                       </div>
                     </div>
                     <Button

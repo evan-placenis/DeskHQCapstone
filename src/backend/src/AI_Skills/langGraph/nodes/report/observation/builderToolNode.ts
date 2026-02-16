@@ -1,20 +1,18 @@
 import { ToolMessage } from "@langchain/core/messages";
 import { reportSkills } from "../../../../LangGraph_skills/report.skills";
-import { visionSkills } from "../../../../LangGraph_skills/vision.skills";
+import { visionSkillsWithReport } from "../../../../LangGraph_skills/vision.skills";
 import { researchSkills } from "../../../../LangGraph_skills/research.skills";
 import { Container } from "@/backend/config/container";
 export async function builderToolsNode(state: any) {
-  const { messages, projectId, userId, selectedImageIds } = state;
+  const { messages, projectId, userId, selectedImageIds, draftReportId, processingMode } = state;
   const lastMessage = messages[messages.length - 1];
 
-  // ✅ FIX: Re-instantiate client instead of using state.client
-  // State.client may be serialized/deserialized incorrectly when resuming from checkpoint
   const freshClient = Container.adminClient;
+  const includeVision = processingMode !== 'TEXT_ONLY';
 
-  // 1. Only load BUILDER skills
   const builderTools = [
      ...reportSkills(projectId, userId, freshClient, selectedImageIds),
-     ...visionSkills,
+     ...(includeVision ? visionSkillsWithReport(draftReportId, freshClient) : []),
      ...researchSkills(projectId)
   ];
 
