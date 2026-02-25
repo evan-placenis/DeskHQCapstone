@@ -1,5 +1,5 @@
 import { Project } from "@/frontend/types";
-import { FolderOpen, Camera, FileText, ArrowRight, Clock, CheckCircle2, Trash2 } from "lucide-react";
+import { FolderOpen, Camera, FileText, ArrowRight, Clock, CheckCircle2, Trash2 , Lightbulb} from "lucide-react";
 import {
   Select,
   SelectContent,
@@ -52,6 +52,10 @@ export function ProjectCard({ project, onClick, onStatusChange, onDelete }: Proj
             <span className="flex items-center gap-0.5">
               <Camera className="w-3 h-3 sm:w-4 sm:h-4" />
               {project.photos}
+            </span>
+            <span className="flex items-center gap-0.5" title="Knowledge / spec documents">
+              <Lightbulb className="w-3 h-3 sm:w-4 sm:h-4" />
+              {project.documents ?? 0}
             </span>
             <span className="text-[11px] sm:text-xs text-slate-500">• {project.lastUpdated}</span>
           </div>

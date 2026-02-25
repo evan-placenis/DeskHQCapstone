@@ -83,7 +83,7 @@ export class SupabaseProjectRepository implements ProjectRepository {
 
                 // 2. Metadata (Flattened)
                 created_by_user_id: project.metadata.createdByUserId,
-                created_date: project.metadata.createdDate,
+                created_at: project.metadata.createdAt,
                 // last_modified_date is auto-handled by DB Trigger, but we can force it if needed:
                 last_modified_date: project.metadata.lastModifiedDate,
 
@@ -119,7 +119,7 @@ export class SupabaseProjectRepository implements ProjectRepository {
     private mapToDomain(row: any): Project {
         // 1. Reconstruct Metadata
         const metadata: ProjectMetadata = {
-            createdDate: new Date(row.created_date),
+            createdAt: new Date(row.created_at),
             createdByUserId: row.created_by_user_id,
             lastModifiedDate: new Date(row.last_modified_date),
             status: row.status
@@ -139,7 +139,7 @@ export class SupabaseProjectRepository implements ProjectRepository {
             name: row.name,
             status: row.status,
 
-            createdAt: new Date(row.created_date),
+            createdAt: new Date(row.created_at),
             updatedAt: new Date(row.last_modified_date),
             metadata: metadata,
             jobInfo: jobInfo,

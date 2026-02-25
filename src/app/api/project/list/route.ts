@@ -32,16 +32,52 @@ export async function GET(request: Request) {
     // Pass the authenticated client so we respect RLS
     const projects = await Container.projectRepo.getByOrgId(orgId, supabase);
 
-    // 3. Map to Frontend Friendly Format if needed
-    // The frontend expects: { id, name, reports, photos, status, lastUpdated }
-    // We'll calculate mock counts for reports/photos for now as those tables aren't fully linked in this query yet
+    // 3. Get counts for each project
+    const projectIds = projects.map(p => p.projectId);
+    
+    // Count reports per project
+    const { data: reportCounts } = await supabase
+      .from('reports')
+      .select('project_id')
+      .in('project_id', projectIds);
+    
+    const reportsByProject = (reportCounts || []).reduce((acc: Record<string, number>, report: any) => {
+      acc[report.project_id] = (acc[report.project_id] || 0) + 1;
+      return acc;
+    }, {});
+
+    // Count photos per project
+    const { data: photoCounts } = await supabase
+      .from('project_images')
+      .select('project_id')
+      .in('project_id', projectIds);
+    
+    const photosByProject = (photoCounts || []).reduce((acc: Record<string, number>, photo: any) => {
+      acc[photo.project_id] = (acc[photo.project_id] || 0) + 1;
+      return acc;
+    }, {});
+
+    // Count knowledge/spec documents per project
+    const { data: docCounts } = await supabase
+      .from('knowledge_items')
+      .select('project_id')
+      .in('project_id', projectIds);
+    
+    const documentsByProject = (docCounts || []).reduce((acc: Record<string, number>, doc: any) => {
+      acc[doc.project_id] = (acc[doc.project_id] || 0) + 1;
+      return acc;
+    }, {});
+
+    // 4. Map to Frontend Friendly Format
+    // The frontend expects: { id, name, reports, photos, documents, status, lastUpdated }
     const mappedProjects = projects.map(p => ({
         id: p.projectId,
         name: p.name,
         status: p.status === 'ACTIVE' ? 'Active' : p.status === 'COMPLETED' ? 'Completed' : 'Archived',
         lastUpdated: p.updatedAt ? new Date(p.updatedAt).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
-        reports: 0, // Placeholder
-        photos: 0,  // Placeholder
+        reports: reportsByProject[p.projectId] || 0,
+        photos: photosByProject[p.projectId] || 0,
+        documents: documentsByProject[p.projectId] || 0,
         description: p.jobInfo?.clientName ? `Client: ${p.jobInfo.clientName}` : undefined
     }));
 

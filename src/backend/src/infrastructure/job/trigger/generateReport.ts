@@ -11,9 +11,10 @@ import { createClient } from "@supabase/supabase-js";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 // 👇 IMPORT WORKFLOW REGISTRY
-import { getWorkflow } from "../../../AI_Skills/LangGraph/workflow"; 
-import { HumanMessage } from "@langchain/core/messages";
+import { getWorkflow } from "../../../AI_Skills/LangGraph/workflow";
+import { HumanMessage, SystemMessage } from "@langchain/core/messages";
 import { StreamingAdapter } from "../../../AI_Skills/LangGraph/utils/streaming-adapter";
+import { getFlattenedTasks } from "../../../AI_Skills/LangGraph/nodes/report/observation/builderNode";
 
 // Load environment variables - ensure they're available for Trigger.dev workers
 // Try multiple paths to find .env file (relative to where Trigger.dev runs from)
@@ -46,15 +47,18 @@ export interface TriggerPayload {
   action?: "start" | "resume"; // Action type
   approvalStatus?: "APPROVED" | "REJECTED"; // For resume actions
   userFeedback?: string; // For resume actions
+  /** When user approves (possibly after editing), frontend sends the plan to use. Builder uses this directly. */
+  modifiedPlan?: { sections: any[]; strategy?: string; reasoning?: string };
   input?: {
-    reportId?: string; // Pre-generated reportId from API route
-    title?: string; // User-selected report title
+    reportId?: string;
+    title?: string;
     reportType: string;
-    modelName: string; // 'grok', 'gemini', 'claude'
+    modelName: string;
     selectedImageIds: string[];
     templateId: string;
     sections?: any[]; // Custom sections from frontend
-    workflowType?: string; // Workflow type: 'simple', 'advanced', etc. 
+    workflowType?: string;
+    processingMode?: 'TEXT_ONLY' | 'IMAGE_AND_TEXT'; // From NewReportModal: TEXT_ONLY = no vision tools
   };
 }
 
@@ -134,7 +138,7 @@ export const generateReportTask = task({
           organization_id: organizationId,
           project_id: payload.projectId,
           title: title,
-          status: 'DRAFT',
+          status: 'GENERATING',
           template_id: payload.input.templateId || null,
           created_by: payload.userId,
           created_at: new Date().toISOString(),
@@ -177,19 +181,20 @@ export const generateReportTask = task({
       // 7. PREPARE LANGGRAPH STATE
       // Instead of calling reportService.generateReportStream, we prepare the Graph Input
       const inputState = {
-        messages: [new HumanMessage("Generate the report.")], // Trigger the graph
-        context: contextPrompt, // System prompt from template
+        messages: [new HumanMessage("Generate the report.")],
+        context: contextPrompt,
         projectId: payload.projectId,
         userId: payload.userId,
         reportType: payload.input.reportType,
         title: payload.input.title,
         provider: payload.input.modelName,
         selectedImageIds: payload.input.selectedImageIds,
-        draftReportId: draftReportId, // Pass the ID so agents know where to write
-        client: supabase, // Pass Supabase client for database operations
-        photoNotes: "", // Optional: Could come from frontend in future
-        structureInstructions: structureInstructions, // From template
-        currentSection: "init"
+        draftReportId: draftReportId,
+        client: supabase,
+        photoNotes: "",
+        structureInstructions: structureInstructions,
+        currentSection: "init",
+        processingMode: payload.input.processingMode ?? "IMAGE_AND_TEXT", // TEXT_ONLY = no vision tools
       };
 
       // 8. RUN THE GRAPH STREAM
@@ -203,7 +208,15 @@ export const generateReportTask = task({
       });
       const streamingAdapter = new StreamingAdapter();
 
-      // 9. THE NEW LOOP (Adapting LangGraph events to your logic)
+      // 9. Send initial status (with small delay to ensure frontend is subscribed)
+      // Give frontend time to subscribe before sending first broadcast
+      console.log(`⏳ Waiting 1 second for frontend subscription to channel project-${payload.projectId}...`);
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      console.log(`📤 Sending initial status broadcast...`);
+      await broadcast(supabase, payload.projectId!, 'status', { chunk: 'Starting report generation...' });
+      console.log(`✅ Initial status broadcast sent`);
+      
+      // 10. THE NEW LOOP (Adapting LangGraph events to your logic)
       for await (const event of eventStream) {
         textBuffer = await processStreamEvent({
           event,
@@ -290,11 +303,13 @@ export const generateReportTask = task({
 
 // --- HELPERS TO KEEP THE CODE CLEAN ---
 
+/** Send broadcast via REST (httpSend) so server/worker delivery is explicit and reliable. */
 async function broadcast(supabase: any, projectId: string, event: string, payload: any) {
-  return supabase.channel(`project-${projectId}`).send({
-    type: 'broadcast',
-    event,
-    payload: { ...payload, projectId }
+  const channelName = `project-${projectId}`;
+  const channel = supabase.channel(channelName);
+  const body = { ...payload, projectId };
+  return channel.httpSend(event, body).catch((err: unknown) => {
+    console.warn(`[Broadcast] ${event} failed:`, err);
   });
 }
 
@@ -342,10 +357,11 @@ async function addFinalMessageToChatSession(
   }
 
 }
+// --- REPLACEMENT HELPER ---
 
 /**
- * Centralized logic to handle LangGraph events and broadcast them to the frontend.
- * This ensures "Start" and "Resume" actions look identical to the user.
+ * Robustly extracts text and status from LangGraph events.
+ * Returns the *newly accumulated* text buffer (not just the chunk).
  */
 async function processStreamEvent({
   event,
@@ -361,59 +377,94 @@ async function processStreamEvent({
   streamingAdapter: StreamingAdapter;
 }): Promise<string> {
   let updatedBuffer = textBuffer;
-
-  // 1. RAW TOKEN STREAMING
+  
+  // ---------------------------------------------------------
+  // 1. LLM TOKEN STREAMING (The "Typewriter" Effect)
+  // ---------------------------------------------------------
   if (event.event === "on_chat_model_stream") {
-    const token = event.data.chunk?.content;
-    if (typeof token === "string" && token.length > 0) {
-      updatedBuffer += token;
-    }
-  } 
-
-  // 2. TOOL CALL STREAMING (The Logic Hub)
-  else if (event.event === "on_tool_start") {
+    // 🔍 EXTRACT CONTENT
+    // LangChain is inconsistent. It could be:
+    // A. event.data.chunk.content (Standard)
+    // B. event.data.chunk (String)
+    // C. event.data.content (Legacy)
     
-    // 🛠️ DATA EXTRACTION (Gemini Fix)
-    let args = event.data.input;
-    if (typeof args === 'string') {
-      try {
-        args = JSON.parse(args);
-        console.log("✅ JSON parsed successfully from string.");
-      } catch (e) {
-        console.log("⚠️ Input was string but NOT JSON.");
-      }
-    } else if (args?.input && typeof args.input === 'string') {
-      try {
-        args = JSON.parse(args.input);
-        console.log("✅ JSON parsed from nested input string.");
-      } catch (e) {}
+    let content = "";
+    const chunk = event.data?.chunk;
+    
+    if (typeof chunk === "string") {
+      content = chunk;
+    } else if (chunk && typeof chunk.content === "string") {
+      content = chunk.content;
+    } else if (event.data?.content) {
+      content = event.data.content;
     }
 
-    const reasoning = args?.reasoning;
-    if (reasoning) console.log(` "${reasoning.substring(0, 50)}..."`);
-
-    // 🛠️ ADAPTER CHECK
-    const friendlyStatus = streamingAdapter.getFriendlyStatus(event.name, args);
-
-    if (friendlyStatus) {
-      // BROADCAST 1: The Thought
-      if (reasoning) {
-        const thoughtProcess = `\n\n **Reasoning:** *${reasoning}*\n\n`;
-        await broadcast(supabase, projectId, 'reasoning', { chunk: thoughtProcess });
-      }
-
-      // BROADCAST 2: The UI Bar
-      await broadcast(supabase, projectId, 'status', { chunk: friendlyStatus });
-
-      // BROADCAST 3: The Header
-      const actionHeader = `#### ${friendlyStatus}\n`;
-      await broadcast(supabase, projectId, 'reasoning', { chunk: actionHeader });
+    // 🛡️ IGNORE EMPTY CHUNKS
+    if (content && content.length > 0) {
+      updatedBuffer += content;
       
+      // OPTIONAL: Log if you want to see it working
+      // if (STREAM_DEBUG) console.log(`🔤 Chunk: ${content.slice(0, 20)}...`);
     }
+  }
+
+  // ---------------------------------------------------------
+  // 2. TOOL START (Capture Intent & Reasoning)
+  // ---------------------------------------------------------
+  else if (event.event === "on_tool_start") {
+    const toolName = event.name;
+    const toolInput = event.data?.input;
+
+    // 🔍 DEBUG LOG: See exactly what LangChain gives us
+    console.log(`🔍 [Stream Debug] ${toolName} Input:`, JSON.stringify(toolInput, null, 2));
+
+    // Get the formatted header + reasoning string
+    const statusMessage = streamingAdapter.getFriendlyStatus(toolName, toolInput);
+
+    if (statusMessage) {
+        console.log(`[Stream] ${statusMessage.split('\n')[0]}`); // Log just the header to console
+        
+        // Broadcast to UI
+        await broadcast(supabase, projectId, 'reasoning', { 
+            chunk: `\n${statusMessage}\n\n` // Add spacing
+        });
+        
+        updatedBuffer += `\n${statusMessage}\n\n`;
+    }
+  }
+  
+  /// ---------------------------------------------------------
+// 2. TOOL END (Capture Results)
+// ---------------------------------------------------------
+else if (event.event === "on_tool_end") {
+  const toolName = event.name;
+  const toolOutput = event.data?.output;
+
+  // Get the formatted result string
+  const completionMessage = streamingAdapter.getFriendlyCompletion(toolName, toolOutput);
+
+  if (completionMessage) {
+      // Broadcast to UI
+      await broadcast(supabase, projectId, 'reasoning', { 
+          chunk: `\n${completionMessage}\n\n` 
+      });
+      
+      updatedBuffer += `\n${completionMessage}\n\n`;
+    }
+  }
+  
+  // ---------------------------------------------------------
+  // 3. NODE TRANSITIONS (Graph State Updates)
+  // ---------------------------------------------------------
+  else if (event.event === "on_chain_start" && event.name && event.name !== "LangGraph") {
+     // You can broadcast this too if you want granular UI updates
+     await broadcast(supabase, projectId, 'debug_node', { node: event.name });
   }
 
   return updatedBuffer;
 }
+
+
 /**
  * Handle RESUME action - resumes a paused LangGraph workflow after human approval
  */
@@ -444,12 +495,44 @@ async function handleResumeAction(
       },
     };
 
-    // 3. Update the paused state with user's decision
-    await workflowGraph.updateState(config, {
+    // 3. Get current state to preserve draftReportId
+    const pausedState = await workflowGraph.getState(config);
+    const existingDraftReportId = pausedState?.values?.draftReportId || reportId;
+    
+    // 4. Update the paused state with user's decision
+    // When APPROVED, use the frontend's plan (edited or not) so the builder writes from that structure
+    const stateUpdate: Record<string, unknown> = {
       approvalStatus,
       userFeedback: userFeedback || '',
       next_step: approvalStatus === 'REJECTED' ? 'architect' : 'builder',
-    });
+      draftReportId: existingDraftReportId, // CRITICAL: Preserve reportId so builder can write sections
+    };
+    if (approvalStatus === 'APPROVED' && payload.modifiedPlan?.sections) {
+      stateUpdate.reportPlan = payload.modifiedPlan;
+      console.log(`📋 Using frontend plan (${payload.modifiedPlan.sections.length} sections) for builder`);
+    }
+
+    // When resuming after APPROVAL: replace messages with minimal context so the builder isn't confused
+    // by full architect/approval history (avoids "AI thinks it already did the work" or duplicate behavior).
+    if (approvalStatus === 'APPROVED') {
+      const plan = (stateUpdate.reportPlan as { sections?: any[] }) ?? pausedState?.values?.reportPlan;
+      const sections = plan?.sections ?? [];
+      const currentSectionIndex = (pausedState?.values?.currentSectionIndex as number) ?? 0;
+      const tasks = getFlattenedTasks(sections);
+      const currentTask = tasks[currentSectionIndex];
+      const currentTaskTitle = currentTask?.title ?? "Current section";
+      stateUpdate.messages = {
+        __replace: true,
+        value: [
+          new SystemMessage("You are resuming the report after plan approval. Proceed to write the current section only."),
+          new HumanMessage(`Current Task: ${currentTaskTitle}`),
+        ],
+      };
+      console.log(`📝 [Resume] Replaced messages with resume context; current task: ${currentTaskTitle}`);
+    }
+
+    console.log(`🔍 [Resume] Setting draftReportId in state: "${existingDraftReportId}"`);
+    await workflowGraph.updateState(config, stateUpdate);
 
     console.log(`✅ State updated for thread ${reportId}`);
 
@@ -489,8 +572,8 @@ async function handleResumeAction(
         streamingAdapter
       });
       // Debounced reasoning broadcast (so text flows smoothly)
-      if (textBuffer.length > 0 && Date.now() - lastUpdate > UPDATE_INTERVAL) {
-        await broadcast(supabase, payload.projectId!, 'reasoning', { chunk: textBuffer });
+      if (textBuffer.length > 0 && projectId && Date.now() - lastUpdate > UPDATE_INTERVAL) {
+        await broadcast(supabase, projectId, 'reasoning', { chunk: textBuffer });
         textBuffer = "";
         lastUpdate = Date.now();
       }
@@ -502,15 +585,15 @@ async function handleResumeAction(
     }
 
     // 8. Check if we paused again (rejection cycle)
-    const currentState = await workflowGraph.getState(config);
+    const finalState = await workflowGraph.getState(config);
     
-    if (currentState?.values?.approvalStatus === 'PENDING' && currentState?.values?.reportPlan) {
+    if (finalState?.values?.approvalStatus === 'PENDING' && finalState?.values?.reportPlan) {
       console.log('⏸️ Graph paused again for revised plan approval');
       
       if (projectId) {
         await broadcast(supabase, projectId, 'paused', {
           reportId: reportId,
-          reportPlan: currentState.values.reportPlan,
+          reportPlan: finalState.values.reportPlan,
           projectId: projectId
         });
       }

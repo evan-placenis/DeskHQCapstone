@@ -1,7 +1,6 @@
 import { useState } from "react";
 import { Button } from "../ui_components/button";
 import { Input } from "../ui_components/input";
-import { Textarea } from "../ui_components/textarea";
 import { Badge } from "../ui_components/badge";
 import {
   Dialog,
@@ -35,7 +34,6 @@ const documentTypes = [
 export function KnowledgeUploadModal({ open, onOpenChange, onUpload }: KnowledgeUploadModalProps) {
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [documentType, setDocumentType] = useState<string>("specification");
-  const [description, setDescription] = useState("");
   const [isDragging, setIsDragging] = useState(false);
 
   const handleFileSelect = (files: File[]) => {
@@ -74,14 +72,13 @@ export function KnowledgeUploadModal({ open, onOpenChange, onUpload }: Knowledge
     onUpload({
       name: selectedFiles.length === 1 ? selectedFiles[0].name : `${selectedFiles.length} files`, // Placeholder name, handled individually in parent
       type: documentType as KnowledgeDocument["type"],
-      description,
+      description: "",
       fileSize: `${totalSizeKB} KB`,
       fileType: fileExtension.toUpperCase(),
     }, selectedFiles);
 
     // Reset form
     setSelectedFiles([]);
-    setDescription("");
     setDocumentType("specification");
     onOpenChange(false);
   };
@@ -94,20 +91,20 @@ export function KnowledgeUploadModal({ open, onOpenChange, onUpload }: Knowledge
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[600px] rounded-xl max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
+      <DialogContent className="w-[min(600px,95vw)] max-w-[95vw] rounded-xl max-h-[90vh] overflow-x-hidden overflow-y-auto">
+        <DialogHeader className="min-w-0">
           <DialogTitle>Upload Knowledge Documents</DialogTitle>
           <DialogDescription>
             Add reference materials that AI will use when generating and editing reports
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-6 py-4">
+        <div className="space-y-6 py-4 min-w-0">
           {/* File Upload Area */}
-          <div>
+          <div className="min-w-0">
             <label className="text-sm text-slate-700 mb-2 block">Document Files</label>
             <div
-              className={`border-2 border-dashed rounded-xl p-8 text-center transition-all ${
+              className={`border-2 border-dashed rounded-xl p-4 sm:p-6 text-center transition-all min-w-0 overflow-hidden ${
                 isDragging
                   ? "border-theme-primary bg-theme-primary-10"
                   : "border-slate-300 hover:border-slate-400"
@@ -117,22 +114,22 @@ export function KnowledgeUploadModal({ open, onOpenChange, onUpload }: Knowledge
               onDragLeave={handleDragLeave}
             >
               {selectedFiles.length > 0 ? (
-                <div className="space-y-2">
+                <div className="space-y-2 max-h-[40vh] overflow-y-auto overflow-x-hidden min-w-0">
                   {selectedFiles.map((file, index) => (
-                    <div key={index} className="flex items-center justify-between gap-4 bg-slate-50 p-2 rounded-lg border border-slate-200">
-                      <div className="flex items-center gap-3 overflow-hidden">
-                        <div className="w-10 h-10 bg-theme-primary-10 rounded-lg flex items-center justify-center flex-shrink-0">
-                          <FileText className="w-5 h-5 text-theme-primary" />
+                    <div key={index} className="flex items-center justify-between gap-2 bg-slate-50 p-2 rounded-lg border border-slate-200 min-w-0">
+                      <div className="flex items-center gap-2 min-w-0 flex-1">
+                        <div className="w-8 h-8 sm:w-10 sm:h-10 bg-theme-primary-10 rounded-lg flex items-center justify-center flex-shrink-0">
+                          <FileText className="w-4 h-4 sm:w-5 sm:h-5 text-theme-primary" />
                         </div>
-                        <div className="text-left min-w-0">
-                          <p className="text-sm text-slate-900 truncate">{file.name}</p>
-                          <p className="text-xs text-slate-500">{formatFileSize(file.size)}</p>
+                        <div className="text-left min-w-0 overflow-hidden flex-1">
+                          <p className="text-sm text-slate-900 truncate" title={file.name}>{file.name}</p>
+                          <p className="text-xs text-slate-500 truncate">{formatFileSize(file.size)}</p>
                         </div>
                       </div>
                       <Button
                         variant="ghost"
                         size="icon"
-                        className="rounded-lg h-8 w-8 text-slate-400 hover:text-red-500"
+                        className="rounded-lg h-8 w-8 flex-shrink-0 text-slate-400 hover:text-red-500"
                         onClick={() => handleRemoveFile(index)}
                       >
                         <X className="w-4 h-4" />
@@ -208,22 +205,6 @@ export function KnowledgeUploadModal({ open, onOpenChange, onUpload }: Knowledge
                 ))}
               </SelectContent>
             </Select>
-            <p className="text-xs text-slate-500 mt-1">Applies to all uploaded files</p>
-          </div>
-
-          {/* Description */}
-          <div>
-            <label className="text-sm text-slate-700 mb-2 block">
-              Description
-              <span className="text-slate-400 ml-1">(Optional)</span>
-            </label>
-            <Textarea
-              placeholder="Briefly describe what these documents contain..."
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              className="rounded-lg resize-none"
-              rows={3}
-            />
             <p className="text-xs text-slate-500 mt-1">Applies to all uploaded files</p>
           </div>
 

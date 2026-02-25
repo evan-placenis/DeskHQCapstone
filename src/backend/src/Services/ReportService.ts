@@ -35,15 +35,13 @@ export class ReportService {
     }
 
     /**
-     * 🚀 GENERATE: The "Magic Button" function using AI-SDK
-     * 
-     * This method:
+     * 🚀 GENERATE: The "Magic Button" function using LangGraph
+     * * This method:
      * 1. Fetches project data
      * 2. Builds initial messages for report generation
-     * 3. Calls AI-SDK orchestrator with report skills
+     * 3. Calls LangGraph orchestrator with report skills
      * 4. Returns streaming result (caller handles saving)
-     * 
-     * Note: The caller (route handler) should:
+     * * Note: The caller (route handler) should:
      * - Stream the response to the frontend
      * - Collect the final report structure
      * - Save it using saveReport method
@@ -54,7 +52,7 @@ export class ReportService {
         client: SupabaseClient,
         userId: string
     ) {
-        console.log(`⚙️ Service: Starting AI-SDK generation for Project ${projectId}`);
+        console.log(`⚙️ Service: Starting LangGraph generation for Project ${projectId}`);
 
         // 1. Fetch Template from DB (No more hardcoded strings!)
         const template = await this.reportRepo.getTemplateById(input.reportType, client);
@@ -70,23 +68,26 @@ export class ReportService {
             input.title
         );
 
-       // 1. Prepare the Dynamic Context from DB
-        const dbContext = `
+       // 3a. Prepare System Context (Identity & Liability Rules)
+        // This goes to the Planner/Orchestrator so it knows "What it is" and what to do
+        const systemContext = `
         ${template.system_prompt}
-
-        REPORT STRUCTURE RULES:
-        ${template.structure_instructions}
 
         Project ID: ${projectId}
         Draft Report ID: ${draftReport.reportId}
         `;
 
-        // 2. Prepare the User Goal
-        const userMessage = {
-        role: 'user' as const,
-        content: template.user_prompt
-        };
+        // 3b. Prepare Structure Context (The "Blueprints")
+        // This is kept SEPARATE so the Writer node can see it clearly without dilution.
+        const structureContext = template.structure_instructions;
 
+        // --- CHANGED SECTION END ---
+
+        // 4. Prepare the User Goal
+        const userMessage = {
+            role: 'user' as const,
+            content: template.user_prompt
+        };
 
         // Normalize input - ensure arrays are defined
         const normalizedInput = {
@@ -100,8 +101,9 @@ export class ReportService {
         const provider = (normalizedInput.modelName?.toLowerCase())|| 'gemini-cheap';
 
         const streamResult = await this.reportOrchestrator.generateStream({
-            messages: [userMessage], // Only User message here
-            context: dbContext,      // Pass DB prompt as a separate param
+            messages: [userMessage],
+            systemPrompt: systemContext,       
+            structureInstructions: structureContext,
             projectId,
             userId,
             reportType: normalizedInput.reportType,
@@ -139,6 +141,7 @@ export class ReportService {
         report.tiptapContent = finalMarkdown;
         report.updatedAt = new Date();
         report.versionNumber++;
+        report.status = 'DRAFT'; // Set status to DRAFT when graph completes
 
         // 4. Save the finalized header back to the DB
         await this.reportRepo.update(report, client);
@@ -398,18 +401,16 @@ export class ReportService {
     /**
      * 🛠️ PRIVATE HELPER: The "Stitcher"
      */
+    /** Stitch section bodies only; do not inject section headings (AI controls headings in content). */
     private compileMarkdown(sections: any[]): string {
         return sections.map(s => {
             let md = "";
-
-            // If you still want the Metadata/Severity badge, keep it here:
-            if (s.metadata?.severity) {
-                md += `> **Severity:** ${s.metadata.severity.toUpperCase()}\n\n`;
-            }
-
+            
             const body = s.content?.replace(/\\n/g, '\n') || "";
-            md += s.heading + "\n\n" + body; //should not be hard coded (probably better to let Ai control)
-
+            md += body;
+            if (s.metadata?.severity) {
+                md += `\n**Severity:** ${s.metadata.severity.toUpperCase()}\n\n`;
+            }
             return md;
         }).join('\n\n');
     }

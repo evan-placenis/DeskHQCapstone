@@ -1,10 +1,10 @@
 import { DocumentStrategy } from './interfaces';
 import mammoth from 'mammoth';
+import type { SupabaseClient } from '@supabase/supabase-js';
 
 export class ReportStrategy implements DocumentStrategy {
-    async extractText(buffer: Buffer): Promise<string> {
-        // ReportStrategy currently extracts raw text directly
-        // We can evolve this to be smarter later if needed
+    async extractText(buffer: Buffer, _projectId: string, _organizationId: string, _client: SupabaseClient, _kId?: string): Promise<string> {
+        // ReportStrategy currently extracts raw text directly (no storage path needed)
         const result = await mammoth.extractRawText({ buffer });
         return result.value;
     }

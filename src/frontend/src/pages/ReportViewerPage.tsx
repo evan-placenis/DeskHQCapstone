@@ -323,17 +323,18 @@ function ReportViewerContent() {
 
         console.log(`📊 Poll result: status="${result.status}"`);
 
-        // If status is AWAITING_APPROVAL, fetch the plan and show modal
-        if (result.status === 'AWAITING_APPROVAL' && result.plan) {
+        // If status is AWAITING_APPROVAL, show the approval modal
+        // Keep polling so we can detect when the builder finishes after approval
+        if (result.status === 'AWAITING_APPROVAL' && result.plan && !showApprovalModal) {
           console.log('✅ Detected AWAITING_APPROVAL via polling!');
-          setPolledReportPlan(result.plan); // Store the plan from polling
+          setPolledReportPlan(result.plan);
           setShowApprovalModal(true);
-          clearInterval(pollInterval); // Stop polling once we detect approval needed
         }
 
-        // If status changed to COMPLETED, stop generating
-        if (result.status === 'COMPLETED') {
-          console.log('🎉 Report completed (detected via polling)');
+        // If status changed to DRAFT (builder finished) or COMPLETED/FINAL, stop generating
+        // Note: initial status is 'GENERATING', so 'DRAFT' only appears after saveReport completes
+        if (result.status === 'DRAFT' || result.status === 'COMPLETED' || result.status === 'FINAL') {
+          console.log(`🎉 Report completed (detected via polling, status="${result.status}")`);
           setIsGenerating(false);
           clearInterval(pollInterval);
         }
@@ -346,7 +347,7 @@ function ReportViewerContent() {
       console.log('🛑 Stopping backup polling');
       clearInterval(pollInterval);
     };
-  }, [isGenerating, reportId, streamedReportId]);
+  }, [isGenerating, reportId, streamedReportId, showApprovalModal]);
 
   const handleNavigate = (page: Page) => {
     router.push(getRoute(page));

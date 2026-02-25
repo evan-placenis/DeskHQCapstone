@@ -192,7 +192,7 @@ export const TiptapEditor = forwardRef<TiptapEditorHandle, TiptapEditorProps>(fu
 
                 [&_table]:border-collapse [&_table]:border [&_table]:border-slate-300 [&_table]:w-full
                 [&_td]:border [&_td]:border-slate-300
-                [&_th]:border [&_th]:border-slate-300 [&_th]:bg-slate-50 [&_th]:font-semibold
+                [&_th]:border [&_th]:border-slate-300 [&_th]:bg-white
             `.replace(/\s+/g, ' ').trim(),
             },
         },

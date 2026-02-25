@@ -23,7 +23,7 @@ export async function POST(
   try {
     const { reportId } = await params;
     const body = await request.json();
-    const { approvalStatus, userFeedback } = body;
+    const { approvalStatus, userFeedback, modifiedPlan } = body;
 
     // 1. Validation
     if (!reportId) {
@@ -69,14 +69,14 @@ export async function POST(
     }
 
     // 4. Dispatch to Trigger.dev
-    // The worker will handle LangGraph resume logic
-    // Must match TriggerPayload interface structure
+    // Pass the frontend's plan (edited or not) so the builder uses it directly
     const handle = await tasks.trigger<typeof generateReportTask>("generate-report", {
       reportId: reportId,
       userId: user.id,
-      action: "resume", // Signal that this is a resume, not a new generation
+      action: "resume",
       approvalStatus: approvalStatus as "APPROVED" | "REJECTED",
-      userFeedback: userFeedback || ""
+      userFeedback: userFeedback || "",
+      modifiedPlan: modifiedPlan ?? undefined, // Plan from PlanApprovalModal (possibly user-edited)
     });
 
     console.log(`✅ Resume task queued: ${handle.id}`);

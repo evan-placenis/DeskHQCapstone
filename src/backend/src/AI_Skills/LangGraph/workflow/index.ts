@@ -1,4 +1,4 @@
-import { simpleReportGraph } from "./report/simpleReportGraph";
+
 import { observationReportGraph } from "./report/ObservationReportGraph";
 import { CompiledStateGraph } from "@langchain/langgraph";
 
@@ -6,7 +6,7 @@ import { CompiledStateGraph } from "@langchain/langgraph";
 // Add new workflow graphs here as you create them
 // Use type assertion so different graph shapes (node names, state) are accepted in the registry
 const WORKFLOWS: Record<string, CompiledStateGraph<any, any>> = {
-  "simple": simpleReportGraph as CompiledStateGraph<any, any>,
+  // "simple": simpleReportGraph as CompiledStateGraph<any, any>,
   "observation": observationReportGraph as CompiledStateGraph<any, any>,
 
   // Easy to add more strategies:

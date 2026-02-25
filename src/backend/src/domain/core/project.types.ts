@@ -17,7 +17,7 @@ export interface Project {
 }
 
 export interface ProjectMetadata {
-    createdDate: Date;
+    createdAt: Date;
     createdByUserId: string;
     lastModifiedDate: Date;
     status: string
@@ -49,6 +49,7 @@ export interface ImageMetadata {
         longitude: number;
     };
     tags: string[];          // AI Generated (e.g. ["crack", "foundation"])
+    severity: 'LOW' | 'MEDIUM' | 'HIGH';
 }
 
 // --- KNOWLEDGE (RAG Assets) ---

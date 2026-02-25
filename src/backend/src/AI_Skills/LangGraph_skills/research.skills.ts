@@ -17,11 +17,16 @@ export const researchSkills = (
         // KnowledgeService.search takes string[] and returns string[]
         const results = await Container.knowledgeService.search([query], projectId);
 
-        if (results && results.length > 0) {
-          return `[MEMORY MATCH FOUND]:\n${results.join('\n\n')}`;
-        }
+        if (!results || results.length === 0) return "No matches found.";
 
-        return "No matches found in internal memory.";
+        // 2. Format for AI (The View Layer)
+        // The tool decides the AI needs "[Source: ...]" to do its job
+        const formattedText = results.map(item => {
+          return `[Source: ${item.source}]\n${item.content}`;
+        }).join('\n\n---\n\n');
+
+        return `[MEMORY MATCH FOUND]:\n${formattedText}`;
+
       } catch (error) {
         console.error("Error searching internal memory:", error);
         return "Error accessing internal memory.";

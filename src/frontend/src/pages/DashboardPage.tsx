@@ -24,7 +24,7 @@ interface DashboardPageProps {
   onNavigate: (page: Page) => void;
   onLogout: () => void;
   onSelectProject: (project: Project) => void;
-  onSelectReport: (reportId: number, isPeerReview?: boolean) => void;
+  onSelectReport: (reportId: number | string, isPeerReview?: boolean) => void;
   currentUser?: User;
   peerReviews: PeerReview[];
   handleRequestPeerReview: (reportId: number, reportTitle: string, projectName: string, assignedToId: number, assignedToName: string, notes: string) => void;
@@ -157,12 +157,6 @@ export function DashboardPage({
         return;
       }
 
-      if (showMockData) {
-        setProjectsList(projects);
-        setIsLoadingProjects(false);
-        return;
-      }
-
       if (!currentUser?.id) return;
 
       try {
@@ -194,6 +188,19 @@ export function DashboardPage({
     if (currentUser) {
       fetchProjects();
     }
+
+    // Refresh projects when page becomes visible (user returns from ProjectDetailPage)
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible' && currentUser?.id && !showMockData) {
+        fetchProjects();
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
   }, [currentUser, showMockData]);
 
   const totalReports = projectsList.reduce((sum, p) => sum + p.reports, 0);

@@ -542,13 +542,13 @@ export function ProjectDetailPage({
         projectId: project.id,
         title: reportData.title,
         templateId: reportData.templateId,
-        modeName: reportData.processingMode,
+        processingMode: reportData.processingMode, // TEXT_ONLY | IMAGE_AND_TEXT — controls whether vision tools are included
         selectedImageIds: reportData.photoIds,
         sections: reportData.sections,
         style: reportData.style,
         modelName: reportData.modelName || 'gemini-cheap',
         reportType: reportData.reportType,
-        workflowType: reportData.workflowType, // User's selection from modal (modal default is "simple")
+        workflowType: reportData.workflowType,
       };
 
       // Start the streaming request (don't await - it's a stream)
@@ -853,84 +853,109 @@ export function ProjectDetailPage({
       }
     }
 
-    // Process files in parallel, limited to 6 concurrent uploads
-    const CONCURRENCY_LIMIT = 6;
-    const uploadedPhotos: Photo[] = [];
-    const results: (Photo | null)[] = [];
-
     setIsUploading(true);
     setUploadProgress(0);
-    const totalFiles = files.length;
-    let completedFiles = 0;
 
-    // Helper to process a single file
-    const processFile = async (file: File) => {
-      try {
-        // Compress image before upload
-        console.log(`Compressing ${file.name}...`);
-        const compressedFile = await compressImage(file);
-        console.log(`Compressed ${file.name}: ${(file.size / 1024).toFixed(2)}KB -> ${(compressedFile.size / 1024).toFixed(2)}KB`);
+    try {
+      // Step 1: Compress all images in parallel
+      console.log(`📦 Compressing ${files.length} images...`);
+      setUploadProgress(10); // Show progress for compression phase
+      
+      const compressedFiles = await Promise.all(
+        files.map(async (file) => {
+          const compressed = await compressImage(file);
+          console.log(`✅ Compressed ${file.name}: ${(file.size / 1024).toFixed(2)}KB -> ${(compressed.size / 1024).toFixed(2)}KB`);
+          return { original: file, compressed };
+        })
+      );
 
-        const formData = new FormData();
-        formData.append('file', compressedFile);
-        formData.append('userId', user.id.toString());
-        if (targetFolderName) {
-          formData.append('folderName', targetFolderName);
-        }
+      setUploadProgress(30); // Compression complete
+
+      // Step 2: Create FormData with all files (batch upload)
+      const formData = new FormData();
+
+      // We need to prepare an array of descriptions that matches the file order exactly
+      const descriptions: string[] = [];
+
+      compressedFiles.forEach(({ original, compressed }) => {
+        // 1. Append the file
+        formData.append('file', compressed);
+
+        // 2. Determine the description for THIS specific file
+        // Logic: Use filename if toggle is on, otherwise use the manual text input
+        let desc = "";
         if (useFileNameAsDescription) {
-          // Remove extension for cleaner description
-          const nameWithoutExt = file.name.replace(/\.[^/.]+$/, "");
-          formData.append('description', nameWithoutExt);
-        }
+          // Remove extension: "Living Room.jpg" -> "Living Room"
+          desc = original.name.replace(/\.[^/.]+$/, "");
+        } 
+        // If box is UNCHECKED, we push an empty string. 
+        // This tells the backend: "Use the global description (if any), or nothing."
+        
+        descriptions.push(desc);
+      });
 
-        const response = await fetch(`/api/project/${project.id}/images`, {
-          method: 'POST',
-          body: formData
-        });
+      // 3. Append the descriptions array as a JSON string
+      formData.append('descriptions', JSON.stringify(descriptions));
+      
 
-        const data = await response.json();
+      // Add metadata (shared for all files in this batch)
+      if (targetFolderName) {
+        formData.append('folderName', targetFolderName);
+      }
+    
 
-        if (!response.ok) {
-          throw new Error(data.error || "Upload failed");
-        }
+      setUploadProgress(40); // FormData ready
 
-        const dbImage = data.image;
+      // 3. BATCH AI ANALYSIS
+      // The descriptions are now in the DB, so the PhotoService will fetch them automatically
+      console.log(`📤 Uploading ${files.length} images in batch...`);
+      const response = await fetch(`/api/project/${project.id}/images`, {
+        method: 'POST',
+        body: formData
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || "Batch upload failed");
+      }
+
+      setUploadProgress(90); // Upload complete, processing in background
+
+      // Step 4: Map response images to Photo objects
+      const uploadedPhotos: Photo[] = data.images.map((dbImage: any, index: number) => {
+        const originalFile = compressedFiles[index].original;
+        const description = useFileNameAsDescription 
+          ? originalFile.name.replace(/\.[^/.]+$/, "")
+          : dbImage.description || "";
 
         return {
           id: dbImage.id || Math.random(),
-          url: dbImage.public_url || URL.createObjectURL(compressedFile),
+          url: dbImage.public_url || URL.createObjectURL(compressedFiles[index].compressed),
           storagePath: dbImage.storage_path,
-          name: dbImage.file_name || file.name,
+          name: dbImage.file_name || originalFile.name,
           date: new Date(dbImage.created_at).toISOString().split('T')[0],
           location: "Project Site",
           linkedReport: null,
-          description: dbImage.description || (useFileNameAsDescription ? file.name.replace(/\.[^/.]+$/, "") : ""),
+          description: description,
           folderId: targetFolderId
         } as Photo;
+      });
 
-      } catch (error) {
-        console.error(`Failed to upload ${file.name}:`, error);
-        // Don't alert for every single failure in a batch, maybe just log
-        return null;
-      } finally {
-        completedFiles++;
-        setUploadProgress(Math.round((completedFiles / totalFiles) * 100));
+      setUploadProgress(100);
+      console.log(`✅ Successfully uploaded ${uploadedPhotos.length} photos (${data.processing ? 'AI processing in background' : 'complete'})`);
+
+      // Update state with successfully uploaded photos
+      if (uploadedPhotos.length > 0) {
+        setPhotos([...uploadedPhotos, ...photos]); // Add new photos to the TOP
       }
-    };
 
-    // Execute uploads with concurrency limit
-    for (let i = 0; i < files.length; i += CONCURRENCY_LIMIT) {
-      const chunk = files.slice(i, i + CONCURRENCY_LIMIT);
-      const chunkResults = await Promise.all(chunk.map(file => processFile(file)));
-      results.push(...chunkResults);
-    }
-
-    setIsUploading(false); // Reset upload state
-    const successfulUploads = results.filter((p): p is Photo => p !== null);
-
-    // Update state with successfully uploaded photos
-    if (successfulUploads.length > 0) {
-      setPhotos([...successfulUploads, ...photos]); // Add new photos to the TOP
+    } catch (error: any) {
+      console.error("❌ Batch upload failed:", error);
+      alert(`Failed to upload photos: ${error.message || "Unknown error"}`);
+    } finally {
+      setIsUploading(false);
+      setUploadProgress(0);
     }
   };
 
@@ -939,9 +964,8 @@ export function ProjectDetailPage({
     const previousPhotos = [...photos];
     setPhotos(photos.filter(p => p.id !== photoId));
 
-    // 2. Call API
-    // Adjusted endpoint to match standard REST pattern (DELETE /api/resource/:id)
-    await deleteItem(`/api/project/${project.id}/images/${photoId}`, {
+    // 2. Call API with query parameter (backend expects ?imageId=...)
+    await deleteItem(`/api/project/${project.id}/images?imageId=${photoId}`, {
       onError: (err) => {
         alert(`Failed to delete photo: ${err}`);
         setPhotos(previousPhotos); // Revert on error
@@ -967,8 +991,9 @@ export function ProjectDetailPage({
     // 2. Call API
     // Since folders are virtual (based on 'folder_name' in images), we delete all images with that folder name
     // If the folder is empty/local-only, the API call will just return success with 0 deletions, which is fine.
+    // Backend expects folderName query parameter in the /images route, not a separate /folders route
 
-    await deleteItem(`/api/project/${project.id}/folders?name=${encodeURIComponent(folder.name)}`, {
+    await deleteItem(`/api/project/${project.id}/images?folderName=${encodeURIComponent(folder.name)}`, {
       onError: (err) => {
         alert(`Failed to delete folder: ${err}`);
         // Revert state

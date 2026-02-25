@@ -3,68 +3,98 @@ import { Container } from '@/backend/config/container';
 import { createAuthenticatedClient } from "@/app/api/utils";
 
 //This is the API endpoint for the ProjectDetailPage.tsx to upload photos for a project.
+// app/api/projects/[projectId]/images/route.ts
+
 export async function POST(
     request: Request,
     { params }: { params: Promise<{ projectId: string }> }
 ) {
     try {
         const formData = await request.formData();
-        const file = formData.get("file") as File;
-        //const userId = formData.get("userId") as string;
+        
+        // 1. GET ALL FILES (Not just the first one)
+        const files = formData.getAll("file") as File[]; // <--- KEY CHANGE
         const folderName = formData.get("folderName") as string;
-        const description = formData.get("description") as string;
+        const descriptionsJson = formData.get("descriptions") as string;
+
+
+        let descriptions: string[] = [];
+        
+        try {
+            if (descriptionsJson) {
+                descriptions = JSON.parse(descriptionsJson);
+            }
+        } catch (e) {
+            console.warn("⚠️ Failed to parse descriptions JSON, falling back to empty strings.");
+        }
+
+        // Fallback: If descriptions array is missing or length mismatch, fill with empty strings
+        if (descriptions.length !== files.length) {
+            const singleDesc = formData.get("description") as string || "";
+            // If we have a single description but multiple files (old behavior), fill array with it
+            descriptions = new Array(files.length).fill(singleDesc);
+        }
         
         const resolvedParams = await params;
         const projectId = resolvedParams.projectId;
 
-        // Create a user-scoped Supabase client to respect RLS
+        // ... Authentication Checks (Same as before) ...
         const { supabase, user } = await createAuthenticatedClient();
-        
-        if (!user) {
-            return NextResponse.json({ error: "Authentication error" }, { status: 401 });
-        }
+        if (!user) return NextResponse.json({ error: "Auth error" }, { status: 401 });
         const userId = user.id;
-        
-        if (!file) {
-            return NextResponse.json({ error: "No file uploaded" }, { status: 400 });
+
+        if (!files || files.length === 0) {
+            return NextResponse.json({ error: "No files uploaded" }, { status: 400 });
         }
 
-        if (!userId) {
-            return NextResponse.json({ error: "User ID is required" }, { status: 401 });
-        }
-
-        // 1. Get User Profile to retrieve organization_id
+        // ... Get Organization ID (Same as before) ...
         const userProfile = await Container.userService.getUserProfile(userId, supabase);
-        if (!userProfile || !userProfile.organization_id) {
-            return NextResponse.json(
-                { error: "User profile not found or not linked to an organization." },
-                { status: 403 }
-            );
-        }
-        const organizationId = userProfile.organization_id;
+        const organizationId = userProfile?.organization_id;
+        if (!organizationId) return NextResponse.json({ error: "No Org ID" }, { status: 403 });
 
-        // 2. Upload using StorageService
-        console.log(`📤 Uploading image for Project ${projectId} (Org: ${organizationId})...`);
-        const uploadedImage = await Container.storageService.uploadProjectImage(
-            projectId,
-            organizationId,
-            userId,
-            file,
-            file.name,
-            folderName,
-            description,
-            supabase // Pass user-scoped client
+        console.log(`📤 Uploading ${files.length} images for Project ${projectId}...`);
+
+        // 2. PARALLEL STORAGE UPLOAD
+        // Upload all files to Supabase Storage simultaneously
+        const uploadPromises = files.map((file, i) => 
+            Container.storageService.uploadProjectImage(
+                projectId,
+                organizationId,
+                userId,
+                file,
+                file.name,
+                folderName,
+                descriptions[i] || "", // Note: They will all share the same generic description initially
+                supabase
+            )
         );
+
+        const uploadedImages = await Promise.all(uploadPromises);
+
+        // 3. BATCH AI ANALYSIS
+        // Prepare the array for our new PhotoService
+        const analysisRequests = uploadedImages.map(img => ({
+            id: img.id,
+            url: img.public_url
+        }));
+
+        // Send the entire batch to the AI service (Fire-and-Forget)
+        Container.photoService.analyzePhotos(analysisRequests, supabase)
+            .catch((error) => {
+                console.error(`❌ [API] Batch processing failed:`, error);
+            });
 
         return NextResponse.json({
             success: true,
-            image: uploadedImage
+            count: uploadedImages.length,
+            images: uploadedImages,
+            processing: true
         }, { status: 201 });
 
     } catch (error: any) {
-        console.error("❌ Image Upload Error:", error);
+        console.error("❌ Batch Upload Error:", error);
         return NextResponse.json(
-            { error: error.message || "Failed to upload image" },
+            { error: error.message || "Failed to upload images" },
             { status: 500 }
         );
     }

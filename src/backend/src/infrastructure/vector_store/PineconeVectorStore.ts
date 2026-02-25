@@ -31,6 +31,7 @@ export class PineconeVectorStore implements VectorStore {
     /**
      * Takes raw text, asks Pinecone to embed it, then saves it.
      * Batches embed calls to respect Pinecone's 96-input limit per request.
+     * @param namespace - Typically "projectName/projectId" from KnowledgeRepository.getProjectNamespace
      */
     // --- 1. UPSERT (Save Text -> Pinecone Embeds It -> Save Vectors) ---
     async upsertChunks(chunks: DocumentChunk[], namespace?: string): Promise<void> {
@@ -59,10 +60,12 @@ export class PineconeVectorStore implements VectorStore {
             metadata: {
                 kId: chunk.kId,
                 text: chunk.textSegment,
-                page: chunk.metadata.pageNumber,
-                section: chunk.metadata.sectionTitle || '',
-                documentName: chunk.metadata.documentName || '',
-                projectId: chunk.metadata.projectId || '',
+                projectId: chunk.metadata.projectId,
+                source_type: chunk.metadata.source_type,
+                source_reference: chunk.metadata.source_reference,
+                title: chunk.metadata.title,
+                chunkIndex: chunk.metadata.chunkIndex,
+                fetched_at: chunk.metadata.fetched_at,
             }
         }));
 
@@ -92,18 +95,20 @@ export class PineconeVectorStore implements VectorStore {
             filter: filter // Apply metadata filters (e.g. { projectId: "..." })
         });
 
-        // 3. Convert back to your App's format
+        // 3. Convert back to DocumentChunk with VectorMetadata
         return result.matches.map(match => ({
             chunkId: match.id,
             kId: match.metadata?.kId as string,
             textSegment: match.metadata?.text as string,
             metadata: {
-                pageNumber: Number(match.metadata?.page),
-                sectionTitle: match.metadata?.section as string,
-                documentName: match.metadata?.documentName as string,
-                projectId: match.metadata?.projectId as string
+                projectId: (match.metadata?.projectId as string) ?? '',
+                source_type: (match.metadata?.source_type as 'spec_upload' | 'web_search') ?? 'spec_upload',
+                source_reference: (match.metadata?.source_reference as string) ?? '',
+                title: (match.metadata?.title as string) ?? '',
+                chunkIndex: Number(match.metadata?.chunkIndex ?? 0),
+                fetched_at: (match.metadata?.fetched_at as string) ?? new Date().toISOString(),
             },
-            score: match.score // Confidence score
+            score: match.score
         }));
     }
 
@@ -132,6 +137,18 @@ export class PineconeVectorStore implements VectorStore {
         });
 
         console.log(`🗑️ Deleted chunks for Project ${projectId} (Namespace: ${namespace || 'default'})`);
+    }
+
+    /** Clear only web-search vectors in the given namespace. Caller should pass projectName/projectId from getProjectNamespace. */
+    async clearWebData(projectId: string, namespace?: string): Promise<void> {
+        const index = this.client.index(this.indexName);
+        const targetIndex = namespace ? index.namespace(namespace) : index;
+
+        await targetIndex.deleteMany({
+            source_type: { $eq: 'web_search' }
+        });
+
+        console.log(`🧹 Flushed web data for project ${projectId} (Namespace: ${namespace || 'default'}).`);
     }
 
 }

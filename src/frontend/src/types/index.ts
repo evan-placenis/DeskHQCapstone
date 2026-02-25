@@ -15,6 +15,7 @@ export interface Project {
   name: string;
   reports: number;
   photos: number;
+  documents?: number; // knowledge / spec documents
   status: string;
   lastUpdated: string;
   description?: string;
@@ -191,4 +192,6 @@ export interface EditorSection {
   reportOrder?: number;
   purpose?: string;
   isSubsection: boolean;
+  /** The "Backpack": preserves photoContext notes while the user edits the structure */
+  originalNotesMap?: Record<string, string>;
 }
