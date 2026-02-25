@@ -1,28 +1,21 @@
 import OpenAI from "openai";
-import { VisionAnalysis } from "../interfaces";
+import { SpecAnalysisResult, VisionStrategy, VisionRequest } from "../interfaces";
 import { GoogleGenerativeAI, GenerativeModel } from "@google/generative-ai";
-import { IMAGE_ANALYSIS_SYSTEM_PROMPT, SPEC_IMAGE_ANALYSIS_SYSTEM_PROMPT } from "../prompts/image/VisionPrompts";
+import { SPEC_IMAGE_ANALYSIS_SYSTEM_PROMPT } from "../prompts/image/VisionPrompts";
 import pLimit from 'p-limit'; // Import the queue manager
 import axios from 'axios'; // You'll likely need axios or fetch to get the image buffer for Gemini
 
-// Update the interface for the batch input
-export interface VisionBatchRequest {
-  id: string;
-  url: string;
-}
 
 // 1. Add this helper at the top of the file (outside the class)
 const wait = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
-export class VisionAgent {
+export class SpecAgent implements VisionStrategy<SpecAnalysisResult>{
   private _openaiClient: OpenAI | undefined;
   private _geminiClient: GoogleGenerativeAI | undefined;
 
-  private IMAGE_ANALYSIS_SYSTEM_PROMPT: string;
   private SPEC_IMAGE_ANALYSIS_SYSTEM_PROMPT: string;
   constructor() {
     // This prompt forces the model to be objective and technical
-    this.IMAGE_ANALYSIS_SYSTEM_PROMPT = IMAGE_ANALYSIS_SYSTEM_PROMPT;
     this.SPEC_IMAGE_ANALYSIS_SYSTEM_PROMPT = SPEC_IMAGE_ANALYSIS_SYSTEM_PROMPT;
   }
 
@@ -68,9 +61,8 @@ export class VisionAgent {
   async analyzeImage(
     imageUrl: string, 
     imageId: string = "unknown", 
-    task: 'imageAnalysis' | 'specImageAnalysis' = 'imageAnalysis',
     provider: 'openai' | 'gemini' = 'gemini',
-  ): Promise<VisionAnalysis> {
+  ): Promise<SpecAnalysisResult> {
     // Retry Settings
     const MAX_RETRIES = 3;
     let attempt = 0;
@@ -78,12 +70,9 @@ export class VisionAgent {
     while (attempt < MAX_RETRIES) {
       try {
         let description = "";
-        let systemPrompt = "";
-        if (task === 'imageAnalysis') {
-          systemPrompt = this.IMAGE_ANALYSIS_SYSTEM_PROMPT;
-        } else {
-          systemPrompt = this.SPEC_IMAGE_ANALYSIS_SYSTEM_PROMPT;
-        }
+
+        let systemPrompt = this.SPEC_IMAGE_ANALYSIS_SYSTEM_PROMPT;
+
 
         if (provider === 'openai') {
           // --- OPENAI PATH ---
@@ -144,11 +133,11 @@ export class VisionAgent {
 
         if (isRetryable && attempt < MAX_RETRIES) {
           const delay = attempt * 500; // 0.5s, 1s, 1.5s — give Gemini time to recover from 503
-          console.warn(`[VisionAgent] ⚠️ Attempt ${attempt} failed for image ${imageId} (${error.status || 'error'}). Retrying in ${delay}ms...`);
+          console.warn(`[SpecAgent] ⚠️ Attempt ${attempt} failed for image ${imageId} (${error.status || 'error'}). Retrying in ${delay}ms...`);
           await wait(delay);
           continue; // Restart the loop
         }
-        console.error(`[VisionAgent] ❌ Final Error analyzing image ${imageId}:`, error);
+        console.error(`[SpecAgent] ❌ Final Error analyzing image ${imageId}:`, error);
         return {
           imageId,
           description: `Error: Could not analyze image with ${provider}.`,
@@ -163,13 +152,13 @@ export class VisionAgent {
   /**
    * Batch process multiple images in parallel (useful for full reports)
    */
-  async analyzeBatch(images: VisionBatchRequest[], task: 'imageAnalysis' | 'specImageAnalysis'): Promise<VisionAnalysis[]> {
+  async analyzeBatch(images: VisionRequest[]): Promise<SpecAnalysisResult[]> {
     // Keep concurrency low (3) to avoid "high demand" 503s from Gemini; stagger start to avoid burst
     const limit = pLimit(3);
 
     const promises = images.map((img) =>
       // Wrap your call in the limit function
-      limit(() => this.analyzeImage(img.url, img.id, task))
+      limit(() => this.analyzeImage(img.url, img.id))
     );
 
     return Promise.all(promises);
@@ -177,4 +166,4 @@ export class VisionAgent {
 }
 
 // Export a singleton instance for easy import
-export const visionAgent = new VisionAgent();
+export const agent = new SpecAgent();

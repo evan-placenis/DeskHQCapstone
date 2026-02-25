@@ -20,20 +20,20 @@ import {
 // INGESTION (Backend -> Frontend)
 // =========================================================
 // Helper to convert ReportSection to editor format (flatten photoIds)
+// Supports both: Architect's assignedImageIds (array of IDs) and legacy photoContext (array of { photoId, note })
 export const convertSectionToEditorFormat = (section: any, index: number): any[] => {
-  // 1. Helper to extract just the IDs from the new Tuple format
-  const extractIds = (s: any) => (s.photoContext || []).map((p: any) => p.photoId);
-  // 1. Unpack the Architect's "photoContext" into a "Notes Map"
-  // This creates a lookup object: { "uuid-1": "Leak here", "uuid-2": "Rust" }
+  // Prefer assignedImageIds (new architect format), fallback to photoContext tuple format
+  const extractIds = (s: any): string[] => {
+    if (s.assignedImageIds && Array.isArray(s.assignedImageIds)) return s.assignedImageIds;
+    return (s.photoContext || []).map((p: any) => p.photoId);
+  };
+  // Unpack the Architect's "photoContext" into a "Notes Map" (only when using legacy tuple format)
   const notesBackpack: Record<string, string> = {};
-
   if (section.photoContext && Array.isArray(section.photoContext)) {
     section.photoContext.forEach((item: any) => {
-       if (item.photoId && item.note) {
-          notesBackpack[item.photoId] = item.note;
-       }
+      if (item.photoId && item.note) notesBackpack[item.photoId] = item.note;
     });
- }
+  }
 
   // 1. Create the Parent Section (The "Container")
   const parentSection = {
@@ -41,36 +41,31 @@ export const convertSectionToEditorFormat = (section: any, index: number): any[]
     title: section.title,
     purpose: section.purpose,
     reportOrder: section.reportOrder || index + 1,
-    photoIds: extractIds(section), // Photos assigned directly to parent
+    photoIds: extractIds(section),
     originalNotesMap: notesBackpack,
-    isSubsection: false, // 👈 IMPORTANT: This marks it as a top-level header
-    
-    // If your editor supports a "children" array in the object itself, keep this.
-    // If it expects a purely flat list, this might be ignored, which is fine.
-    subsections: [] 
+    isSubsection: false,
+    subsections: [],
   };
 
   // 2. Create the Children (Subsections)
   const childSections = (section.subsections || []).map((sub: any, subIndex: number) => {
-    // Handle Subsection Notes too!
     const subNotesBackpack: Record<string, string> = {};
     if (sub.photoContext && Array.isArray(sub.photoContext)) {
-        sub.photoContext.forEach((item: any) => {
-           subNotesBackpack[item.photoId] = item.note;
-        });
+      sub.photoContext.forEach((item: any) => {
+        if (item.photoId && item.note) subNotesBackpack[item.photoId] = item.note;
+      });
     }
-
     return {
-    id: sub.subSectionId || `section-${index}-sub-${subIndex}`,
-    title: sub.title,
-    purpose: sub.purpose,
-    // Ensure order puts it strictly "after" the parent but "before" the next parent
-    reportOrder: (section.reportOrder || index + 1) + ((subIndex + 1) * 0.1), 
-    photoIds: extractIds(sub), // FIX: was extractIds(section) — must extract from the subsection, not parent
-    originalNotesMap: subNotesBackpack,
-    isSubsection: true, // 👈 IMPORTANT: This marks it as indented/nested
-    parentId: parentSection.id // Optional: helps if your editor uses ID linking
-  }});
+      id: sub.subSectionId || `section-${index}-sub-${subIndex}`,
+      title: sub.title,
+      purpose: sub.purpose,
+      reportOrder: (section.reportOrder || index + 1) + (subIndex + 1) * 0.1,
+      photoIds: extractIds(sub),
+      originalNotesMap: subNotesBackpack,
+      isSubsection: true,
+      parentId: parentSection.id,
+    };
+  });
 
   // 3. Return BOTH (Parent first, then Children)
   return [parentSection, ...childSections];

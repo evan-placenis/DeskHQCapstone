@@ -447,22 +447,6 @@ export function ReportContent({
 
                   return (
                     <div key={section.id} className="mb-8">
-                      <h3
-                        className={`text-xl sm:text-1xl font-bold text-slate-800 mb-4 cursor-pointer transition-all ${isItemSelectedInternal("section", section.id)
-                          ? "text-theme-primary"
-                          : isSelectionMode
-                            ? "hover:text-theme-primary"
-                            : "hover:text-theme-primary"
-                          }`}
-                        onClick={() => handleItemClickInternal({
-                          type: "section",
-                          id: section.id,
-                          content: section.content,
-                          label: section.title
-                        })}
-                      >
-                        {section.title} {isItemSelectedInternal("section", section.id) && <CheckCircle2 className="w-4 h-4 inline ml-1" />}
-                      </h3>
 
                       {!useTiptap && pendingChange && pendingChange.sectionId === section.id ? (
                         <div className="mb-6">

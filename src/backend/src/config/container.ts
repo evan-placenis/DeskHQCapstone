@@ -18,9 +18,12 @@ import { ReportOrchestrator } from '../AI_Skills/orchestrators/ReportOrchestrato
 import { KnowledgeService } from '../Services/KnowledgeServivce';
 import { UserService } from '../Services/UserService';
 import { StorageService } from '../Services/StorageService';
+import { PhotoService } from '../Services/PhotoService';
 import { StatsService } from '../Services/StatsService';
 import Exa from "exa-js";
-import { VisionAgent } from '../AI_Skills/llm/VisonAgent/VisionAgent';
+
+import { SpecAgent } from '../AI_Skills/llm/VisonAgent/SpecAgent';
+import { SitePhotoAgent } from '../AI_Skills/llm/VisonAgent/SitePhotoAgent';
 
 import { TriggerJobQueue } from '../infrastructure/job/trigger/TriggerJobQueue';
 import { createClient, SupabaseClient } from "@supabase/supabase-js";
@@ -49,6 +52,7 @@ export class Container {
   private static _editService: EditService;
   private static _userService: UserService;
   private static _storageService: StorageService;
+  private static _photoService: PhotoService;
   private static _statsRepo: SupabaseStatsRepository;
   private static _statsService: StatsService;
 
@@ -58,7 +62,8 @@ export class Container {
   private static _editOrchestrator: EditOrchestrator;
   private static _reportOrchestrator: ReportOrchestrator;
 
-  private static _visionAgent: VisionAgent;
+  private static _specAgent: SpecAgent;
+  private static _sitePhotoAgent: SitePhotoAgent;
 
   static get exa() {
     if (!this._exa) this._exa = new Exa(process.env.EXA_API_KEY!);
@@ -213,10 +218,24 @@ export class Container {
   }
 
   // --- 6. Vision Agent ---
-  static get visionAgent() {
-    if (!this._visionAgent) {
-      this._visionAgent = new VisionAgent();
+  static get SpecAgent() {
+    if (!this._specAgent) {
+      this._specAgent = new SpecAgent();
     }
-    return this._visionAgent;
+    return this._specAgent;
+  }
+  static get sitePhotoAgent() {
+    if (!this._sitePhotoAgent) {
+      this._sitePhotoAgent = new SitePhotoAgent();
+    }
+    return this._sitePhotoAgent;
+  }
+
+  // --- 7. Photo Service ---
+  static get photoService() {
+    if (!this._photoService) {
+      this._photoService = new PhotoService();
+    }
+    return this._photoService;
   }
 }

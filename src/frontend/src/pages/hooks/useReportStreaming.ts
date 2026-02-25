@@ -27,55 +27,70 @@ export function useReportStreaming(projectId: string | null, isGenerating: boole
       return;
     }
 
-    console.log(`🔌 Subscribing to channel: project-${projectId}`);
+    let channel: ReturnType<typeof supabase.channel>;
+    let retryCount = 0;
+    let cancelled = false;
+    const MAX_RETRIES = 2;
 
-    const channel = supabase.channel(`project-${projectId}`)
-      // Status updates (e.g., "Starting report generation...")
-      .on('broadcast', { event: 'status' }, (payload: any) => {
-        setStatus(payload.payload.chunk);
-      })
-      
-      // Streaming reasoning text (batched chunks every 500ms)
-      .on('broadcast', { event: 'reasoning' }, (payload: any) => {
-        setReasoningText(prev => prev + payload.payload.chunk);
-      })
-      
-      // Review reasoning (alternative event name)
-      .on('broadcast', { event: 'review_reasoning' }, (payload: any) => {
-        setReasoningText(prev => prev + payload.payload.chunk);
-      })
-      
-      // Report completion - contains the final reportId
-      .on('broadcast', { event: 'report_complete' }, (payload: any) => {
-        console.log("✅ Report Complete! Loading report...", payload);
-        if (payload.payload.reportId) {
-          setReportId(payload.payload.reportId);
+    function subscribeChannel() {
+      channel = supabase.channel(`project-${projectId}`)
+        .on('broadcast', { event: 'status' }, (payload: any) => {
+          const chunk = payload?.payload?.chunk ?? payload?.chunk ?? payload?.payload?.payload?.chunk ?? (typeof payload === 'string' ? payload : null);
+          if (typeof chunk === 'string') setStatus(chunk);
+        })
+        .on('broadcast', { event: 'reasoning' }, (payload: any) => {
+          const chunk = payload?.payload?.chunk ?? payload?.chunk ?? payload?.payload?.payload?.chunk ?? (typeof payload === 'string' ? payload : null);
+          if (typeof chunk === 'string') setReasoningText(prev => prev + chunk);
+        })
+        .on('broadcast', { event: 'review_reasoning' }, (payload: any) => {
+          const chunk = payload?.payload?.chunk ?? payload?.chunk;
+          if (typeof chunk === 'string') setReasoningText(prev => prev + chunk);
+        })
+        .on('broadcast', { event: 'report_complete' }, (payload: any) => {
+          const inner = payload?.payload ?? payload;
+          const id = inner?.reportId;
+          if (id) {
+            setReportId(id);
+            setIsComplete(true);
+            setStatus("Report generated successfully!");
+          }
+        })
+        .on('broadcast', { event: 'error' }, (payload: any) => {
+          const inner = payload?.payload ?? payload;
+          const msg = inner?.message ?? inner?.error;
+          console.error("[ReportStreaming] Error:", msg);
+          setStatus(`Error: ${msg ?? 'Unknown'}`);
           setIsComplete(true);
-          setStatus("Report generated successfully!");
-        }
-      })
-      
-      // Error handling
-      .on('broadcast', { event: 'error' }, (payload: any) => {
-        console.error("❌ Report generation error:", payload.payload.message);
-        setStatus(`Error: ${payload.payload.message}`);
-        setIsComplete(true);
-      })
-      
-      // Human-in-the-Loop: Graph paused for approval
-      .on('broadcast', { event: 'paused' }, (payload: any) => {
-        console.log("⏸️ Report generation paused for human approval", payload);
-        setReportId(payload.payload.reportId);
-        setReportPlan(payload.payload.reportPlan);
-        setIsPaused(true);
-        setStatus("Waiting for plan approval...");
-      })
-      
-      .subscribe();
+        })
+        .on('broadcast', { event: 'paused' }, (payload: any) => {
+          const inner = payload?.payload ?? payload;
+          if (inner?.reportId) setReportId(inner.reportId);
+          if (inner?.reportPlan) setReportPlan(inner.reportPlan);
+          setIsPaused(true);
+          setStatus("Waiting for plan approval...");
+        })
+        .subscribe((subStatus: any) => {
+          if (subStatus === 'CHANNEL_ERROR') {
+            console.error("[ReportStreaming] Channel error for project", projectId);
+          } else if (subStatus === 'TIMED_OUT') {
+            if (retryCount < MAX_RETRIES && !cancelled) {
+              retryCount += 1;
+              setStatus(`Reconnecting... (${retryCount}/${MAX_RETRIES})`);
+              supabase.removeChannel(channel).then(() => {
+                if (!cancelled) setTimeout(subscribeChannel, 2000);
+              });
+            } else {
+              setStatus("Stream connection timed out. Status updates may not appear.");
+            }
+          }
+        });
+    }
+
+    subscribeChannel();
 
     return () => {
-      console.log("🔌 Unsubscribing from channel");
-      supabase.removeChannel(channel);
+      cancelled = true;
+      if (channel) supabase.removeChannel(channel);
     };
   }, [isGenerating, projectId]);
 

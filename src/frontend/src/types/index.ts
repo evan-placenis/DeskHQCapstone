@@ -15,6 +15,7 @@ export interface Project {
   name: string;
   reports: number;
   photos: number;
+  documents?: number; // knowledge / spec documents
   status: string;
   lastUpdated: string;
   description?: string;

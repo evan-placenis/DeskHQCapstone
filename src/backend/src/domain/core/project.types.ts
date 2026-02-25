@@ -49,6 +49,7 @@ export interface ImageMetadata {
         longitude: number;
     };
     tags: string[];          // AI Generated (e.g. ["crack", "foundation"])
+    severity: 'LOW' | 'MEDIUM' | 'HIGH';
 }
 
 // --- KNOWLEDGE (RAG Assets) ---

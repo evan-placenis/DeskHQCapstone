@@ -141,6 +141,7 @@ export class ReportService {
         report.tiptapContent = finalMarkdown;
         report.updatedAt = new Date();
         report.versionNumber++;
+        report.status = 'DRAFT'; // Set status to DRAFT when graph completes
 
         // 4. Save the finalized header back to the DB
         await this.reportRepo.update(report, client);
@@ -400,18 +401,16 @@ export class ReportService {
     /**
      * 🛠️ PRIVATE HELPER: The "Stitcher"
      */
+    /** Stitch section bodies only; do not inject section headings (AI controls headings in content). */
     private compileMarkdown(sections: any[]): string {
         return sections.map(s => {
             let md = "";
-
-            // If you still want the Metadata/Severity badge, keep it here:
-            if (s.metadata?.severity) {
-                md += `> **Severity:** ${s.metadata.severity.toUpperCase()}\n\n`;
-            }
-
+            
             const body = s.content?.replace(/\\n/g, '\n') || "";
-            md += s.heading + "\n\n" + body; //should not be hard coded (probably better to let Ai control)
-
+            md += body;
+            if (s.metadata?.severity) {
+                md += `\n**Severity:** ${s.metadata.severity.toUpperCase()}\n\n`;
+            }
             return md;
         }).join('\n\n');
     }

@@ -5,6 +5,7 @@ import { getWorkflow } from '../LangGraph/workflow'; // Dynamic workflow selecto
 import { CustomLangChainAdapter } from '../LangGraph/utils/custom-adapter';
 
 import { SupabaseClient } from "@supabase/supabase-js";
+import { imageGeneration } from "@langchain/openai/dist/tools/imageGeneration.cjs";
 interface GenerateParams {
   messages: any[];
   systemPrompt: string,       
@@ -20,6 +21,50 @@ interface GenerateParams {
 }
 
 export const maxDuration = 600; // Allow long running agents
+
+/**
+ * Wraps the LangGraph stream to log key events to the server console.
+ * Useful for debugging logic flows, tool calls, and state updates.
+ */
+async function* wrapStreamForLogging(stream: AsyncGenerator<any>) {
+  for await (const event of stream) {
+    // 🔍 FILTER: Log only high-level events (Ignore individual token chunks)
+    
+    // 1. NODE START (e.g., "Entering Builder...")
+    if (event.event === "on_chain_start" && event.name && event.name !== "LangGraph") {
+      console.log(`\n🟢 [NODE START]: ${event.name}`);
+      // console.log("   Input:", JSON.stringify(event.data.input).slice(0, 100) + "..."); 
+    }
+
+    // 2. NODE END (e.g., "Builder Finished")
+    else if (event.event === "on_chain_end" && event.name && event.name !== "LangGraph") {
+      console.log(`🔴 [NODE END]: ${event.name}`);
+      // console.log("   Output:", JSON.stringify(event.data.output).slice(0, 100) + "...");
+    }
+
+    // 3. TOOL CALL (e.g., "Calling writeSection...")
+    else if (event.event === "on_tool_start") {
+      console.log(`🔧 [TOOL CALL]: ${event.name}`);
+      console.log(`   Args:`, JSON.stringify(event.data.input));
+    }
+
+    // 4. TOOL RESULT (e.g., "Saved successfully")
+    else if (event.event === "on_tool_end") {
+      console.log(`✅ [TOOL RESULT]: ${event.name}`);
+      console.log(`   Result:`, typeof event.data.output === 'string' 
+        ? event.data.output.slice(0, 100) 
+        : JSON.stringify(event.data.output).slice(0, 100));
+    }
+
+    // 5. CUSTOM EVENTS (If you emit any)
+    else if (event.event === "on_custom_event") {
+      console.log(`📢 [EVENT]: ${event.name}`, event.data);
+    }
+
+    // 🚀 PASS-THROUGH: Yield the event so the Frontend still gets it!
+    yield event;
+  }
+}
 
 export class ReportOrchestrator {
   
@@ -47,8 +92,8 @@ export class ReportOrchestrator {
       reportType: reportType || "standard",
       provider: provider || "gemini-cheap",
       selectedImageIds: selectedImageIds || [],
+      imageList: [],
       currentSection: "init",
-      client: client, // Pass the client
     };
 
     // 3. Select Graph from user's choice (fallback to "simple" only when undefined)
@@ -60,8 +105,44 @@ export class ReportOrchestrator {
       version: "v2",
     });
 
+    // 🛡️ WRAP IT: Add the logger here!
+    const loggedStream = wrapStreamForLogging(stream);
+
+    //FOR STREAMING TO FRONTEND:
+    // import { StreamData } from 'ai'; // Ensure you have the 'ai' package installed
+    // const data = new StreamData(); // 1. Create Data Container
+
+    // // 2. Custom Processor
+    // async function* processStream(stream: AsyncGenerator<any>) {
+    //     for await (const event of stream) {
+    //         // A. Log to Server Console
+    //         if (event.event === 'on_chain_start' && event.name !== "LangGraph") {
+    //              console.log(`🟢 [Server] Node: ${event.name}`);
+                 
+    //              // B. Send to Frontend (as JSON data)
+    //              // This will appear in the 'data' array on the client useChat hook
+    //              data.append({
+    //                  type: 'log',
+    //                  message: `Entering node: ${event.name}`,
+    //                  timestamp: Date.now()
+    //              });
+    //         }
+    //         // ... handle other events ...
+
+    //         yield event;
+    //     }
+        
+    //     // C. Close Data Stream when done
+    //     data.close();
+    // }
+
+    // // const processedStream = processStream(stream);
+
+    // // 3. Pass 'data' to the Adapter
+    // return CustomLangChainAdapter.toDataStreamResponse(processedStream, data);
+
     // 5. Adapt & Return
     // We return the raw Response here so the Route just passes it through
-    return CustomLangChainAdapter.toDataStreamResponse(stream);
+    return CustomLangChainAdapter.toDataStreamResponse(loggedStream);
   }
 }

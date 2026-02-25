@@ -16,7 +16,7 @@ export function visionSkillsWithReport(reportId?: string, client?: SupabaseClien
         const analysisRequests = images.map((img: { url: string; id: string }) => ({ id: img.id, url: img.url }));
 
         console.log(`👁️ Analyzing batch of ${images.length} images...`);
-        const analyses = await Container.visionAgent.analyzeBatch(analysisRequests, 'imageAnalysis');
+        const analyses = await Container.sitePhotoAgent.analyzeBatch(analysisRequests);
 
         // Persist AI descriptions to report_images when in report context
         if (reportId && client && analyses.length > 0) {
@@ -60,7 +60,7 @@ export function visionSkillsWithReport(reportId?: string, client?: SupabaseClien
     tool(
     async ({ imageUrl, imageId }: { imageUrl: string; imageId?: string }) => {
       try {
-        const analysis = await Container.visionAgent.analyzeImage(imageUrl, imageId || 'schematic');
+        const analysis = await Container.sitePhotoAgent.analyzeImage(imageUrl, imageId || 'schematic');
         return analysis.description;
       } catch (error) {
         console.error("Error analyzing schematic:", error);

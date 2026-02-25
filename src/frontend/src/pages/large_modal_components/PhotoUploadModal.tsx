@@ -40,7 +40,7 @@ export function PhotoUploadModal({
   const [newFolderName, setNewFolderName] = useState("");
   const [isDragging, setIsDragging] = useState(false);
   const [isAudioDragging, setIsAudioDragging] = useState(false);
-  const [useFileNameAsDescription, setUseFileNameAsDescription] = useState(false);
+  const [useFileNameAsDescription, setUseFileNameAsDescription] = useState(true);
 
   // Auto-generate folder name with today's date
   const generateFolderName = () => {

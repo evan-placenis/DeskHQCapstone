@@ -36,6 +36,15 @@ export const ReportPlanSchema = z.object({
   reasoning: z.string().optional()
 });
 
+export interface ImageContext {
+  id: string;
+  url: string; // Useful if a Builder needs to "look" again
+  tags: string[];
+  severity: 'Low' | 'Medium' | 'High' | 'Critical' | 'None';
+  aiDescription: string; // The full 2,000 token markdown
+  userNote?: string;     // The human caption from the DB
+}
+
 // 2. Export the Types (Compile-time Types)
 // z.infer<typeof X> automatically creates the TS interface for you!
 export type ReportSubsection = z.infer<typeof ReportSubsectionSchema>;

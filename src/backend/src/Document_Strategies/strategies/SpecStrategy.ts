@@ -82,13 +82,12 @@ export class SpecStrategy implements DocumentStrategy {
         // Wait for uploads
         const allUploads = await Promise.all(uploadPromises);
 
-        // 🟢 CRITICAL FIX: Remove failed uploads (where url is "") BEFORE sending to Vision Agent
+        // 🟢 CRITICAL FIX: Remove failed uploads (where url is "") BEFORE sending to SpecAgent
         const uploadedImages = allUploads.filter(img => img.url && img.url.length > 0);
 
-        // B. Analyze Batch (Using your VisionAgent)
-        // Note: We use 'specImageAnalysis' to trigger the specific system prompt
+        // B. Analyze Batch (Using SpecAgent for spec images)
         // analyzeBatch expects { id, url }
-        const analyses = await Container.visionAgent.analyzeBatch(uploadedImages, 'specImageAnalysis');
+        const analyses = await Container.SpecAgent.analyzeBatch(uploadedImages);
 
 
             // C. Save Metadata to SQL (Standalone Table); link to knowledge item for cascade delete

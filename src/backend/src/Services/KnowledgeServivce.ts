@@ -10,6 +10,12 @@ import { file } from 'zod';
 
 export type { VectorMetadata } from '../domain/knowledge/rag.types';
 
+export interface SearchResult {
+    source: string;
+    content: string;
+    score?: number; // Optional: useful if you ever want to filter by relevance later
+  }
+
 export class KnowledgeService {
 
     constructor(
@@ -138,8 +144,11 @@ export class KnowledgeService {
     }
 
     // --- NEW: SEARCH ---
-    public async search(queries: string[], projectId: string, client?: SupabaseClient): Promise<string[]> {
-        const uniqueSpecs = new Set<string>();
+        // --- NEW: SEARCH ---
+    /** Returns matching chunks as strings prefixed with document name so the builder can reference the spec (e.g. "as per specification XYZ"). */
+    public async search(queries: string[], projectId: string, client?: SupabaseClient): Promise<SearchResult[]> {
+        const seen = new Set<string>();
+        const output: SearchResult[] = []; // Array of Objects, not Strings
         const supabase = client ?? this.adminClient;
 
         const projectNamespace = await this.repo.getProjectNamespace(projectId, supabase);
@@ -151,22 +160,55 @@ export class KnowledgeService {
         console.log(`🔍 Searching Knowledge Base for Project ${projectId} (namespace: ${projectNamespace})`);
 
         for (const query of queries) {
-            if (!query || query.trim() === "") continue;
-
-            // Basic logic: Search for each description
-            // Limit to top 2 results per image description to avoid context bloat
-            try {
-                const results = await this.vectorStore.similaritySearch(query, 2, projectNamespace);
-                results.forEach(doc => {
-                    uniqueSpecs.add(doc.textSegment);
+            // ... (search logic) ...
+            const results = await this.vectorStore.similaritySearch(query, 2, projectNamespace);
+            
+            for (const doc of results) {
+                const docName = doc.metadata?.title ?? doc.metadata?.source_reference ?? "Unknown";
+                const content = doc.textSegment;
+                
+                // Deduplication Logic (Keep this! It's smart.)
+                const key = `${docName}|${content}`;
+                if (seen.has(key)) continue;
+                seen.add(key);
+    
+                // Return pure data
+                output.push({
+                    source: docName,
+                    content: content
                 });
-            } catch (err) {
-                console.error(`Error searching for query "${query}":`, err);
             }
         }
-
-        return Array.from(uniqueSpecs);
+        return output;
     }
+    // public async search(queries: string[], projectId: string, client?: SupabaseClient): Promise<string[]> {
+    //     const uniqueSpecs = new Set<string>();
+    //     const supabase = client ?? this.adminClient;
+
+    //     const projectNamespace = await this.repo.getProjectNamespace(projectId, supabase);
+    //     if (!projectNamespace) {
+    //         console.warn(`No project namespace for projectId ${projectId}, skipping RAG search.`);
+    //         return [];
+    //     }
+
+    //     console.log(`🔍 Searching Knowledge Base for Project ${projectId} (namespace: ${projectNamespace})`);
+
+    //     for (const query of queries) {
+    //         if (!query || query.trim() === "") continue;
+
+    //         // Basic logic: Search for each description
+    //         // Limit to top 2 results per image description to avoid context bloat
+    //         try {
+    //             const results = await this.vectorStore.similaritySearch(query, 2, projectNamespace);
+    //             results.forEach(doc => {
+    //                 uniqueSpecs.add(doc.textSegment);
+    //             });
+    //         } catch (err) {
+    //             console.error(`Error searching for query "${query}":`, err);
+    //         }
+    //     }
+    //     return Array.from(uniqueSpecs);
+    // }
 
     public async saveWebDataToDatabase(webData: string, sourceUrl: string, projectId: string): Promise<void> {
 

@@ -62,7 +62,7 @@
     "@tiptap/extension-text-align": "3.17",
     "@tiptap/react": "^3.17.0",
     "@tiptap/starter-kit": "^3.17.0",
-    "@trigger.dev/sdk": "4.3.3",
+    "@trigger.dev/sdk": "4.4.0",
     "ai": "^6.0.69",
     "axios": "^1.13.5",
     "class-variance-authority": "^0.7.0",

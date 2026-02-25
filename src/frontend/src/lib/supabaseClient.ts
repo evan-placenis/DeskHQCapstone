@@ -11,7 +11,10 @@ if (!supabaseUrl || !supabaseAnonKey) {
 }
 
 // 🟢 USE createBrowserClient HERE
-export const supabase = globalForSupabase.supabase || createBrowserClient(supabaseUrl, supabaseAnonKey)
+// Realtime: longer timeout so channel subscribe doesn't TIMED_OUT (default 10s can be too short)
+export const supabase = globalForSupabase.supabase || createBrowserClient(supabaseUrl, supabaseAnonKey, {
+  realtime: { timeout: 20_000 },
+})
 
 if (process.env.NODE_ENV !== 'production') {
     globalForSupabase.supabase = supabase

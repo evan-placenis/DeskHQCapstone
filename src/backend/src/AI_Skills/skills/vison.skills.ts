@@ -21,7 +21,7 @@ export const visionSkills = {
         }));
 
         // Call analyzeBatch once with all images - it handles parallelism internally
-        const analyses = await Container.visionAgent.analyzeBatch(images);
+        const analyses = await Container.sitePhotoAgent.analyzeBatch(images);
 
         // Format results with optional focus context
         const results = analyses.map((analysis, index) => {
@@ -47,7 +47,7 @@ export const visionSkills = {
     }),
     execute: async ({ imageUrl, imageId }: { imageUrl: string; imageId?: string }) => {
       try {
-        const analysis = await Container.visionAgent.analyzeImage(imageUrl, imageId || 'schematic');
+        const analysis = await Container.sitePhotoAgent.analyzeImage(imageUrl, imageId || 'schematic');
         return analysis.description;
       } catch (error) {
         console.error("Error analyzing schematic:", error);

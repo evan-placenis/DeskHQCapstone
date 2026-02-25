@@ -180,12 +180,12 @@ export default function PlanApprovalModal({
             </div>
 
             <TabsContent value="preview" className="flex-1 overflow-y-auto p-6 space-y-6">
-              {reportPlan.strategy && (
+              {reportPlan.reasoning && (
                 <div className="bg-[#3c6e71]/5 border border-[#3c6e71]/20 rounded-lg p-4 mb-6">
                   <Label className="text-xs font-bold text-[#3c6e71] uppercase tracking-wide mb-2 block">
-                    Architect's Strategy
+                    Architect's Reasoning
                   </Label>
-                  <p className="text-sm text-slate-700 leading-relaxed">{reportPlan.strategy}</p>
+                  <p className="text-sm text-slate-700 leading-relaxed">{reportPlan.reasoning}</p>
                 </div>
               )}
 
