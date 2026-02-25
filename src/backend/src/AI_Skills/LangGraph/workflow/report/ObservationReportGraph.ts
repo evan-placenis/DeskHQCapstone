@@ -9,7 +9,7 @@ import { reviewerNode } from "../../nodes/report/observation/reviewerNode";
 import { synthesisBuilderNode} from "../../nodes/report/observation/synthesisBuilderNode";
 import { toolNode } from "../../nodes/toolNode";
 import { AIMessage } from "@langchain/core/messages";
-import { fetchContextNode } from "../../nodes/report/observation/fetchContextNode"
+import { fetchContextNode } from "../../nodes/report/observation/fetchContextNode";
 import { sharedCheckpointer } from "../checkpointer"; 
 
 import { builderToolsNode } from "../../nodes/report/observation/builderToolNode";
@@ -55,21 +55,17 @@ const workflow = new StateGraph(ObservationState)
 
   // 6. Tool Logic (Close the Loop)
   // If the builder used a tool, go BACK to the builder so it can read the result
-    .addConditionalEdges("builder_tools", (state) => {
-      const lastMsg = state.messages[state.messages.length - 1];
-      // 🧪 If it was a research tool, go back to the Builder immediately!
-      if (lastMsg instanceof ToolMessage && lastMsg.name !== 'writeSection') {
-        console.log(`🧠 [Router] Research detected (${lastMsg.name}). Returning to Builder.`);
-        return 'builder'; 
+  .addConditionalEdges("builder_tools", (state) => {
+    const lastMsg = state.messages[state.messages.length - 1];
+    if (lastMsg instanceof ToolMessage && lastMsg.name !== 'writeSection') {
+      console.log(`🧠 [Router] Research detected (${lastMsg.name}). Returning to Builder.`);
+      return 'builder';
     }
-      // 📝 If it was a write tool (or anything else), go to Continue to check/advance
-      return 'builder_continue';
-    },
-    {
-      "builder": "builder",
-      "builder_continue": "builder_continue",
-    }
-  )
+    return 'builder_continue';
+  }, {
+    "builder": "builder",
+    "builder_continue": "builder_continue",
+  })
 
   // 7. Builder Loop
   // This node checks: "Are there more sections to write?"
