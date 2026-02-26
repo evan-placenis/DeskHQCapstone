@@ -35,7 +35,66 @@ export async function builderToolsNode(state: typeof ObservationState.State) {
 
   const results: ToolMessage[] = [];
   const aiMsg = lastMessage as AIMessage;
-  // 3. Execute Tools
+
+  // // 3. Execute Tools CONCURRENTLY
+  // if (aiMsg.tool_calls?.length) {
+  //   console.log(`🚀 [BuilderTools] AI requested ${aiMsg.tool_calls.length} tools. Executing concurrently...`);
+
+  //   // Map each tool call to a Promise
+  //   const toolPromises = aiMsg.tool_calls.map(async (call) => {
+  //     const tool = toolsMap[call.name];
+
+  //     if (tool) {
+  //       console.log(`🏗️ [BuilderTools] Firing ${call.name} (ID: ${call.id})`);
+
+  //       // 🛡️ SECURITY OVERRIDE (Same as before)
+  //       if (call.name === 'writeSection') {
+  //         if (!draftReportId) {
+  //           return new ToolMessage({
+  //             tool_call_id: call.id || "undefined",
+  //             name: call.name,
+  //             content: `ERROR: Report ID is missing. Cannot save section.`
+  //           });
+  //         }
+  //         call.args.reportId = draftReportId; 
+  //       }
+    
+  //       try {
+  //           // Invoke the tool
+  //           const output = await tool.invoke(call.args);
+            
+  //           return new ToolMessage({
+  //               tool_call_id: call.id || "undefined",
+  //               name: call.name,
+  //               content: typeof output === 'string' ? output : JSON.stringify(output)
+  //           });
+  //       } catch (e: any) {
+  //           console.error(`❌ [BuilderTools] Error in ${call.name}:`, e);
+  //           return new ToolMessage({
+  //               tool_call_id: call.id || "undefined",
+  //               name: call.name,
+  //               content: `ERROR: Tool execution failed. Details: ${e.message}`
+  //           });
+  //       }
+  //     } else {
+  //       // 🛡️ Security Block for hallucinated tools
+  //       console.warn(`⛔ [BuilderTools] Blocked unauthorized tool: '${call.name}'`);
+  //       return new ToolMessage({
+  //           tool_call_id: call.id || "undefined",
+  //           name: call.name,
+  //           content: "ERROR: You do not have access to this tool. Use only the provided tools."
+  //       });
+  //     }
+  //   });
+
+  //   // ⚡ Execute all promises at the exact same time
+  //   const resolvedResults = await Promise.all(toolPromises);
+    
+  //   // Push the results into our final array
+  //   results.push(...resolvedResults);
+  // }
+
+  //3. Execute Tools Sequentially
   if (aiMsg.tool_calls?.length) {
     for (const call of aiMsg.tool_calls) {
       const tool = toolsMap[call.name];

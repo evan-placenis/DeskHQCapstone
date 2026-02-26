@@ -2,6 +2,7 @@ import { SystemMessage, HumanMessage } from "@langchain/core/messages";
 import { ModelStrategy } from "../../../models/modelStrategy";
 import { ObservationState } from "../../../state/report/ObservationState";
 import { Container } from "../../../../../config/container";
+import { dumpAgentContext } from "../../../utils/agent-logger";
 export async function synthesisBuilderNode(state: typeof ObservationState.State) {
   const { 
     reportPlan, 
@@ -74,10 +75,17 @@ export async function synthesisBuilderNode(state: typeof ObservationState.State)
       attempts++;
       console.log(`✍️ [Synthesis] Writing "${section.title}"...`);
       try {
+        // 📝 Log the INPUT (The prompt + any RAG history it is carrying)
+        const taskName = `SynthesisBuilder_Task_${section.title}`;
+        dumpAgentContext(draftReportId || "", taskName, [new SystemMessage(systemPrompt || "You are an expert technical writer."), new HumanMessage(prompt)], 'INPUT');
+
         const response = await model.invoke([
           new SystemMessage(systemPrompt || "You are an expert technical writer."),
           new HumanMessage(prompt)
         ]);
+
+        // 📝 Log the OUTPUT (What the AI just generated / The tools it wants to call)
+        dumpAgentContext(draftReportId || "", taskName, [response], 'OUTPUT');
 
         const text = typeof response.content === 'string' ? response.content : JSON.stringify(response.content);
         newContent[section.title] = text;

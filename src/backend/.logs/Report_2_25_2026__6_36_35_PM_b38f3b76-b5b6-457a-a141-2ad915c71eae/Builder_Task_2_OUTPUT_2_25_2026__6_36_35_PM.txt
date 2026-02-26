@@ -1,0 +1,27 @@
+====================================================
+AGENT: BUILDER_TASK_2
+STAGE: OUTPUT (What the AI decided)
+TIMESTAMP: 2/25/2026, 6:36:35 PM
+TOTAL MESSAGES: 1
+====================================================
+
+[MESSAGE 1] Role: AI --------------------------------
+
+{
+  "type": "functionCall",
+  "functionCall": {
+    "name": "searchInternalKnowledge",
+    "args": {
+      "query": "Drawing A3.02 EIFS specifications"
+    }
+  }
+}
+
+🛠️ AI IS CALLING THESE TOOLS:
+   -> Tool: searchInternalKnowledge
+   -> Args: {
+  "query": "Drawing A3.02 EIFS specifications"
+}
+
+---------------------------------------------------------------
+

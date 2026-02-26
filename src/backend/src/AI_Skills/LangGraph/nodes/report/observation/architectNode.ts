@@ -4,6 +4,7 @@ import { tool } from '@langchain/core/tools';
 import { z } from 'zod';
 import { Container } from "@/backend/config/container";
 import { ObservationState } from "../../../state/report/ObservationState";
+import { dumpAgentContext } from "../../../utils/agent-logger";
 
 /**
  * Phase 1: The Architect
@@ -151,15 +152,24 @@ OUTPUT: Call 'submitReportPlan' with your proposed structure.
 
   // 3. RUN MODEL
   const baseModel = ModelStrategy.getModel(provider || 'gemini-cheap');
+  
+  // 📝 Log the INPUT (The prompt + any RAG history it is carrying)
+  const taskName = `Architect_Plan_1`;
+  dumpAgentContext(draftReportId || "", taskName, [new SystemMessage(promptContext), ...state.messages], 'INPUT');
 
   const model = baseModel?.bindTools?.([planningTool], {
     tool_choice: "submitReportPlan" 
   });
 
+
+
   const response = await model?.invoke?.([
     new SystemMessage(promptContext),
     ...state.messages
   ]);
+
+  // 📝 Log the OUTPUT (What the AI just generated / The tools it wants to call)
+  dumpAgentContext(draftReportId || "", taskName, [response], 'OUTPUT');
 
   // 4. PARSE TOOL CALL
   let reportPlan = null;

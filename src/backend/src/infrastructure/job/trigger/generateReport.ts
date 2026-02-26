@@ -154,35 +154,45 @@ export const generateReportTask = task({
       console.log(`📝 Draft report ${draftReportId} created in database`);
 
       // 5. FETCH TEMPLATE FOR CONTEXT (if using observation workflow)
-      let contextPrompt = "";
+      let system_prompt = "";
       let structureInstructions = "";
-      
-      if (workflowType === 'observation' && payload.input.templateId) {
+
+      // --- LOGGING: Trace whether frontend sent templateId and whether DB fetch succeeds ---
+      const rawTemplateId = payload.input.templateId;
+      const hasTemplateId = Boolean(rawTemplateId?.trim?.() ?? rawTemplateId);
+
+
+      if (hasTemplateId) {
+        const templateIdToFetch = (typeof rawTemplateId === "string" ? rawTemplateId.trim() : String(rawTemplateId));
         try {
-          const { data: template } = await supabase
+          const { data: template, error: templateError } = await supabase
             .from('report_templates')
             .select('system_prompt, structure_instructions')
-            .eq('id', payload.input.templateId)
+            .eq('id', templateIdToFetch)
             .single();
-          
+
+          if (templateError) {
+            console.error(`❌ [Template] Supabase error: code=${templateError.code}, message=${templateError.message}, details=${JSON.stringify(templateError.details)}`);
+          }
           if (template) {
-            contextPrompt = template.system_prompt || "";
+            system_prompt = template.system_prompt || "";
             structureInstructions = template.structure_instructions || "";
-            console.log(`📋 Loaded template context for observation workflow`);
+            console.log(`📋 [Template] Loaded template: system_prompt length=${system_prompt.length}, structure_instructions length=${structureInstructions.length}`);
+          } else {
+            console.log(`🔍 [Template] No row returned (data is null/undefined). Check that id exists in report_templates.`);
           }
         } catch (err) {
-          console.warn('⚠️ Could not load template, using defaults:', err);
+          console.warn('⚠️ [Template] Exception while loading template, using defaults:', err);
         }
       }
-
       // 6. SELECT THE APPROPRIATE WORKFLOW GRAPH
       const workflowGraph = getWorkflow(workflowType);
 
       // 7. PREPARE LANGGRAPH STATE
-      // Instead of calling reportService.generateReportStream, we prepare the Graph Input
+      // Use explicit strings so state never has undefined for systemPrompt/structureInstructions (builder/architect expect them)
       const inputState = {
         messages: [new HumanMessage("Generate the report.")],
-        context: contextPrompt,
+        systemPrompt: system_prompt ?? "",
         projectId: payload.projectId,
         userId: payload.userId,
         reportType: payload.input.reportType,
@@ -192,7 +202,7 @@ export const generateReportTask = task({
         draftReportId: draftReportId,
         client: supabase,
         photoNotes: "",
-        structureInstructions: structureInstructions,
+        structureInstructions: structureInstructions ?? "",
         currentSection: "init",
         processingMode: payload.input.processingMode ?? "IMAGE_AND_TEXT", // TEXT_ONLY = no vision tools
       };
@@ -531,19 +541,35 @@ async function handleResumeAction(
       console.log(`📝 [Resume] Replaced messages with resume context; current task: ${currentTaskTitle}`);
     }
 
-    console.log(`🔍 [Resume] Setting draftReportId in state: "${existingDraftReportId}"`);
-    await workflowGraph.updateState(config, stateUpdate);
-
-    console.log(`✅ State updated for thread ${reportId}`);
-
-    // 4. Get projectId from the report for broadcasting
+    // 4. Get projectId and optionally re-inject template context (checkpoint may not persist systemPrompt/structureInstructions)
     const { data: report } = await supabase
       .from('reports')
-      .select('project_id')
+      .select('project_id, template_id')
       .eq('id', reportId)
       .single();
 
     const projectId = report?.project_id;
+    if (report?.template_id) {
+      try {
+        const { data: template } = await supabase
+          .from('report_templates')
+          .select('system_prompt, structure_instructions')
+          .eq('id', report.template_id)
+          .single();
+        if (template) {
+          stateUpdate.systemPrompt = template.system_prompt ?? "";
+          stateUpdate.structureInstructions = template.structure_instructions ?? "";
+          console.log("📋 [Resume] Re-injecting template context (systemPrompt/structureInstructions) into state");
+        }
+      } catch (err) {
+        console.warn("⚠️ [Resume] Could not load template for context:", err);
+      }
+    }
+
+    console.log(`🔍 [Resume] Setting draftReportId in state: "${existingDraftReportId}"`);
+    await workflowGraph.updateState(config, stateUpdate);
+
+    console.log(`✅ State updated for thread ${reportId}`);
     if (!projectId) {
       console.warn('⚠️ Could not find projectId for broadcasting');
     }

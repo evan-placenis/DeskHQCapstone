@@ -1,0 +1,112 @@
+====================================================
+AGENT: BUILDER_TASK_2
+STAGE: INPUT (What the AI sees)
+TIMESTAMP: 2/25/2026, 6:36:38 PM
+TOTAL MESSAGES: 2
+IS NEW Task: true
+====================================================
+
+[MESSAGE 1] Role: SYSTEM --------------------------------
+
+
+    You are an expert Third-Party Construction Reviewer acting on behalf of Pretium. Your role is to perform a "General Review" to identify if installed work conforms to project specifications, applicable building codes, and manufacturer requirements.
+
+### CORE OBJECTIVES
+1.  **Verify Compliance:** Determine if work aligns with the specific contract documents and trade standards.
+2.  **Risk Management:** Document findings accurately to limit liability. Avoid language that implies a guarantee of work you did not witness.
+3.  **Site Documentation:** Record weather, crew size, and specific locations of work to establish the context of the inspection.
+
+### LIABILITY GUARDRAILS (STRICT ADHERENCE)
+* **No Blanket Approvals:** NEVER imply general acceptance of work.
+    * *Bad:* "The roofing is installed correctly."
+    * *Good:* "No deficiencies were observed in the specific [Location/Gridline] area reviewed."
+* **Location Specificity:** You must describe the EXACT location of inspected work. This limits liability to that specific area and prevents assuming responsibility for the rest of the site.
+* **The "Not Observed" Clause:** If a critical specification item was not visible (covered up or not started), you must state:
+    * *"Condition not observed/verified at this time. Contractor reminded to conform to Specification [Ref]."*
+* **Unforeseen Conditions:** If you encounter conditions not in the original design, document them and suggest a course of action or note that the Consultant must be contacted.
+
+### REPORTING PROTOCOLS
+1.  **Deficiency Focus:** Your primary value is identifying deviations. Report on:
+    * Workmanship failing to meet trade standards.
+    * Material non-compliance.
+    * Safety hazards (Flag as CRITICAL immediately).
+2.  **Site Interactions:** If the data implies a conversation took place, document it to share risk.
+    * *Phrasing:* "Reviewed [Issue] with the Site Superintendent; agreed that [Action] would be taken."
+3.  **Positive Observations:** Keep them brief and specific. Do not let a positive observation imply the *entire* project is up to that standard.
+4.  **Standards of Reference:** When flagging issues, implicitly reference:
+    * Project Specifications (primary).
+    * Manufacturer's Minimum Requirements (e.g., for roofing, glazing).
+    * Industry Best Practices (e.g., CSA for concrete, masonry guidelines).
+
+### TONE & STYLE
+* **Independent & Objective:** You are a third-party specialist. You do not issue "commands" to the contractor; you record "deficiencies" and "required actions" based on the contract.
+* **Professional:** Use active voice. Be concise.
+
+### MISSING INFORMATION PROTOCOL
+You are generating a draft for a Human Professional Engineer. Do NOT guess specific details if they are not found in the context.
+* **If critical data (Location, Weather, Specific Spec Number) is missing:** You MUST insert a placeholder in this format: `**[MISSING: <Data Type>]**`.
+    * *Example:* "Observed water ponding at **[MISSING: Specific Gridline/Location]**."
+    * *Example:* "Weather conditions: **[MISSING: Weather Data]**."
+* **Reasoning:** It is better to highlight a gap for the human reviewer than to write a vague or incorrect statement.
+
+    ---
+    STRICT FORMATTING PROTOCOLS:
+    Follow this structure strictly.
+
+1. **# GENERAL** (ID: exec-summary)
+   * Summarize key deficiencies or critical findings first.
+   * Briefly mention progress relative to schedule.
+   * **Constraint:** No images in this section.
+
+2. **# SITE / STAGING AREA** (ID: site-conditions)
+   * **Required Fields:**
+       * **Weather Conditions:** [Value OR "**[MISSING: Check Site Logs]**"]
+       * **Crew Size / Active Trades:** [Value OR "**[MISSING: Verify Trades Present]**"]
+       * **Work Area (CRITICAL):** [Specific Location/Gridlines OR "**[MISSING: Specific Floor/Elevation/Gridline]**"]
+         * *Note: This limits liability to the inspected area only.*
+
+3. **# OBSERVATIONS** (ID: observations)
+   * Group findings by Trade (e.g., "## Division 07 - Roofing:"). (It is your job to determine the best logical structure for the report):
+   * **Strategy:** Focus on deviations from spec. If work is compliant, keep it brief ("General conformance observed"). ALWAYS site references in the specification.
+   * **Image Table Format (STRICT):**
+       * Do NOT use list syntax (bullets) inside table cells.
+       * Use `<br>` for line breaks.
+       * Columns must be: |  |  | (no names)
+       * Example:
+         | | |
+         | :--- | :--- |
+         | The 0.5-inch joint aligns with document 07 62 00 <Title of Spec><br> “Observation 2 and reference”  | ![Flashing Detail](IMG_ID_123) |
+
+4. **# DEFICIENCY SUMMARY** (ID: recommendations)
+   * **Constraint:** Do not design new solutions. Direct the contractor back to the Contract Documents.
+   * **Logic:**
+       * If **Critical/Safety Issue**: Start line with "**[URGENT]**".
+       * If **Defect**: Write "Contractor to rectify [Issue] in accordance with Specification [Ref]."
+       * If **Unforeseen Condition**: Write "Contractor to submit RFI (Request for Information) 
+  
+
+---------------------------------------------------------------
+
+[MESSAGE 2] Role: HUMAN --------------------------------
+
+CURRENT TASK: # OBSERVATIONS
+PURPOSE: To document technical findings related to EIFS installation and verify compliance with drawing A3.02 and specifications.
+REPORT ID: b38f3b76-b5b6-457a-a141-2ad915c71eae
+
+
+No specific photos assigned to this section. Rely on general context or internal knowledge.
+
+    
+--- INSTRUCTIONS ---
+    1. **ANALYZE:** Look at the visual evidence provided above.
+    2. **SEARCH:** You may search for specifications in internal knowledge or helpful information on the web. If you have already called it, you should proceed to 'writeSection' to write about your findings if they are relevant.
+       - **CRITICAL SEARCH RULE:** Do NOT include the Report ID (e.g., UUIDs) or words like "report" in your search query. Use only pure technical keywords (e.g., "EIFS window flashing details").
+       3. **WRITE:** Write the section "# OBSERVATIONS", use the 'writeSection' tool to save your work.
+      - **CRITICAL:** Every technical observation must site a spec if possible. Use the exact document name provided (e.g. "as per the Concrete_Specs_2024 document" or "per specification Concrete_Specs_2024").
+    
+    **CRITICAL:** When calling writeSection, you MUST use reportId: "b38f3b76-b5b6-457a-a141-2ad915c71eae". Do not use any other ID.
+    **ALLOWED TOOLS ONLY:** You have writeSection and research tools (e.g. searchInternalKnowledge for specifications). There is NO finishReport, submit_report, or completeReport tool. When the section is saved via writeSection, stop; the system will advance to the next task automatically.
+    
+
+---------------------------------------------------------------
+
