@@ -1,0 +1,19 @@
+====================================================
+AGENT: SYNTHESISBUILDER_TASK_DEFICIENCY SUMMARY
+STAGE: OUTPUT (What the AI decided)
+TIMESTAMP: 2/26/2026, 3:02:55 PM
+TOTAL MESSAGES: 1
+====================================================
+
+[MESSAGE 1] Role: AI --------------------------------
+
+# DEFICIENCY SUMMARY
+
+The following items were identified as deviations from the Contract Documents or require specific verification and/or remedial action by the Contractor. All rectifications must be performed in accordance with the cited Specification sections and applicable manufacturer requirements.
+
+1.  **EIFS Mesh Reinforcement:** At **[MISSING: Specific Floor/Elevation/Gridline]**, observed conditions regarding the diagonal mesh strips at window and door corners. Contractor to ensure all corner reinforcement is installed in strict accordance with Specification 07 24 00 <Exterior Insulation and Finish Systems (EIFS)> and manufacturer’s installation guidelines to prevent localized cracking.
+2.  **Air Barrier Continuity and Tie-In:** Observed Blueskin SA membrane applied at the top of the building to tie into existing metal flashing at **[MISSING: Specific Floor/Elevation/Gridline]**. Condition of the substrate and the transition detail not fully verified at this time due to **[MISSING: Reason (e.g., access/sequencing)]**. Contractor is reminded to ensure all laps and transitions are airtight and conform to Specification 07 27 00 <Air Barriers / Waterproofing>.
+3.  **General Site Documentation:** Site logs regarding weather conditions and crew sizes were not available at the time of review. Contractor to provide site logs for the date of inspection (**[MISSING: Date]**) to confirm work was performed within the manufacturer’s required temperature and humidity ranges for EIFS and membrane application.
+
+---------------------------------------------------------------
+

@@ -1,0 +1,143 @@
+====================================================
+AGENT: SYNTHESISBUILDER_TASK_DEFICIENCY SUMMARY
+STAGE: INPUT (What the AI sees)
+TIMESTAMP: 2/26/2026, 3:02:47 PM
+TOTAL MESSAGES: 2
+====================================================
+
+🤖 NEW [Agent]: [SynthesisBuilder_Task_Deficiency Summary] for report 12dc556a
+[MESSAGE 1] Role: SYSTEM --------------------------------
+
+You are an expert Third-Party Construction Reviewer acting on behalf of Pretium. Your role is to perform a "General Review" to identify if installed work conforms to project specifications, applicable building codes, and manufacturer requirements.
+
+### CORE OBJECTIVES
+1.  **Verify Compliance:** Determine if work aligns with the specific contract documents and trade standards.
+2.  **Risk Management:** Document findings accurately to limit liability. Avoid language that implies a guarantee of work you did not witness.
+3.  **Site Documentation:** Record weather, crew size, and specific locations of work to establish the context of the inspection.
+
+### LIABILITY GUARDRAILS (STRICT ADHERENCE)
+* **No Blanket Approvals:** NEVER imply general acceptance of work.
+    * *Bad:* "The roofing is installed correctly."
+    * *Good:* "No deficiencies were observed in the specific [Location/Gridline] area reviewed."
+* **Location Specificity:** You must describe the EXACT location of inspected work. This limits liability to that specific area and prevents assuming responsibility for the rest of the site.
+* **The "Not Observed" Clause:** If a critical specification item was not visible (covered up or not started), you must state:
+    * *"Condition not observed/verified at this time. Contractor reminded to conform to Specification [Ref]."*
+* **Unforeseen Conditions:** If you encounter conditions not in the original design, document them and suggest a course of action or note that the Consultant must be contacted.
+
+### REPORTING PROTOCOLS
+1.  **Deficiency Focus:** Your primary value is identifying deviations. Report on:
+    * Workmanship failing to meet trade standards.
+    * Material non-compliance.
+    * Safety hazards (Flag as CRITICAL immediately).
+2.  **Site Interactions:** If the data implies a conversation took place, document it to share risk.
+    * *Phrasing:* "Reviewed [Issue] with the Site Superintendent; agreed that [Action] would be taken."
+3.  **Positive Observations:** Keep them brief and specific. Do not let a positive observation imply the *entire* project is up to that standard.
+4.  **Standards of Reference:** When flagging issues, implicitly reference:
+    * Project Specifications (primary).
+    * Manufacturer's Minimum Requirements (e.g., for roofing, glazing).
+    * Industry Best Practices (e.g., CSA for concrete, masonry guidelines).
+
+### TONE & STYLE
+* **Independent & Objective:** You are a third-party specialist. You do not issue "commands" to the contractor; you record "deficiencies" and "required actions" based on the contract.
+* **Professional:** Use active voice. Be concise.
+
+### MISSING INFORMATION PROTOCOL
+You are generating a draft for a Human Professional Engineer. Do NOT guess specific details if they are not found in the context.
+* **If critical data (Location, Weather, Specific Spec Number) is missing:** You MUST insert a placeholder in this format: `**[MISSING: <Data Type>]**`.
+    * *Example:* "Observed water ponding at **[MISSING: Specific Gridline/Location]**."
+    * *Example:* "Weather conditions: **[MISSING: Weather Data]**."
+* **Reasoning:** It is better to highlight a gap for the human reviewer than to write a vague or incorrect statement.
+
+**CRITICAL SEARCH RULE:** Your search queries MUST be strictly limited to pure technical keywords (e.g., "EIFS window flashing details"). Exclude all specific identifiers, Report IDs, or conversational filler from your query string.
+
+
+---------------------------------------------------------------
+
+[MESSAGE 2] Role: HUMAN --------------------------------
+
+
+        ROLE: Senior Principal Engineer.
+        
+        TASK: 
+        Write the section "**Deficiency Summary**" for a structural inspection report.
+        
+        PURPOSE OF THIS SECTION (From Plan):
+        To consolidate items requiring contractor action or further clarification.
+
+        INPUT DATA (The Reprot Findings needed for Context Only):
+        
+    === EVIDENCE FROM Site / Staging Area ===
+    *   **Weather Conditions:** **[MISSING: Check Site Logs]**
+*   **Crew Size / Active Trades:** **[MISSING: Verify Trades Present]**
+*   **Work Area (CRITICAL):** **[MISSING: Specific Floor/Elevation/Gr...
+    
+
+
+    === EVIDENCE FROM Observations ===
+    ## Division 07 24 00 - Exterior Insulation and Finish Systems (EIFS)
+
+The following observations were made regarding the EIFS installation at **[MISSING: Specific Floor/Elevation/Gridline]**:
+
+*   **R...
+    
+
+
+    === EVIDENCE FROM Division 07 24 00 - Exterior Insulation and Finish Systems (EIFS) ===
+    ## Division 07 24 00 - Exterior Insulation and Finish Systems (EIFS)
+
+1.  **Mesh Overlap and Corner Reinforcement:** The Contractor is reminded to ensure all diagonal mesh strips at window/door corner...
+    
+
+
+    === EVIDENCE FROM Division 07 27 00 - Air Barriers / Waterproofing ===
+    ## Division 07 27 00 - Air Barriers / Waterproofing
+
+|  |  |
+| :--- | :--- |
+| Blueskin SA membrane has been applied along the top of the building to tie the existing metal flashing (installed over wo...
+    
+
+        ---
+        GLOBAL REPORT STRUCTURE (For Context Only):
+        The following is the structure for the ENTIRE report. Use this to understand where your section fits in, but DO NOT write the other sections.
+        Follow this structure strictly.
+
+1. **# GENERAL** (ID: general)
+   * Summarize key deficiencies or critical findings first. Do not re-list all findings.
+   * Briefly mention progress relative to schedule.
+   * **Constraint:** No images in this section.
+
+2. **# SITE / STAGING AREA** (ID: site-conditions)
+   * **Required Fields:**
+       * **Weather Conditions:** [Value OR "**[MISSING: Check Site Logs]**"]
+       * **Crew Size / Active Trades:** [Value OR "**[MISSING: Verify Trades Present]**"]
+       * **Work Area (CRITICAL):** [Specific Location/Gridlines OR "**[MISSING: Specific Floor/Elevation/Gridline]**"]
+         * *Note: This limits liability to the inspected area only.*
+
+3. **# OBSERVATIONS** (ID: observations)
+   * Group findings by Trade (e.g., "## Division 07 - Roofing:"). (It is your job to determine the best logical structure for the report):
+   * **Strategy:** Maintain strict third-party objectivity. Document observations without assuming responsibility for the contractor's means, methods, or overall work quality. The Contractor retains sole responsibility for execution and compliance. Focus on deviations from spec. Do not guarantee, certify, or approve work. Frame all statements to reflect that the Contractor is strictly liable for construction execution and code compliance. ALWAYS site references in the specification.
+   * **Image Table Format (STRICT):**
+       * Do NOT use list syntax (bullets) inside table cells.
+       * Use `<br>` for line breaks.
+       * Columns must be: |  |  | (no names)
+       * Example:
+         | | |
+         | :--- | :--- |
+         | The pre-finished sill flashing profile observed at the East elevation appears to be in general conformance; Contractor remains responsible for ensuring the ongoing installation aligns strictly with 07 62 00 <Sheet Metal Flashing and Trim>.<br>Observed insufficient end-dam height at the flashing terminations. Contractor to review this deviation and rectify the condition to ensure watertightness in accordance with 07 62 00 <Sheet Metal Flashing and Trim>.| ![Flashing Detail](IMG_ID_123) |
+
+4. **# DEFICIENCY SUMMARY** (ID: deficiency-summary)
+   * **Constraint:** Do not design new solutions. Direct the contractor back to the Contract Documents.
+   * **Logic:**
+       * If **Critical/Safety Issue**: Make it clear it is urgent.
+       * If **Defect**: Write "Contractor to rectify [Issue] in accordance with Specification [Ref]."
+       * If **Unforeseen Condition**: Write "Contractor to submit RFI (Request for Information) 
+
+        CRITICAL EXECUTION RULES 
+        1. You are currently executing ONLY the "Deficiency Summary" task.
+        2. DO NOT generate the entire report.
+        3. DO NOT output headers, content, or placeholders for any other sections.
+      
+
+---------------------------------------------------------------
+

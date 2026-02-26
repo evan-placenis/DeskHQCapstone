@@ -250,16 +250,6 @@ export async function builderNode(state: typeof ObservationState.State) {
     GLOBAL REPORT STRUCTURE (For Context Only):
     ${structureInstructions}
 
-    REASONING PROTOCOL (Chain of Thought)
-    Before taking any action or calling any tools, you MUST think out loud. 
-    Analyze your current task, review the visual evidence, and plan your next steps. 
-    You must enclose your internal monologue strictly within <thinking> and </thinking> tags.
-
-    Example:
-    <thinking>
-    I need to write the Observations section for EIFS. I see the image shows diagonal mesh. I should first search the internal knowledge base for the exact spec reference for "EIFS diagonal mesh" before I write the section.
-    </thinking>
-
     CRITICAL INSTRUCTION
     You are currently executing ONLY this specific task: "${currentTask.title}".
     DO NOT generate the entire report. DO NOT output any sections other than the one assigned to you. 

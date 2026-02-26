@@ -1,0 +1,36 @@
+====================================================
+AGENT: SYNTHESISBUILDER_TASK_GENERAL
+STAGE: OUTPUT (What the AI decided)
+TIMESTAMP: 2/26/2026, 3:19:05 PM
+TOTAL MESSAGES: 1
+====================================================
+
+[MESSAGE 1] Role: AI --------------------------------
+
+<thinking>
+To write the "GENERAL" section for the structural inspection report, I need to synthesize an overview based on the provided input headers. 
+
+1.  **Analyze Input:** The input provided lists sections for "EIFS Progress" and "Wall Penetrations" under Division 07, but the specific findings are marked as "Section saved," meaning the actual technical details (the specific deficiencies or progress percentages) are not explicitly present in the prompt text. 
+2.  **Apply Missing Information Protocol:** Since the specific deficiencies, locations, and progress details are missing from the provided evidence snippets, I must use the `**[MISSING: <Data Type>]**` placeholder format as per the instructions.
+3.  **Structure the Content:**
+    *   Start with a summary of key deficiencies/critical findings.
+    *   Follow with a brief mention of progress relative to the schedule.
+    *   Ensure the tone is objective and limits liability (no blanket approvals).
+4.  **Liability Check:** I will avoid saying "the work is good" and instead focus on the specific areas reviewed (once the user fills the placeholders). I will include the standard reminder that the Contractor is responsible for means and methods.
+5.  **Identify Search Needs:** I do not need external technical searches for this specific section, as the "General" section is a summary of the site visit's specific findings which are (in this context) missing. I will rely on the provided structure.
+
+My strategy is to create a professional summary framework that the Senior Principal Engineer can complete, identifying exactly where the missing site-specific data needs to be inserted.
+</thinking>
+
+# GENERAL
+
+The general review was conducted at **[MISSING: Specific Floor/Elevation/Gridlines]** to evaluate the progress and quality of the building envelope assemblies, with a primary focus on Division 07—Thermal and Moisture Protection. 
+
+Key deficiencies and critical findings identified during this site visit include **[MISSING: Summary of Key Deficiencies (e.g., improper flashing laps, unsealed penetrations, or mesh voids)]**. These items require rectification to ensure the integrity of the weather barrier and compliance with the project specifications. The Contractor is directed to review the detailed observations below and provide a schedule for remedial action.
+
+Regarding construction progress, EIFS installation and wall penetration detailing are currently underway at **[MISSING: Specific Location]**. Overall progress appears to be **[MISSING: Progress Status relative to schedule]**. No deficiencies were observed in the specific areas reviewed except where noted in the subsequent sections of this report. 
+
+The Contractor is reminded that Pretium’s review is periodic and does not include a review of the Contractor’s safety program, nor does it relieve the Contractor of their sole responsibility for construction means, methods, and compliance with the Contract Documents and applicable building codes.
+
+---------------------------------------------------------------
+

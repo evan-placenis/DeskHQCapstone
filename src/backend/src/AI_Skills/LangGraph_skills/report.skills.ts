@@ -69,7 +69,6 @@ export const reportSkills = ( client: SupabaseClient) => [
           heading,
           message: `Section "${heading}" written and saved to database.`,
           _written: true,
-          preview: content.substring(0, 200) + (content.length > 200 ? '...' : ''),
           order: order ?? 0
         };
       } catch (error) {
@@ -99,7 +98,7 @@ export const reportSkills = ( client: SupabaseClient) => [
           severity: z.enum(['critical', 'major', 'minor']).optional(),
           trade: z.string().optional()
         }).optional().describe('Compliance status. REQUIRED if reporting a defect.'),
-        reasoning: z.string().optional().describe('A "scratchpad" to think out loud and let the user know what you are thinking.'),
+        // reasoning: z.string().optional().describe('A "scratchpad" to think out loud and let the user know what you are thinking.'),
       }),
     }
   ),

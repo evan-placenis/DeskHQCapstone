@@ -392,29 +392,20 @@ async function processStreamEvent({
   // 1. LLM TOKEN STREAMING (The "Typewriter" Effect)
   // ---------------------------------------------------------
   if (event.event === "on_chat_model_stream") {
-    // 🔍 EXTRACT CONTENT
-    // LangChain is inconsistent. It could be:
-    // A. event.data.chunk.content (Standard)
-    // B. event.data.chunk (String)
-    // C. event.data.content (Legacy)
-    
     let content = "";
     const chunk = event.data?.chunk;
     
-    if (typeof chunk === "string") {
-      content = chunk;
-    } else if (chunk && typeof chunk.content === "string") {
-      content = chunk.content;
-    } else if (event.data?.content) {
-      content = event.data.content;
-    }
+    if (typeof chunk === "string") content = chunk;
+    else if (chunk && typeof chunk.content === "string") content = chunk.content;
+    else if (event.data?.content) content = event.data.content;
 
     // 🛡️ IGNORE EMPTY CHUNKS
     if (content && content.length > 0) {
-      updatedBuffer += content;
+      const cleanContent = content.replace(/<thinking>/g, '').replace(/<\/thinking>/g, '');
       
-      // OPTIONAL: Log if you want to see it working
-      // if (STREAM_DEBUG) console.log(`🔤 Chunk: ${content.slice(0, 20)}...`);
+      if (cleanContent.length > 0) {
+          updatedBuffer += cleanContent;
+      }
     }
   }
 
@@ -425,46 +416,34 @@ async function processStreamEvent({
     const toolName = event.name;
     const toolInput = event.data?.input;
 
-    // 🔍 DEBUG LOG: See exactly what LangChain gives us
-    console.log(`🔍 [Stream Debug] ${toolName} Input:`, JSON.stringify(toolInput, null, 2));
-
     // Get the formatted header + reasoning string
     const statusMessage = streamingAdapter.getFriendlyStatus(toolName, toolInput);
 
     if (statusMessage) {
-        console.log(`[Stream] ${statusMessage.split('\n')[0]}`); // Log just the header to console
-        
         // Broadcast to UI
-        await broadcast(supabase, projectId, 'reasoning', { 
-            chunk: `\n${statusMessage}\n\n` // Add spacing
+        await broadcast(supabase, projectId, 'status', { 
+            chunk: `${statusMessage}`
         });
-        
-        updatedBuffer += `\n${statusMessage}\n\n`;
     }
   }
   
-  /// ---------------------------------------------------------
-// 2. TOOL END (Capture Results)
+/// ---------------------------------------------------------
+// 3. TOOL END (Capture Results - Hidden from AI thought stream)
 // ---------------------------------------------------------
 else if (event.event === "on_tool_end") {
   const toolName = event.name;
-  const toolOutput = event.data?.output;
 
-  // Get the formatted result string
-  const completionMessage = streamingAdapter.getFriendlyCompletion(toolName, toolOutput);
-
-  if (completionMessage) {
-      // Broadcast to UI
-      await broadcast(supabase, projectId, 'reasoning', { 
-          chunk: `\n${completionMessage}\n\n` 
-      });
-      
-      updatedBuffer += `\n${completionMessage}\n\n`;
-    }
+  // We update the 'status' bar to say "Search Complete", but we DO NOT 
+  // inject the raw results into the updatedBuffer/reasoning stream.
+  if (toolName === 'searchInternalKnowledge') {
+    await broadcast(supabase, projectId, 'status', { chunk: "Search complete. Agent is analyzing results..." });
+  } else if (toolName === 'writeSection') {
+    await broadcast(supabase, projectId, 'status', { chunk: "Section saved successfully." });
   }
+}
   
   // ---------------------------------------------------------
-  // 3. NODE TRANSITIONS (Graph State Updates)
+  // 4. NODE TRANSITIONS
   // ---------------------------------------------------------
   else if (event.event === "on_chain_start" && event.name && event.name !== "LangGraph") {
      // You can broadcast this too if you want granular UI updates
@@ -473,6 +452,7 @@ else if (event.event === "on_tool_end") {
 
   return updatedBuffer;
 }
+
 
 
 /**
@@ -490,7 +470,6 @@ async function handleResumeAction(
 
   try {
     console.log(`🔄 Resuming workflow for report ${reportId}`);
-    console.log(`📋 Approval status: ${approvalStatus}`);
     if (userFeedback) {
       console.log(`💬 User feedback: ${userFeedback}`);
     }

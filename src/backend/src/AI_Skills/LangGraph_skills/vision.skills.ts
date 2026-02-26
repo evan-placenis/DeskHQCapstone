@@ -52,7 +52,7 @@ export function visionSkillsWithReport(reportId?: string, client?: SupabaseClien
           id: z.string().describe('The UUID of the image (keep this from the source!)')
         })).describe('List of images to analyze'),
         focus: z.string().optional().describe('Specific visual elements to look for (e.g. "water damage", "safety hazards")'),
-        reasoning: z.string().optional()
+        // reasoning: z.string().optional()
       }),
     }
   ),
@@ -73,7 +73,7 @@ export function visionSkillsWithReport(reportId?: string, client?: SupabaseClien
       schema: z.object({
         imageUrl: z.string().describe('URL of the schematic image to analyze'),
         imageId: z.string().optional().describe('Optional ID for tracking'),
-        reasoning: z.string().optional().describe('Brief note for the user (e.g. "Analyzing schematic for details")'),
+        // reasoning: z.string().optional().describe('Brief note for the user (e.g. "Analyzing schematic for details")'),
       }),
     }
   ),
