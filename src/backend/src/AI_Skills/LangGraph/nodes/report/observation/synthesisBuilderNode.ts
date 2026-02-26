@@ -62,12 +62,18 @@ export async function synthesisBuilderNode(state: typeof ObservationState.State)
         PURPOSE OF THIS SECTION (From Plan):
         ${section.purpose || "Provide a high-level overview and actionable next steps."}
 
-        INPUT DATA (The Findings):
+        INPUT DATA (The Reprot Findings needed for Context Only):
         ${observationsContext}
 
-        STRICT FORMATTING RULES:
+        ---
+        GLOBAL REPORT STRUCTURE (For Context Only):
+        The following is the structure for the ENTIRE report. Use this to understand where your section fits in, but DO NOT write the other sections.
         ${structureInstructions}
 
+        CRITICAL EXECUTION RULES 
+        1. You are currently executing ONLY the "${section.title}" task.
+        2. DO NOT generate the entire report.
+        3. DO NOT output headers, content, or placeholders for any other sections.
       `;
 
     // 🔄 RETRY LOOP

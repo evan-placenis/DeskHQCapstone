@@ -31,9 +31,7 @@ export async function dumpAgentContext(
     
     // 1. Create a clean, sortable timestamp FIRST
     const now = new Date();
-    // Creates format: 2026-02-25T18-50-27-000Z
-    const sortableTimeStr = now.toISOString().replace(/[:.]/g, '-'); 
-
+    
     // 2. Create the dedicated folder
     const safeReportId = reportId.replace(/[^a-z0-9-]/gi, '_');
     const logsDir = path.join(process.cwd(), '.logs', `Report_${safeReportId}`);
@@ -42,7 +40,7 @@ export async function dumpAgentContext(
     await fs.mkdir(logsDir, { recursive: true });
 
     // 3. Create filename: Timestamp FIRST for perfect chronological sorting in your OS
-    const filename = `${sortableTimeStr}_${agentName}_${stage}.txt`;
+    const filename = `${agentName}_${stage}.txt`;
     const filepath = path.join(logsDir, filename);
 
     // 4. Format the Context Dump

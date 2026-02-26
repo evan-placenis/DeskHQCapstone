@@ -19,6 +19,12 @@ import {
 // =========================================================
 // INGESTION (Backend -> Frontend)
 // =========================================================
+/** Strip leading markdown (e.g. # or ##) from a title string so it displays as plain text. */
+export function stripMarkdownFromTitle(s: string | undefined): string {
+  if (s == null || typeof s !== 'string') return '';
+  return s.replace(/^#+\s*/, '').trim() || s;
+}
+
 // Helper to convert ReportSection to editor format (flatten photoIds)
 // Supports both: Architect's assignedImageIds (array of IDs) and legacy photoContext (array of { photoId, note })
 export const convertSectionToEditorFormat = (section: any, index: number): any[] => {
@@ -38,7 +44,7 @@ export const convertSectionToEditorFormat = (section: any, index: number): any[]
   // 1. Create the Parent Section (The "Container")
   const parentSection = {
     id: section.sectionId || `section-${index}`,
-    title: section.title,
+    title: stripMarkdownFromTitle(section.title),
     purpose: section.purpose,
     reportOrder: section.reportOrder || index + 1,
     photoIds: extractIds(section),
@@ -57,7 +63,7 @@ export const convertSectionToEditorFormat = (section: any, index: number): any[]
     }
     return {
       id: sub.subSectionId || `section-${index}-sub-${subIndex}`,
-      title: sub.title,
+      title: stripMarkdownFromTitle(sub.title),
       purpose: sub.purpose,
       reportOrder: (section.reportOrder || index + 1) + (subIndex + 1) * 0.1,
       photoIds: extractIds(sub),

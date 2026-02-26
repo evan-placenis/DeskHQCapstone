@@ -123,6 +123,12 @@ export const ObservationState = Annotation.Root({
   // 9. Supabase Client (non-serializable but needed for tools)
   client: Annotation<any>(),
 
+  // 9b. Circuit breaker: count search tool invocations per section to avoid infinite loops
+  searchAttemptCount: Annotation<number>({
+    reducer: (x, y) => (y !== undefined && y !== null ? y : x),
+    default: () => 0,
+  }),
+
   // 10. Shared Knowledge Base (populated by researcher)
   researchFindings: Annotation<string>({
     reducer: (x, y) => {
