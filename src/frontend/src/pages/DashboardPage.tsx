@@ -307,14 +307,25 @@ export function DashboardPage({
                 <h1 className="text-white mb-1 text-xl sm:text-2xl lg:text-3xl font-bold">Welcome back, Engineer</h1>
                 <p className="text-white/90 text-sm sm:text-base">Manage your projects and generate AI-powered reports</p>
               </div>
-              <Button
-                size="lg"
-                className="bg-white hover:bg-white/90 text-theme-primary rounded-lg shadow-md w-full sm:w-auto h-12 sm:h-auto font-semibold"
-                onClick={() => setIsNewProjectModalOpen(true)}
-              >
-                <Plus className="w-6 h-6 sm:w-7 sm:h-7 mr-2" />
-                New Project
-              </Button>
+              <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
+                <Button
+                  size="lg"
+                  className="bg-white hover:bg-white/90 text-theme-primary rounded-lg shadow-md w-full sm:w-auto h-12 sm:h-auto font-semibold"
+                  onClick={() => setIsNewProjectModalOpen(true)}
+                >
+                  <Plus className="w-6 h-6 sm:w-7 sm:h-7 mr-2" />
+                  New Project
+                </Button>
+                <Button
+                  size="lg"
+                  variant="outline"
+                  className="lg:hidden bg-white/90 hover:bg-white border-white text-theme-primary rounded-lg shadow-md w-full h-12 font-semibold"
+                  onClick={() => onNavigate("capture-session")}
+                >
+                  <Camera className="w-6 h-6 mr-2" />
+                  Capture Session
+                </Button>
+              </div>
             </div>
           </Card>
         </div>

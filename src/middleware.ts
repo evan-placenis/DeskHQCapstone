@@ -52,7 +52,7 @@ export async function middleware(request: NextRequest) {
 
   // Protected routes: redirect to login if no user
   // Add any other protected paths here
-  const protectedPaths = ['/project', '/dashboard', '/report', '/settings', '/mystats', '/analytics_dashboard', '/audio_timeline', '/capture', '/organization_password', '/peer_review', '/reviewer', '/select-org']
+  const protectedPaths = ['/project', '/dashboard', '/report', '/settings', '/mystats', '/analytics_dashboard', '/audio_timeline', '/capture', '/capture_session', '/organization_password', '/peer_review', '/reviewer', '/select-org']
   const isProtectedPath = protectedPaths.some(path => request.nextUrl.pathname.startsWith(path))
 
   if (isProtectedPath) {

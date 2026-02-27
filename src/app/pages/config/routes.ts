@@ -13,7 +13,8 @@ export type Page =
   | 'reviewer' 
   | 'settings' 
   | 'audio-timeline'
-  | 'capture';
+  | 'capture'
+  | 'capture-session';
 
 export const ROUTES = {
   login: '/pages/login',
@@ -31,6 +32,7 @@ export const ROUTES = {
   audioTimeline: (projectId?: string | number) => 
     projectId ? `/pages/audio_timeline?projectId=${projectId}` : '/pages/audio_timeline',
   capture: '/pages/capture',
+  captureSession: '/pages/capture_session',
 };
 
 // Helper to resolve route by Page type (for simple routes)
@@ -46,6 +48,7 @@ export const getRoute = (page: Page): string => {
     case 'reviewer': return ROUTES.reviewer;
     case 'settings': return ROUTES.settings;
     case 'capture': return ROUTES.capture;
+    case 'capture-session': return ROUTES.captureSession;
     // For parameterized routes, we might return a base path or handle it differently
     // This function is mainly for the simple 1:1 mapping cases
     case 'project': return '/pages/project'; 

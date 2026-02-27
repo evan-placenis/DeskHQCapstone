@@ -141,5 +141,50 @@ export class StorageService {
         }
         console.log(`✅ Deleted ${rows.length} spec image(s) for document ${kId}.`);
     }
+
+    /**
+     * Uploads audio to the project-audio bucket (capture session audio).
+     * Does NOT write to DB; caller should update capture_sessions.audio_storage_path etc.
+     * Path format: {organizationId}/{projectId}/{folderName}/{fileName}
+     */
+    async uploadProjectAudio(
+        projectId: string,
+        organizationId: string,
+        _userId: string,
+        audioFile: File | Blob,
+        fileName: string,
+        folderName: string,
+        client: SupabaseClient
+    ): Promise<{ storage_path: string; public_url: string; file_name: string; mime_type: string; size_bytes: number }> {
+        const arrayBuffer = await audioFile.arrayBuffer();
+        const safeFolder = folderName.replace(/\//g, '-');
+        const filePath = `${organizationId}/${projectId}/${safeFolder}/${fileName}`;
+
+        const mimeType = audioFile instanceof File ? audioFile.type : 'audio/webm';
+        const { error: uploadError } = await client
+            .storage
+            .from('project-audio')
+            .upload(filePath, arrayBuffer, {
+                contentType: mimeType || 'audio/webm',
+                upsert: false
+            });
+
+        if (uploadError) {
+            throw new Error(`Storage Upload Error (audio): ${uploadError.message}`);
+        }
+
+        const { data: { publicUrl } } = client
+            .storage
+            .from('project-audio')
+            .getPublicUrl(filePath);
+
+        return {
+            storage_path: filePath,
+            public_url: publicUrl,
+            file_name: fileName,
+            mime_type: mimeType || 'audio/webm',
+            size_bytes: arrayBuffer.byteLength
+        };
+    }
 }
 
