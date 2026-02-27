@@ -51,7 +51,7 @@ const StatusFooter = memo(({ status }: { status: string }) => {
   );
 });
 
-// 4. MAIN COMPONENT
+// 4. MAIN COMPONENT — "Disappearing Act": reasoning box only while generating, hides when isComplete
 export const ReportLiveStream = ({
   reasoningText,
   status,
@@ -63,54 +63,48 @@ export const ReportLiveStream = ({
 }) => {
 
   return (
-    <Card className="max-w-4xl mx-auto mt-8 border-2 border-theme-primary/10 shadow-lg bg-white overflow-hidden animate-in fade-in slide-in-from-bottom-4 duration-500">
+    <div className="flex flex-col gap-4 max-w-4xl mx-auto mt-8">
 
-      {/* HEADER: Looks like a Document Toolbar */}
-      <div className="bg-slate-50/80 border-b border-slate-100 p-4 flex items-center justify-between backdrop-blur-sm">
-        <div className="flex items-center gap-3">
-          <div className={`p-2 rounded-lg ${isComplete ? 'bg-green-100 text-green-600' : 'bg-blue-100 text-blue-600'}`}>
-            {isComplete ? <CheckCircle2 className="w-5 h-5" /> : <FileText className="w-5 h-5 animate-pulse" />}
+      {/* 2. THINKING BOX — Only while generating; fades out when isComplete */}
+      {!isComplete && (
+        <Card className="border-2 border-theme-primary/10 shadow-lg bg-white overflow-hidden animate-in fade-in slide-in-from-bottom-2 duration-300">
+          <div className="bg-slate-50/80 border-b border-slate-100 px-4 py-2 flex items-center gap-2">
+            <FileText className="w-4 h-4 text-theme-primary animate-pulse" />
+            <h4 className="text-xs font-bold text-slate-600 uppercase tracking-wide">Agent is thinking...</h4>
           </div>
-          <div>
-            <h3 className="font-semibold text-slate-900 text-sm">
-              {isComplete ? 'Report Generated' : 'Drafting Report...'}
-            </h3>
-            <p className="text-xs text-slate-500">
-              {isComplete ? 'Ready for review' : 'AI Agent Active'}
-            </p>
-          </div>
-        </div>
+          <CardContent className="p-6 min-h-[200px] max-h-[60vh] overflow-y-auto scroll-smooth bg-white">
+            {!reasoningText ? (
+              <div className="flex flex-col items-center justify-center text-slate-400 gap-2 py-12">
+                <Loader2 className="w-8 h-8 animate-spin opacity-50" />
+                <p className="text-sm font-medium">Initializing Report Strategy...</p>
+              </div>
+            ) : (
+              <div className="prose prose-sm max-w-none text-slate-700">
+                <StreamRenderer content={reasoningText} />
+              </div>
+            )}
+          </CardContent>
+          {status && status !== 'Initializing...' && (
+            <div className="px-4 pb-3 pt-0">
+              <StatusFooter status={status} />
+            </div>
+          )}
+        </Card>
+      )}
 
-        {/* Live Badge */}
-        {!isComplete && (
-          <div className="flex items-center gap-1.5 px-2.5 py-1 bg-theme-primary/10 text-theme-primary rounded-full">
-            <span className="relative flex h-2 w-2">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-theme-primary opacity-75"></span>
-              <span className="relative inline-flex rounded-full h-2 w-2 bg-theme-primary"></span>
-            </span>
-            <span className="text-[10px] font-bold uppercase tracking-wide">Live Stream</span>
-          </div>
-        )}
-      </div>
-
-      {/* BODY: The "Paper" */}
-      <CardContent className="p-8 min-h-[300px] max-h-[70vh] overflow-y-auto scroll-smooth bg-white">
-
-        {/* If empty, show a nice empty state */}
-        {!reasoningText ? (
-          <div className="h-full flex flex-col items-center justify-center text-slate-300 gap-2 py-12">
-            <Loader2 className="w-8 h-8 animate-spin opacity-50" />
-            <p className="text-sm font-medium">Initializing Report Strategy...</p>
-          </div>
-        ) : (
-          <StreamRenderer content={reasoningText} />
-        )}
-
-        {/* Footer Status (e.g., "Using tool: Search Specs...") */}
-        <StatusFooter status={status} />
-
-      </CardContent>
-    </Card>
+      {/* 3. SUCCESS STATE — Shown when isComplete (replaces thinking box) */}
+      {isComplete && (
+        <Card className="border-2 border-green-200 shadow-lg bg-white overflow-hidden animate-in fade-in duration-300">
+          <CardContent className="p-6 flex flex-col items-center justify-center gap-4 min-h-[120px]">
+            <div className="p-3 rounded-full bg-green-100 text-green-600">
+              <CheckCircle2 className="w-8 h-8" />
+            </div>
+            <h2 className="text-lg font-bold text-green-700">Report generated successfully!</h2>
+            <p className="text-sm text-slate-500">Redirecting to report...</p>
+          </CardContent>
+        </Card>
+      )}
+    </div>
   );
 };
 
