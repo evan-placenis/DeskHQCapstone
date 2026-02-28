@@ -70,7 +70,7 @@ export function NewReportModal({ open, onOpenChange, projectName, onCreateReport
   const [selectedPhotoIds, setSelectedPhotoIds] = useState<string[]>([]);
   const [reportMode, setReportMode] = useState<"auto" | "manual">("auto");
   const [sections, setSections] = useState<EditorSection[]>([]);
-  const [reportStyle, setReportStyle] = useState("comprehensive");
+  const [reportExecution, setReportExecution] = useState<"fast" | "thinking">("fast");
   const [processingMode, setProcessingMode] = useState<"TEXT_ONLY" | "IMAGE_AND_TEXT">("IMAGE_AND_TEXT");
   const [modelProvider, setModelProvider] = useState<'grok' | 'claude' | 'gemini-pro' | 'gemini-cheap'>('gemini-cheap');
   const [workflowType, setWorkflowType] = useState<string>("simple");
@@ -151,7 +151,8 @@ export function NewReportModal({ open, onOpenChange, projectName, onCreateReport
       photoIds: selectedPhotoIds,
       mode: reportMode,
       sections: reportMode === "manual" ? sections : undefined,
-      style: reportStyle,
+      style: reportExecution,
+      isThinkingMode: reportExecution === "thinking",
       processingMode: processingMode,
       modelName: modelProvider,
       workflowType: workflowType,
@@ -168,7 +169,7 @@ export function NewReportModal({ open, onOpenChange, projectName, onCreateReport
     setSelectedPhotoIds([]);
     setReportMode("auto");
     setSections([]);
-    setReportStyle("comprehensive");
+    setReportExecution("fast");
     setProcessingMode("IMAGE_AND_TEXT");
     setModelProvider("gemini-cheap");
     setWorkflowType("simple");
@@ -467,34 +468,29 @@ export function NewReportModal({ open, onOpenChange, projectName, onCreateReport
               </div>
 
               <div className="space-y-3">
-                <Label>Report Style</Label>
-                <Select value={reportStyle} onValueChange={setReportStyle}>
+                <Label>Report Execution</Label>
+                <Select
+                  value={reportExecution}
+                  onValueChange={(v) => setReportExecution(v as "fast" | "thinking")}
+                >
                   <SelectTrigger className="rounded-lg">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent className="rounded-lg">
-                    <SelectItem value="comprehensive" className="rounded-md">
+                    <SelectItem value="fast" className="rounded-md">
                       <div>
-                        <p>Comprehensive</p>
-                        <p className="text-xs text-slate-500">Detailed analysis with full context</p>
+                        <p>Fast</p>
+                        <p className="text-xs text-slate-500">
+                          Quick execution with minimal additional reasoning
+                        </p>
                       </div>
                     </SelectItem>
-                    <SelectItem value="concise" className="rounded-md">
+                    <SelectItem value="thinking" className="rounded-md">
                       <div>
-                        <p>Concise</p>
-                        <p className="text-xs text-slate-500">Key findings and observations only</p>
-                      </div>
-                    </SelectItem>
-                    <SelectItem value="executive" className="rounded-md">
-                      <div>
-                        <p>Executive Summary</p>
-                        <p className="text-xs text-slate-500">High-level overview for stakeholders</p>
-                      </div>
-                    </SelectItem>
-                    <SelectItem value="technical" className="rounded-md">
-                      <div>
-                        <p>Technical Deep-Dive</p>
-                        <p className="text-xs text-slate-500">In-depth technical specifications</p>
+                        <p>Thinking</p>
+                        <p className="text-xs text-slate-500">
+                          Slower, with deeper reasoning and thought steps
+                        </p>
                       </div>
                     </SelectItem>
                   </SelectContent>
@@ -578,8 +574,10 @@ export function NewReportModal({ open, onOpenChange, projectName, onCreateReport
                     </span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-slate-600">Style:</span>
-                    <span className="text-slate-900 capitalize">{reportStyle}</span>
+                    <span className="text-slate-600">Execution:</span>
+                    <span className="text-slate-900 capitalize">
+                      {reportExecution === "thinking" ? "Thinking" : "Fast"}
+                    </span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-slate-600">Processing:</span>

@@ -36,7 +36,7 @@ export const referenceSkills = (client: SupabaseClient) => [
       description: 'Search for a "Gold Standard" example of a specific report section to mimic its style, tone, and formatting.',
       schema: z.object({
         category: z.string().describe('The trade or topic (e.g., "Roofing", "Electrical", "Executive Summary")'),
-        reasoning: z.string().optional()
+        // reasoning: z.string().optional()
       }),
     }
   ),

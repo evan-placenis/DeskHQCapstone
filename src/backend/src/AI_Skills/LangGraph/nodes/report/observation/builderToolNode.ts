@@ -5,7 +5,7 @@ import { ObservationState } from "../../../state/report/ObservationState";
 import { Container } from "../../../../../config/container";
 
 const SEARCH_TOOL_NAMES = ['searchInternalKnowledge', 'searchWeb'] as const;
-const SEARCH_CIRCUIT_BREAKER_THRESHOLD = 2;
+const SEARCH_CIRCUIT_BREAKER_THRESHOLD = 4;
 
 export async function builderToolsNode(state: typeof ObservationState.State) {
   const { 

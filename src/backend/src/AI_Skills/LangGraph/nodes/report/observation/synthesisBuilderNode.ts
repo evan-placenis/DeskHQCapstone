@@ -93,8 +93,11 @@ export async function synthesisBuilderNode(state: typeof ObservationState.State)
         // 📝 Log the OUTPUT (What the AI just generated / The tools it wants to call)
         dumpAgentContext(draftReportId || "", taskName, [response], 'OUTPUT');
 
-        const text = typeof response.content === 'string' ? response.content : JSON.stringify(response.content);
-        newContent[section.title] = text;
+        const rawText = typeof response.content === 'string' ? response.content : JSON.stringify(response.content);
+
+        // leaving only the pure report text.
+        const cleanReportText = rawText.replace(/<thinking>[\s\S]*?<\/thinking>/gi, '').trim();
+        newContent[section.title] = cleanReportText;
 
         // 2. MARK SUCCESS HERE (The AI did its job)
         success = true;
@@ -108,7 +111,7 @@ export async function synthesisBuilderNode(state: typeof ObservationState.State)
                   draftReportId,
                   section.sectionId,
                   section.title,
-                  text,
+                  cleanReportText,
                   safeOrder, // Use the correct order from the plan
                   freshClient
               );

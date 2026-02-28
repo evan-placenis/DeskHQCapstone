@@ -15,19 +15,18 @@ import { sharedCheckpointer } from "../checkpointer";
 import { builderToolsNode } from "../../nodes/report/observation/builderToolNode";
 
 const workflow = new StateGraph(ObservationState)
-
-  // Nodes
   .addNode("fetch_context", fetchContextNode)
   .addNode("architect", architectNode)
   .addNode("human_approval", humanApprovalNode)
   .addNode("builder", builderNode)
   .addNode("builder_continue", builderContinueNode)
-  .addNode("builder_tools", builderToolsNode)
   // .addNode("reviewer", reviewerNode)
+  .addNode("builder_tools", builderToolsNode)
   .addNode("synthesis_builder", synthesisBuilderNode)
 
-  // --- EDGES ---
 
+
+  // --- EDGES ---
   // 1. Start -> fetch_context (Hydrate State)
   .addEdge(START, "fetch_context")
 

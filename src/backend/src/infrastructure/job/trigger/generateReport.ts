@@ -237,8 +237,9 @@ export const generateReportTask = task({
         });
         // Debounced reasoning broadcast (so text flows smoothly)
         if (textBuffer.length > 0 && Date.now() - lastUpdate > UPDATE_INTERVAL) {
-          await broadcast(supabase, payload.projectId!, 'reasoning', { chunk: textBuffer });
-          textBuffer = "";
+          // ✅ CHANGED 'reasoning' to 'agent_thought'
+          await broadcast(supabase, payload.projectId!, 'agent_thought', { chunk: textBuffer });
+          textBuffer = ""; // Clears the buffer so we don't send duplicate text!
           lastUpdate = Date.now();
         }
       }
@@ -392,19 +393,50 @@ async function processStreamEvent({
   // 1. LLM TOKEN STREAMING (The "Typewriter" Effect)
   // ---------------------------------------------------------
   if (event.event === "on_chat_model_stream") {
-    let content = "";
     const chunk = event.data?.chunk;
     
-    if (typeof chunk === "string") content = chunk;
-    else if (chunk && typeof chunk.content === "string") content = chunk.content;
-    else if (event.data?.content) content = event.data.content;
+    // A. Standard Text Stream (If the model speaks normally)
+    if (typeof chunk === "string") {
+      updatedBuffer += chunk;
+    } else if (chunk?.content && typeof chunk.content === "string") {
+      updatedBuffer += chunk.content;
+    }
 
-    // 🛡️ IGNORE EMPTY CHUNKS
-    if (content && content.length > 0) {
-      const cleanContent = content.replace(/<thinking>/g, '').replace(/<\/thinking>/g, '');
-      
-      if (cleanContent.length > 0) {
-          updatedBuffer += cleanContent;
+    // B. Tool Call Argument Stream (Schema-Driven CoT!)
+    // When the LLM builds a tool call, it streams the raw JSON string piece by piece here.
+    if (chunk?.tool_call_chunks && chunk.tool_call_chunks.length > 0) {
+      // 🕵️ X-RAY LOG 1: What does the raw tool chunk look like?
+      console.log("🔍 RAW STREAMING TOOL CHUNK:", JSON.stringify(chunk.tool_call_chunks[0], null, 2));
+      const tcChunk = chunk.tool_call_chunks[0];
+
+      if (tcChunk.args) {
+        let rawChunk = tcChunk.args;
+
+        // 🕵️ X-RAY LOG 2: What text are we actually trying to process?
+        console.log("📝 STREAMING PROCESSING STRING:", rawChunk);
+
+        // 🧹 CLEANUP THE JSON SYNTAX
+        // We strip out the JSON keys so the UI just sees the English reasoning.
+        rawChunk = rawChunk.replace(/^{\s*"reasoning"\s*:\s*"/, ""); // Opening key
+        rawChunk = rawChunk.replace(/^{\s*"query"\s*:\s*"/, "");     // Query key (if it searches first)
+        rawChunk = rawChunk.replace(/\\n/g, "\n"); 
+        rawChunk = rawChunk.replace(/\\"/g, '"');
+
+        // 🛑 THE CUT-OFF SWITCH
+        // As soon as the AI finishes "reasoning" and starts typing the next field 
+        // (like "reportId" or "content"), we stop adding to the buffer.
+        if (rawChunk.includes('", "') || rawChunk.includes('","')) {
+          rawChunk = rawChunk.split('",')[0]; 
+       }
+        
+        // Only add to the buffer if it's actual text and not structural JSON keys
+        if (rawChunk.length > 0 && !rawChunk.includes('reportId') && !rawChunk.includes('content')) {
+          updatedBuffer += rawChunk;
+          
+          // // 🚀 BROADCAST TO UI (Typewriter effect!)
+          console.log("📤 BROADCASTING TO UI:", updatedBuffer);
+          await broadcast(supabase, projectId, 'agent_thought', { chunk: updatedBuffer });
+        }
       }
     }
   }
@@ -413,12 +445,29 @@ async function processStreamEvent({
   // 2. TOOL START (Capture Intent & Reasoning)
   // ---------------------------------------------------------
   else if (event.event === "on_tool_start") {
+    // ☢️ NUCLEAR X-RAY LOG: What exactly is LangChain handing us?
+    // console.log("==========================================");
+    // console.log(`🚀 ON_TOOL_START: ${event.name}`);
+    // console.dir(event.data?.input, { depth: null, colors: true });
+    // console.log("==========================================");
+
     const toolName = event.name;
-    const toolInput = event.data?.input;
+    let toolInput = event.data?.input;
+
+    // 🚀 UNIVERSAL CAPTURE: Works for Gemini, OpenAI, Claude, etc.
+    if (toolInput && toolInput.input) toolInput = toolInput.input;
+    if (typeof toolInput === 'string') {
+      try { toolInput = JSON.parse(toolInput); } catch (e) {}
+    }
+    if (toolInput && typeof toolInput.reasoning === 'string') {
+      // Send the perfectly formatted string to the UI
+      await broadcast(supabase, projectId, 'agent_thought', { chunk: toolInput.reasoning + "\n\n" });
+    } else {
+       console.log(`⚠️ [Debug] Tool started but no re asoning found. Input was:`, toolInput);
+    }
 
     // Get the formatted header + reasoning string
     const statusMessage = streamingAdapter.getFriendlyStatus(toolName, toolInput);
-
     if (statusMessage) {
         // Broadcast to UI
         await broadcast(supabase, projectId, 'status', { 
@@ -578,7 +627,7 @@ async function handleResumeAction(
       });
       // Debounced reasoning broadcast (so text flows smoothly)
       if (textBuffer.length > 0 && projectId && Date.now() - lastUpdate > UPDATE_INTERVAL) {
-        await broadcast(supabase, projectId, 'reasoning', { chunk: textBuffer });
+        await broadcast(supabase, projectId, 'agent_thought', { chunk: textBuffer });
         textBuffer = "";
         lastUpdate = Date.now();
       }
@@ -586,7 +635,7 @@ async function handleResumeAction(
 
     // 7. Flush remaining buffer
     if (textBuffer.length > 0 && projectId) {
-      await broadcast(supabase, projectId, 'reasoning', { chunk: textBuffer });
+      await broadcast(supabase, projectId, 'agent_thought', { chunk: textBuffer });
     }
 
     // 8. Check if we paused again (rejection cycle)

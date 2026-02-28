@@ -39,7 +39,7 @@ export async function architectNode(state: typeof ObservationState.State) {
       name: 'submitReportPlan',
       description: 'Submit the proposed report structure and strategy. Include all sections with their assigned photo IDs.',
       schema: z.object({
-        reasoning: z.string().describe('Explain WHY you grouped photos this way.'),
+         reasoning: z.string().describe('Explain WHY you grouped photos this way.'),
         sections: z.array(z.object({
           sectionId: z.string().describe('Unique ID for section (e.g., "exec-summary", "observations")'),
           title: z.string().describe('Section title (e.g., "Executive Summary", "Observations")'),
@@ -127,8 +127,7 @@ GUIDELINES:
    - If a section has subsections, the assignedImageIds for the PARENT section MUST be an empty array [].
    - Do not "duplicate" photo IDs in both the parent and the subsection. This causes repetitive content generation.
 
-OUTPUT: Call 'submitReportPlan' with your proposed structure.
-
+Example Output:
 {
     "reasoning": "...",
     "sections": [
@@ -211,7 +210,7 @@ OUTPUT: Call 'submitReportPlan' with your proposed structure.
     messages: toolResultMsg ? [response, toolResultMsg] : [response], 
     reportPlan,
     approvalStatus: 'PENDING',
-    next_step: 'human_approval'
+    next_step: 'human_approval',
   };
 }
 

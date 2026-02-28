@@ -215,11 +215,11 @@ export async function builderNode(state: typeof ObservationState.State) {
       text: `
       \n--- INSTRUCTIONS ---
       1. **ANALYZE:** Look at the visual evidence provided above.
-      2. **SEARCH:** You may search for specifications in internal knowledge or helpful information on the web. If you have already called it, you should proceed to 'writeSection' to write about your findings if they are relevant.
-        - **MAXIMUM SEARCH LIMIT:** You are strictly limited to a maximum of TWO (2) searches for this task. 
-        - **FALLBACK:** If you cannot find the required weather, crew, or site data after 2 searches, STOP searching immediately. You MUST proceed to 'writeSection' and use the exact **[MISSING: <Data Type>]** placeholders for any unknown information. Do not make up any information.
-        3. **WRITE:** Write the section "${currentTask.title}", use the 'writeSection' tool to save your work.
-        - **CRITICAL:** Every technical observation must site a spec if possible. Use the exact document name provided (e.g. "as per the Concrete_Specs_2024 document" or "per specification Concrete_Specs_2024").
+      2. **SEARCH STRATEGY & CIRCUIT BREAKER:** - You will likely need to research multiple distinct topics for this section (e.g., historical weather via Web Search, AND technical specifications via Internal Database).
+          - **The Limit:** You are strictly limited to a maximum of TWO (2) search attempts PER SPECIFIC ITEM. 
+          - **The Fallback:** If you cannot find a specific piece of data (like the weather, crew size, or a specific spec reference) after 2 targeted searches, you MUST abandon that specific search. Immediately insert the exact **[MISSING: <Data Type>]** placeholder for that missing item, and move on to researching your next requirement.
+      3. **WRITE:** Write the section "${currentTask.title}", use the 'writeSection' tool to save your work.
+      - **CRITICAL:** Every technical observation must site a spec if possible. Use the exact document name provided (e.g. "as per the Concrete_Specs_2024 document" or "per specification Concrete_Specs_2024").
       
       **CRITICAL:** When calling writeSection, you MUST use reportId: "${draftReportId}". Do not use any other ID.
       **ALLOWED TOOLS ONLY:** You have writeSection and research tools (e.g. searchInternalKnowledge for specifications). There is NO finishReport, submit_report, or completeReport tool. When the section is saved via writeSection, stop; the system will advance to the next task automatically.
@@ -253,6 +253,13 @@ export async function builderNode(state: typeof ObservationState.State) {
     CRITICAL INSTRUCTION
     You are currently executing ONLY this specific task: "${currentTask.title}".
     DO NOT generate the entire report. DO NOT output any sections other than the one assigned to you. 
+    
+    EXAMPLE INTERACTION:
+    <thinking>
+    I need to write the Site/Staging Area section. No photos were provided, so I will search the internal knowledge base for weather and crew details.
+    </thinking>
+    [AI natively invokes tool (e.g searchInternalKnowledge or writeSection)]
+
   `;
 
   const systemBlock = new SystemMessage(combinedSystemPrompt);
@@ -273,8 +280,6 @@ export async function builderNode(state: typeof ObservationState.State) {
   const baseModel = ModelStrategy.getModel(provider || 'gemini-cheap');
     if (typeof baseModel.bindTools !== 'function') {
     throw new Error("Model does not support tools");
-
-    
  }
   const taskName = `Builder_Task_${currentSectionIndex + 1}`;
   dumpAgentContext(draftReportId || "", taskName, promptMessages, 'INPUT', isNewTask);

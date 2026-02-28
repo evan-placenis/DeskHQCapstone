@@ -77,13 +77,40 @@ export async function dumpAgentContext(
       }
 
       // Explicitly highlight Tool Calls in the OUTPUT
-      if (msg.tool_calls && msg.tool_calls.length > 0) {
+      if (msg.tool_calls && msg.tool_calls.length > 0 && Array.isArray(msg.tool_calls)) {
          output += `\n🛠️ AI IS CALLING THESE TOOLS:\n`;
          msg.tool_calls.forEach((tool: any) => {
              output += `   -> Tool: ${tool.name}\n`;
              output += `   -> Args: ${JSON.stringify(tool.args, null, 2)}\n`;
          });
       }
+
+      // 👇 --- NEW REASONING EXTRACTOR BLOCK --- 👇
+        // Only extract on OUTPUT so we don't duplicate historical reasoning from the INPUT context
+        if (stage === 'OUTPUT') {
+        let extractedReasoning = "";
+        
+        msg.tool_calls.forEach((tool: any) => {
+          if (tool.args && typeof tool.args.reasoning === 'string') {
+            extractedReasoning += `====================================================\n`;
+            extractedReasoning += `NODE: ${agentName.toUpperCase()} | TOOL: ${tool.name}\n`;
+            extractedReasoning += `TIME: ${now.toLocaleString()}\n`;
+            extractedReasoning += `====================================================\n`;
+            extractedReasoning += `${tool.args.reasoning}\n\n\n`;
+          }
+        });
+
+        if (extractedReasoning.length > 0) {
+          const reasoningDir = path.join(logsDir, 'reasoning');
+          const reasoningFile = path.join(reasoningDir, 'all_reasoning.txt');
+          
+          // We use .then() here to run this file op in the background without blocking the main logger
+          fs.mkdir(reasoningDir, { recursive: true })
+            .then(() => fs.appendFile(reasoningFile, extractedReasoning))
+            .catch(err => console.error("❌ Failed to append reasoning log:", err));
+        }
+      }
+      // 👆 --- END NEW BLOCK --- 👆
 
       // Explicitly highlight Tool Results in the INPUT
       if (role === 'TOOL' && msg.name) {

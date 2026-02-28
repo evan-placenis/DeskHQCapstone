@@ -76,7 +76,7 @@ export const ReportLiveStream = ({
             {!reasoningText ? (
               <div className="flex flex-col items-center justify-center text-slate-400 gap-2 py-12">
                 <Loader2 className="w-8 h-8 animate-spin opacity-50" />
-                <p className="text-sm font-medium">Initializing Report Strategy...</p>
+                <p className="text-sm font-medium">Building Report ...</p>
               </div>
             ) : (
               <div className="prose prose-sm max-w-none text-slate-700">
