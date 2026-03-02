@@ -1,6 +1,13 @@
 import { tool } from 'ai';
 import { z } from 'zod/v3';
 import { Container } from '../../config/container'; // Assuming your container is here
+function sanitizeQuery(rawQuery: string): string {
+  // Matches standard UUIDv4 formats
+  const uuidRegex = /[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}/g;
+  
+  // Strip the UUID and clean up extra spaces
+  return rawQuery.replace(uuidRegex, '').replace(/\s+/g, ' ').trim();
+}
 
 export const researchSkills = (
   projectId: string, 
@@ -18,9 +25,10 @@ export const researchSkills = (
     }),
     execute: async ({ query }) => {
       try {
-        console.log(`🧠 [Research Skill] Searching Internal Memory: "${query}"`);
+        const cleanQuery = sanitizeQuery(query);
+        console.log(`🧠 [Research Skill] Searching Internal Memory: "${cleanQuery}"`);
         // KnowledgeService.search takes string[] and returns string[]
-        const results = await Container.knowledgeService.search([query], projectId);
+        const results = await Container.knowledgeService.search([cleanQuery], projectId);
 
         if (results && results.length > 0) {
           return `[MEMORY MATCH FOUND]:\n${results.join('\n\n')}`;
@@ -46,9 +54,10 @@ export const researchSkills = (
     }),
     execute: async ({ query}) => {
       try {
-        console.log(`🌎 [Skill] Searching Web (Exa): "${query}"`);
+        const cleanQuery = sanitizeQuery(query);
+        console.log(`🌎 [Skill] Searching Web (Exa): "${cleanQuery}"`);
 
-        const result = await Container.exa.searchAndContents(query, {
+        const result = await Container.exa.searchAndContents(cleanQuery, {
           type: "neural",
           useAutoprompt: true,
           numResults: 2,

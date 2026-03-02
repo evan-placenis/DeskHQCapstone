@@ -1,6 +1,13 @@
 import { tool } from '@langchain/core/tools';
 import { z } from 'zod';
 import { Container } from '../../config/container'; // Assuming your container is here
+function sanitizeQuery(rawQuery: string): string {
+  // Matches standard UUIDv4 formats
+  const uuidRegex = /[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}/g;
+  
+  // Strip the UUID and clean up extra spaces
+  return rawQuery.replace(uuidRegex, '').replace(/\s+/g, ' ').trim();
+}
 
 export const researchSkills = (
   projectId: string, 
@@ -13,9 +20,10 @@ export const researchSkills = (
   tool(
     async ({ query }) => {
       try {
-        console.log(`🧠 [Research Skill] Searching Internal Memory: "${query}"`);
+        const cleanQuery = sanitizeQuery(query);
+        console.log(`🧠 [Research Skill] Searching Internal Memory: "${cleanQuery}"`);
         // KnowledgeService.search takes string[] and returns string[]
-        const results = await Container.knowledgeService.search([query], projectId);
+        const results = await Container.knowledgeService.search([cleanQuery], projectId);
 
         if (!results || results.length === 0) return "No matches found.";
 
@@ -34,10 +42,16 @@ export const researchSkills = (
     },
     {
       name: 'searchInternalKnowledge',
-      description: 'Search the internal project memory/database for information. ALWAYS try this first as it is the quickest and cheapest way to get information.',
+      description: `Search the internal project database. Use this ONLY for retrieving static project documentation, such as technical specifications, building codes,
+      and manufacturer installation requirements (e.g., '07 24 00 EIFS mesh overlap'). DO NOT use this tool to search for dynamic site data, historical weather conditions, crew sizes, or daily logs, as that information is not stored here.`,
       schema: z.object({
+        reasoning: z.string().describe(
+          "Use this field FIRST as a chain of thought scratchpad to justify your search. " +
+          "You should explicitly answer the following questions in your chain of thought:" +
+          "1. KNOWLEDGE GAP: What specific technical detail am I missing? " +
+          "2. NECESSITY CHECK: Is this missing information critical for documenting compliance or liability? If it is trivial, general knowledge, or out-of-scope, explicitly state that you will abandon the search and rely on general context. "
+        ),
         query: z.string().describe('The question or topic to search for'),
-        // reasoning: z.string().optional().describe('A "scratchpad" to think out loud and let the user know what you are thinking.'),
       }),
     }
   ),
@@ -49,9 +63,10 @@ export const researchSkills = (
   tool(
     async ({ query}) => {
       try {
-        console.log(`🌎 [Skill] Searching Web (Exa): "${query}"`);
+        const cleanQuery = sanitizeQuery(query);
+        console.log(`🌎 [Skill] Searching Web (Exa): "${cleanQuery}"`);
 
-        const result = await Container.exa.searchAndContents(query, {
+        const result = await Container.exa.searchAndContents(cleanQuery, {
           type: "neural",
           useAutoprompt: true,
           numResults: 2,
@@ -83,10 +98,17 @@ export const researchSkills = (
     },
     {
       name: 'searchWeb',
-      description: 'Search the live web using Exa. Use this if Internal Memory fails.',
+      description: `Search the live web using Exa. Use this specifically for external, publicly available data that would not be in a project specification, such as historical weather conditions for a specific date and location. 
+      CRITICAL GUARDRAIL: If you do not have the exact required parameters for your search (e.g., you do not know the specific date or location for a weather query), DO NOT use this tool. Skip the search entirely and use the [MISSING: <Data Type>] placeholder instead.
+      RULE: Whenever you use information retrieved from this tool, you MUST explicitly cite the source website or URL in the report text so the reviewing engineer can verify the data.`,
       schema: z.object({
+        reasoning: z.string().describe(
+          "Use this field FIRST as a chain of thought scratchpad to justify your search. " +
+          "You should explicitly answer the following questions in your chain of thought:" +
+          "1. KNOWLEDGE GAP: What specific technical detail am I missing? " +
+          "2. NECESSITY CHECK: Is this missing information critical for documenting compliance or liability? If it is trivial, general knowledge, or out-of-scope, explicitly state that you will abandon the search and rely on general context. "
+        ),
         query: z.string().describe('The search query optimized for a search engine'),
-        // reasoning: z.string().optional().describe('Brief note for the user (e.g. "Searching web for additional context")'),
       }),
     }
   ),

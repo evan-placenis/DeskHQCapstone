@@ -4,6 +4,7 @@ import { tool } from '@langchain/core/tools';
 import { z } from 'zod';
 import { Container } from "@/backend/config/container";
 import { ObservationState } from "../../../state/report/ObservationState";
+import { dumpAgentContext } from "../../../utils/agent-logger";
 
 /**
  * Phase 1: The Architect
@@ -38,7 +39,7 @@ export async function architectNode(state: typeof ObservationState.State) {
       name: 'submitReportPlan',
       description: 'Submit the proposed report structure and strategy. Include all sections with their assigned photo IDs.',
       schema: z.object({
-        reasoning: z.string().describe('Explain WHY you grouped photos this way.'),
+         reasoning: z.string().describe('Explain WHY you grouped photos this way.'),
         sections: z.array(z.object({
           sectionId: z.string().describe('Unique ID for section (e.g., "exec-summary", "observations")'),
           title: z.string().describe('Section title (e.g., "Executive Summary", "Observations")'),
@@ -126,8 +127,7 @@ GUIDELINES:
    - If a section has subsections, the assignedImageIds for the PARENT section MUST be an empty array [].
    - Do not "duplicate" photo IDs in both the parent and the subsection. This causes repetitive content generation.
 
-OUTPUT: Call 'submitReportPlan' with your proposed structure.
-
+Example Output:
 {
     "reasoning": "...",
     "sections": [
@@ -151,15 +151,24 @@ OUTPUT: Call 'submitReportPlan' with your proposed structure.
 
   // 3. RUN MODEL
   const baseModel = ModelStrategy.getModel(provider || 'gemini-cheap');
+  
+  // 📝 Log the INPUT (The prompt + any RAG history it is carrying)
+  const taskName = `Architect_Plan_1`;
+  dumpAgentContext(draftReportId || "", taskName, [new SystemMessage(promptContext), ...state.messages], 'INPUT');
 
   const model = baseModel?.bindTools?.([planningTool], {
     tool_choice: "submitReportPlan" 
   });
 
+
+
   const response = await model?.invoke?.([
     new SystemMessage(promptContext),
     ...state.messages
   ]);
+
+  // 📝 Log the OUTPUT (What the AI just generated / The tools it wants to call)
+  dumpAgentContext(draftReportId || "", taskName, [response], 'OUTPUT');
 
   // 4. PARSE TOOL CALL
   let reportPlan = null;
@@ -201,7 +210,7 @@ OUTPUT: Call 'submitReportPlan' with your proposed structure.
     messages: toolResultMsg ? [response, toolResultMsg] : [response], 
     reportPlan,
     approvalStatus: 'PENDING',
-    next_step: 'human_approval'
+    next_step: 'human_approval',
   };
 }
 

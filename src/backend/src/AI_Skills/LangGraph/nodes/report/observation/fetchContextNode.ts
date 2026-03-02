@@ -5,7 +5,9 @@ export const fetchContextNode = async (state: typeof ObservationState.State) => 
   console.log("🔄 [FetchNode] Hydrating state for images:", selectedImageIds);
 
   if (!selectedImageIds || selectedImageIds.length === 0) {
-     return { imageList: [] };
+     return { 
+       imageList: [],
+     };
   }
 
   // 1. Database Call
@@ -73,6 +75,6 @@ export const fetchContextNode = async (state: typeof ObservationState.State) => 
   
   // 3. Return the update (this merges into State automatically)
   return {
-    imageList: enrichedImages
+    imageList: enrichedImages,
   };
 };

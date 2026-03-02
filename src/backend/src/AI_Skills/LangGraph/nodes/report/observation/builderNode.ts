@@ -4,6 +4,7 @@ import { reportSkills } from "../../../../LangGraph_skills/report.skills";
 import { researchSkills } from "../../../../LangGraph_skills/research.skills"; // Keep research, drop vision
 import { Container } from "@/backend/config/container";
 import { ObservationState } from "../../../state/report/ObservationState";
+import { dumpAgentContext } from "../../../utils/agent-logger";
 
 
 // 🛠️ HELPER: Flatten sections into tasks
@@ -68,6 +69,44 @@ async function urlToBase64(url: string): Promise<string> {
   }
 }
 
+export function buildTaskContext(
+  messages: BaseMessage[], 
+  systemBlock: BaseMessage, 
+  taskPrompt: BaseMessage
+): BaseMessage[]{
+  
+  const lastMsg = messages.length > 0 ? messages[messages.length - 1] : null;
+  
+  const isHumanMsg = (m: any) => m instanceof HumanMessage || m.type === 'human' || m._getType?.() === 'human';
+  const isToolMsg = (m: any) => m instanceof ToolMessage || m.type === 'tool' || m._getType?.() === 'tool';
+
+  const isToolReturn = isToolMsg(lastMsg);
+
+  if (isToolReturn) {
+    // 🔄 RESEARCH LOOP: Gather recent AI/Tool back-and-forth
+    const relevantHistory: BaseMessage[] = [];
+    
+    // Walk backward to grab the AI's tool calls and the Tool results
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const msg = messages[i];
+      
+      // Stop going backward as soon as we hit ANY human message.
+      // This isolates the memory to strictly the recent tool attempts.
+      if (isHumanMsg(msg)) break; 
+      
+      relevantHistory.unshift(msg);
+    }
+    
+    // Assemble the perfect context: 
+    // System Rules -> Current Task Prompt -> Recent Tool Attempts
+    return [systemBlock, taskPrompt, ...relevantHistory];
+  }
+
+  // 🆕 FRESH START: No trailing tool messages found
+  return [systemBlock, taskPrompt];
+}
+
+
 export async function builderNode(state: typeof ObservationState.State) {
   const { 
     reportPlan,
@@ -86,184 +125,154 @@ export async function builderNode(state: typeof ObservationState.State) {
   // ✅ Get fresh client
   const freshClient = Container.adminClient;
 
-  // 1. Safety Checks
+  // 1. Safety Checks & Identify Task
   if (!reportPlan || !reportPlan.sections) {
     console.error('❌ Builder: No report plan found!');
     return { next_step: 'FINISH', messages: [] };
   }
-
-  // 2. Identify Task
   const tasks = getFlattenedTasks(reportPlan.sections);
   const currentTask = tasks[currentSectionIndex];
-
   if (!currentTask) return { next_step: 'FINISH', messages: [] };
   console.log(`📝 Builder: Starting Task ${currentSectionIndex + 1}/${tasks.length}: ${currentTask.title}`);
 
-  // 3. 🖼️ PREPARE EVIDENCE (The Multimodal Magic)
-  const contentParts: any[] = [];
+  // 2. DETERMINE TASK STATE FIRST
+  const lastMsg = messages.length > 0 ? messages[messages.length - 1] : null;
+  let isToolReturn = lastMsg && (lastMsg.type === 'tool' || lastMsg._getType?.() === 'tool');
 
-  // A. Add Task Text
-  let taskIntro = `CURRENT TASK: ${currentTask.title}\n`;
-  taskIntro += `PURPOSE: ${currentTask.purpose}\n`;
-  taskIntro += `REPORT ID: ${draftReportId}\n\n`;
-  
-  contentParts.push({ type: "text", text: taskIntro });
-
-  // B. Resolve Photos for this Task
-  // We look up the full ImageContext from state.imageList using the IDs assigned to this task.
-  let activeImages: any[] = [];
-  
-  if (currentTask.photoIds && currentTask.photoIds.length > 0) {
-    // Filter the global list to just the ones for this task
-    activeImages = imageList.filter(img => currentTask.photoIds.includes(img.id));
-    console.log(`📝 Builder: Found ${activeImages.length} images for task ${currentTask.title}`);
-  } else if (!currentTask.photoIds) {
-    // Fallback: If no specific photos assigned, maybe use all? (Or none)
-    // For now, let's be safe and use none to avoid pollution, unless specifically requested.
-    activeImages = [];
+  // 🚨 TERMINAL TOOL CHECK: 
+  // If the last tool was 'writeSection', we finished the previous task!
+  // The upcoming run is a brand new task.
+  if (isToolReturn && lastMsg?.name === 'writeSection') {
+      isToolReturn = false; 
   }
 
-  // C. Inject Images (Multimodal) OR Text Descriptions
-  if (activeImages.length > 0) {
-    // -------------------------------------------------------
-    // MODE 1: TEXT ONLY (Fast, Cheap, No Base64)
-    // -------------------------------------------------------
-    if (processingMode === 'TEXT_ONLY') {
-      console.log("📝 [Builder] Using Text Summaries (Skipping Image Download)");
-      
-      let evidenceBlock = `--- VISUAL EVIDENCE SUMMARIES (${activeImages.length} Photos) ---\n`;
-      evidenceBlock += `The following images document the conditions. Use these descriptions to write the section.\n\n`;
-      
-      activeImages.forEach(img => {
-          const description = img.aiDescription || "No detailed analysis available.";
-          const note = img.userNote ? `User Note: "${img.userNote}"` : "";
-          const tags = img.tags ? `Tags: [${img.tags.join(', ')}]` : "";
+  const isNewTask = !isToolReturn;
+  let taskPrompt: BaseMessage;
 
-          evidenceBlock += `[Photo ID: ${img.id}]\n`;
-          evidenceBlock += `   ${note}\n`;
-          evidenceBlock += `   AI Analysis: ${description}\n`;
-          evidenceBlock += `   ${tags}\n\n`;
-      });
+ // ==========================================
+  // 3. 🖼️ PREPARE EVIDENCE (Only if NEW task)
+  // ==========================================
+  if (isNewTask) {
+    console.log(`📝 Builder: Starting NEW Task ${currentSectionIndex + 1}/${tasks.length}: ${currentTask.title}`);
+    const contentParts: any[] = [];
 
-      contentParts.push({ type: "text", text: evidenceBlock });
-    } 
-    
-    // -------------------------------------------------------
-    // MODE 2: IMAGE + TEXT (Full Multimodal)
-    // -------------------------------------------------------
-    else {
+    // A. Add Task Text
+    contentParts.push({ 
+      type: "text", 
+      text: `CURRENT TASK: ${currentTask.title}\nPURPOSE: ${currentTask.purpose}\nREPORT ID: ${draftReportId}\n\n` 
+    });
+
+    // B. Resolve Photos
+    let activeImages: any[] = [];
+    if (currentTask.photoIds && currentTask.photoIds.length > 0) {
+      activeImages = imageList.filter(img => currentTask.photoIds.includes(img.id));
+    }
+
+    // C. Inject Images
+    if (activeImages.length > 0) {
+      if (processingMode === 'TEXT_ONLY') {
+        console.log("📝 [Builder] Using Text Summaries (Skipping Image Download)");
+        
+        let evidenceBlock = `--- VISUAL EVIDENCE SUMMARIES (${activeImages.length} Photos) ---\n`;
+        evidenceBlock += `The following images document the conditions. Use these descriptions to write the section.\n\n`;
+        
+        activeImages.forEach(img => {
+            const description = img.aiDescription || "No detailed analysis available.";
+            const note = img.userNote ? `User Note: "${img.userNote}"` : "";
+            const tags = img.tags ? `Tags: [${img.tags.join(', ')}]` : "";
+
+            evidenceBlock += `[Photo ID: ${img.id}]\n`;
+            evidenceBlock += `   ${note}\n`;
+            evidenceBlock += `   AI Analysis: ${description}\n`;
+            evidenceBlock += `   ${tags}\n\n`;
+        });
+
+        contentParts.push({ type: "text", text: evidenceBlock });
+      } else {
         console.log("📝 [Builder] Downloading Images for Multimodal Analysis...");
         contentParts.push({ type: "text", text: `--- VISUAL EVIDENCE (${activeImages.length} Photos) ---\nAnalyze these images directly to write the section.` });
 
-        // ⚡ PARALLEL DOWNLOAD & CONVERSION
         const imageBlocks = await Promise.all(activeImages.map(async (img) => {
-            const base64Data = await urlToBase64(img.url);
-            if (!base64Data) return null; 
-
-            return [
-                { 
-                    type: "text", 
-                    text: `\n[Photo ID: ${img.id}] ${img.userNote || ''}` 
-                },
-                {
-                    type: "image_url",
-                    image_url: {
-                        url: base64Data, 
-                        detail: "high"
-                    }
-                }
-            ];
+          const base64Data = await urlToBase64(img.url);
+          if (!base64Data) return null; 
+          return [
+            { type: "text", text: `\n[Photo ID: ${img.id}] ${img.userNote || ''}` },
+            { type: "image_url", image_url: { url: base64Data, detail: "high" } }
+          ];
         }));
 
         imageBlocks.forEach(block => {
-            if (block) {
-                contentParts.push(block[0]); 
-                contentParts.push(block[1]); 
-            }
+          if (block) { contentParts.push(block[0]); contentParts.push(block[1]); }
         });
-    }
-
-  } else {
-    contentParts.push({ type: "text", text: "No specific photos assigned to this section. Rely on general context or internal knowledge." });
-  }
-
-  // D. Add Instructions
-  contentParts.push({ 
-    type: "text", 
-    text: `
-    \n--- INSTRUCTIONS ---
-    1. **ANALYZE:** Look at the visual evidence provided above.
-    2. **SEARCH:** You may search for specifications in internal knowledge or helpful information on the web. If you have already called it, you should proceed to 'writeSection' to write about your findings if they are relevant.
-       - **CRITICAL SEARCH RULE:** Do NOT include the Report ID (e.g., UUIDs) or words like "report" in your search query. Use only pure technical keywords (e.g., "EIFS window flashing details").
-    3. **WRITE:** Write the section "${currentTask.title}", use the 'writeSection' tool to save your work.
-      - **CRITICAL:** Every technical observation must site a spec if possible. Use the exact document name provided (e.g. "as per the Concrete_Specs_2024 document" or "per specification Concrete_Specs_2024").
-    
-    **CRITICAL:** When calling writeSection, you MUST use reportId: "${draftReportId}". Do not use any other ID.
-    **ALLOWED TOOLS ONLY:** You have writeSection and research tools (e.g. searchInternalKnowledge for specifications). There is NO finishReport, submit_report, or completeReport tool. When the section is saved via writeSection, stop; the system will advance to the next task automatically.
-    ` 
-  });
-
-  // 4. Construct System Message
-  const combinedSystemPrompt = `
-    ${systemPrompt || "You are an expert technical report builder."}
-    ---
-    STRICT FORMATTING PROTOCOLS:
-    ${structureInstructions}
-  `;
-  // HISTORY HANDLING (THE FIX FOR LOOPING BACK TOOLS)
-  const systemBlock = new SystemMessage(combinedSystemPrompt);
-  const taskPrompt = new HumanMessage({ content: contentParts });
-
-  // ---------------------------------------------------------
-  // 🧹 CONTEXT HYGIENE & HISTORY HANDLING
-  // ---------------------------------------------------------
-  let promptMessages: BaseMessage[] = [];
-  
-  const lastMsg = messages[messages.length - 1];
-  const isToolReturn = lastMsg instanceof ToolMessage;
-
-  // 🔍 Check if we just started a NEW task
-  // We can tell if it's a new task if the last HumanMessage in history 
-  // does NOT match the current task's title.
-  let isNewTask = true;
-  for (let i = messages.length - 1; i >= 0; i--) {
-      const msg = messages[i];
-      if (msg instanceof HumanMessage) {
-        // TS-Safe Check: Convert complex arrays to a string to easily search them
-        const contentString = typeof msg.content === 'string' 
-            ? msg.content 
-            : JSON.stringify(msg.content);
-            
-        // If the last prompt was about this exact task, we are in a research loop
-        if (contentString.includes(`CURRENT TASK: ${currentTask.title}`)) {
-            isNewTask = false;
-        }
-        break; // Stop at the most recent HumanMessage
       }
-  }
-
-  if (isToolReturn && !isNewTask) {
-    // 🔄 RESEARCH LOOP: We are returning from a search FOR THIS TASK.
-    // Scan backwards until we find the HumanMessage that started THIS task.
-    const relevantHistory: BaseMessage[] = [];
-    
-    for (let i = messages.length - 1; i >= 0; i--) {
-      const msg = messages[i];
-      relevantHistory.unshift(msg);
-      if (msg instanceof HumanMessage) break; // Found the start!
+    } else {
+      contentParts.push({ type: "text", text: "No specific photos assigned to this section. Rely on general context or internal knowledge." });
     }
 
-    // Reconstruct: [System] + [History of this task (which includes the taskPrompt)]
-    promptMessages = [systemBlock, ...relevantHistory];
-    
+    // D. Add Instructions
+    contentParts.push({  
+      type: "text", 
+      text: `
+      \n--- INSTRUCTIONS ---
+      1. **ANALYZE:** Look at the visual evidence provided above.
+      2. **SEARCH STRATEGY & CIRCUIT BREAKER:** - You will likely need to research multiple distinct topics for this section (e.g., historical weather via Web Search, AND technical specifications via Internal Database).
+          - **The Limit:** You are strictly limited to a maximum of TWO (2) search attempts PER SPECIFIC ITEM. 
+          - **The Fallback:** If you cannot find a specific piece of data (like the weather, crew size, or a specific spec reference) after 2 targeted searches, you MUST abandon that specific search. Immediately insert the exact **[MISSING: <Data Type>]** placeholder for that missing item, and move on to researching your next requirement.
+      3. **WRITE:** Write the section "${currentTask.title}", use the 'writeSection' tool to save your work.
+      - **CRITICAL:** Every technical observation must site a spec if possible. Use the exact document name provided (e.g. "as per the Concrete_Specs_2024 document" or "per specification Concrete_Specs_2024").
+      
+      **Note:** When calling writeSection, you MUST use reportId: "${draftReportId}". Do not use any other ID.
+      "CRITICAL LIABILITY RULE: You must NEVER invent, assume, or hallucinate deficiencies. If the provided photos only show compliant work, your Deficiency Summary must explicitly state that no defects were observed. Do not fabricate issues just to populate sections."
+      **ALLOWED TOOLS ONLY:** You have writeSection and research tools (e.g. searchInternalKnowledge for specifications). There is NO finishReport, submit_report, or completeReport tool. When the section is saved via writeSection, stop; the system will advance to the next task automatically.
+      ` 
+    });
+
+    taskPrompt = new HumanMessage({ content: contentParts });
   } else {
-    // 🆕 FRESH START: We are starting a new task (or resuming from approval).
-    // Ignore history, just send the new prompt.
-    promptMessages = [systemBlock, taskPrompt];
+    // ==========================================
+    // 🚀 THE HANG FIX: RESUMING A TASK
+    // ==========================================
+    console.log(`🔄 Builder: Resuming Task ${currentSectionIndex + 1} (Skipping Image Downloads)`);
+    
+    // The images are already downloaded and stored in the global history array!
+    // We just find the last HumanMessage and reuse it.
+    const lastHumanMsg = [...messages].reverse().find(m => m.type === 'human' || m._getType?.() === 'human');
+    
+    if (!lastHumanMsg) throw new Error("Critical: Lost the HumanMessage task prompt in state!");
+    taskPrompt = lastHumanMsg as BaseMessage;
   }
 
-  // 5. Select Tools (Only 'writeSection' and 'research' needed now)
-  // We removed visionSkills because the vision is now native!
+  // ==========================================
+  // 4. Construct System Message & Context
+  // ==========================================
+  const combinedSystemPrompt = `
+    ${systemPrompt}
+    ---
+    GLOBAL REPORT STRUCTURE (For Context Only):
+    ${structureInstructions}
+
+    CRITICAL INSTRUCTION
+    You are currently executing ONLY this specific task: "${currentTask.title}".
+    DO NOT generate the entire report. DO NOT output any sections other than the one assigned to you. 
+    
+    EXAMPLE INTERACTION:
+    <thinking>
+    I need to write the Site/Staging Area section. No photos were provided, so I will search the internal knowledge base for weather and crew details.
+    </thinking>
+    [AI natively invokes tool (e.g searchInternalKnowledge or writeSection)]
+
+  `;
+
+  const systemBlock = new SystemMessage(combinedSystemPrompt);
+
+  // Assemble the isolated context window
+  const promptMessages = buildTaskContext(messages, systemBlock, taskPrompt);
+
+
+
+  // ==========================================
+  // 5. Select Tools & Invoke Model
+  // ==========================================
   const tools = [
     ...reportSkills(freshClient), // Contains writeSection
     ...researchSkills(projectId) // Keep research for building codes, etc.
@@ -273,22 +282,22 @@ export async function builderNode(state: typeof ObservationState.State) {
     if (typeof baseModel.bindTools !== 'function') {
     throw new Error("Model does not support tools");
  }
+  const taskName = `Builder_Task_${currentSectionIndex + 1}`;
+  dumpAgentContext(draftReportId || "", taskName, promptMessages, 'INPUT', isNewTask);
+
   const model = baseModel.bindTools(tools);
+  const response= await model.invoke(promptMessages);
+  dumpAgentContext(draftReportId || "", taskName, [response], 'OUTPUT');
 
-  // 6. Invoke Model
-  // We send [System, Human(Multimodal)]
-  const response = await model.invoke(promptMessages);
 
+  // ==========================================
+  // 6. Save State
+  // ==========================================
   const aiMsg = response as AIMessage;
   const hasToolCalls = aiMsg.tool_calls && aiMsg.tool_calls.length > 0;
 
-  // 📝 LOGIC FIX:
-  // IF it's a Tool Return (Resume): 
-  //    We just append the AI's new response to the existing history.
-  // IF it's a Fresh Start (New Task): 
-  //    We must append the 'HumanMessage' (The Task) AND the 'AIMessage' (The Response).
-  //    This creates a "Boundary" in the history that we can find later.
-
+// If new task: Anchor the new prompt and response into the global state
+  // If resuming: Just append the new response
   const messagesToSave = isToolReturn 
     ? [response]                  // Just the answer
     : [taskPrompt, response];     // The Prompt + The Answer
@@ -321,6 +330,9 @@ export async function builderContinueNode(state: any) {
   if (!currentTask) return { next_step: 'reviewer' };
 
   console.log(`🔍 [BuilderContinue] Analyzing result for Task ${currentSectionIndex + 1}: "${currentTask.title}"...`);
+  // 📝 INJECT LOGGER 1: What did the tools just return?
+  const taskName = `BuilderContinue_Task_${currentSectionIndex + 1}`;
+  dumpAgentContext(draftReportId, taskName, messages, 'INPUT');
 
   let success = false;
   let newDraftContent = "";
@@ -469,6 +481,8 @@ export async function builderContinueNode(state: any) {
       content: `SYSTEM ERROR: Section not saved. 
       You MUST call the "writeSection" tool with reportId: "${draftReportId}".`
     });
+    // 📝 INJECT LOGGER 2: Log the feedback we are about to send back to the AI
+    dumpAgentContext(draftReportId, taskName, [feedbackMessage], 'OUTPUT');
 
     return { 
         builderRetries: retryCount + 1, 
