@@ -87,7 +87,7 @@ export const reportSkills = ( client: SupabaseClient) => [
           "You must use this field FIRST as your analytical chain of thought scratchpad. " +
           "You should explicitly answer the following questions in your chain of thought: " +
           "1. EVIDENCE: What exact data/photos am I looking at? " +
-          "2. RELEVANCE FILTER: Does this observation meet the threshold for reporting? If it is a trivial, acceptable, or out-of-scope issue, explicitly state that you will drop it. " +
+          "2. RELEVANCE FILTER: Does this observation meet the threshold for reporting? If it is a trivial, acceptable, or out-of-scope issue, explicitly state that you will drop it or modify it. " +
           "3. STANDARD: What is the specific project requirement/spec for this? " +
           "4. LIABILITY: How will I frame this observation to limit liability? " 
         ),

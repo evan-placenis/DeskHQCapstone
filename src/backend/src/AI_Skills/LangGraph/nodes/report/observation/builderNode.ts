@@ -221,7 +221,8 @@ export async function builderNode(state: typeof ObservationState.State) {
       3. **WRITE:** Write the section "${currentTask.title}", use the 'writeSection' tool to save your work.
       - **CRITICAL:** Every technical observation must site a spec if possible. Use the exact document name provided (e.g. "as per the Concrete_Specs_2024 document" or "per specification Concrete_Specs_2024").
       
-      **CRITICAL:** When calling writeSection, you MUST use reportId: "${draftReportId}". Do not use any other ID.
+      **Note:** When calling writeSection, you MUST use reportId: "${draftReportId}". Do not use any other ID.
+      "CRITICAL LIABILITY RULE: You must NEVER invent, assume, or hallucinate deficiencies. If the provided photos only show compliant work, your Deficiency Summary must explicitly state that no defects were observed. Do not fabricate issues just to populate sections."
       **ALLOWED TOOLS ONLY:** You have writeSection and research tools (e.g. searchInternalKnowledge for specifications). There is NO finishReport, submit_report, or completeReport tool. When the section is saved via writeSection, stop; the system will advance to the next task automatically.
       ` 
     });

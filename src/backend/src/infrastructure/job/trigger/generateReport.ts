@@ -393,52 +393,52 @@ async function processStreamEvent({
   // 1. LLM TOKEN STREAMING (The "Typewriter" Effect)
   // ---------------------------------------------------------
   if (event.event === "on_chat_model_stream") {
-    const chunk = event.data?.chunk;
+    // const chunk = event.data?.chunk;
     
-    // A. Standard Text Stream (If the model speaks normally)
-    if (typeof chunk === "string") {
-      updatedBuffer += chunk;
-    } else if (chunk?.content && typeof chunk.content === "string") {
-      updatedBuffer += chunk.content;
-    }
+    // // A. Standard Text Stream (If the model speaks normally)
+    // if (typeof chunk === "string") {
+    //   updatedBuffer += chunk;
+    // } else if (chunk?.content && typeof chunk.content === "string") {
+    //   updatedBuffer += chunk.content;
+    // }
 
-    // B. Tool Call Argument Stream (Schema-Driven CoT!)
-    // When the LLM builds a tool call, it streams the raw JSON string piece by piece here.
-    if (chunk?.tool_call_chunks && chunk.tool_call_chunks.length > 0) {
-      // 🕵️ X-RAY LOG 1: What does the raw tool chunk look like?
-      console.log("🔍 RAW STREAMING TOOL CHUNK:", JSON.stringify(chunk.tool_call_chunks[0], null, 2));
-      const tcChunk = chunk.tool_call_chunks[0];
+    // // B. Tool Call Argument Stream (Schema-Driven CoT!)
+    // // When the LLM builds a tool call, it streams the raw JSON string piece by piece here.
+    // if (chunk?.tool_call_chunks && chunk.tool_call_chunks.length > 0) {
+    //   // 🕵️ X-RAY LOG 1: What does the raw tool chunk look like?
+    //   console.log("🔍 RAW STREAMING TOOL CHUNK:", JSON.stringify(chunk.tool_call_chunks[0], null, 2));
+    //   const tcChunk = chunk.tool_call_chunks[0];
 
-      if (tcChunk.args) {
-        let rawChunk = tcChunk.args;
+    //   if (tcChunk.args) {
+    //     let rawChunk = tcChunk.args;
 
-        // 🕵️ X-RAY LOG 2: What text are we actually trying to process?
-        console.log("📝 STREAMING PROCESSING STRING:", rawChunk);
+    //     // 🕵️ X-RAY LOG 2: What text are we actually trying to process?
+    //     console.log("📝 STREAMING PROCESSING STRING:", rawChunk);
 
-        // 🧹 CLEANUP THE JSON SYNTAX
-        // We strip out the JSON keys so the UI just sees the English reasoning.
-        rawChunk = rawChunk.replace(/^{\s*"reasoning"\s*:\s*"/, ""); // Opening key
-        rawChunk = rawChunk.replace(/^{\s*"query"\s*:\s*"/, "");     // Query key (if it searches first)
-        rawChunk = rawChunk.replace(/\\n/g, "\n"); 
-        rawChunk = rawChunk.replace(/\\"/g, '"');
+    //     // 🧹 CLEANUP THE JSON SYNTAX
+    //     // We strip out the JSON keys so the UI just sees the English reasoning.
+    //     rawChunk = rawChunk.replace(/^{\s*"reasoning"\s*:\s*"/, ""); // Opening key
+    //     rawChunk = rawChunk.replace(/^{\s*"query"\s*:\s*"/, "");     // Query key (if it searches first)
+    //     rawChunk = rawChunk.replace(/\\n/g, "\n"); 
+    //     rawChunk = rawChunk.replace(/\\"/g, '"');
 
-        // 🛑 THE CUT-OFF SWITCH
-        // As soon as the AI finishes "reasoning" and starts typing the next field 
-        // (like "reportId" or "content"), we stop adding to the buffer.
-        if (rawChunk.includes('", "') || rawChunk.includes('","')) {
-          rawChunk = rawChunk.split('",')[0]; 
-       }
+    //     // 🛑 THE CUT-OFF SWITCH
+    //     // As soon as the AI finishes "reasoning" and starts typing the next field 
+    //     // (like "reportId" or "content"), we stop adding to the buffer.
+    //     if (rawChunk.includes('", "') || rawChunk.includes('","')) {
+    //       rawChunk = rawChunk.split('",')[0]; 
+    //    }
         
-        // Only add to the buffer if it's actual text and not structural JSON keys
-        if (rawChunk.length > 0 && !rawChunk.includes('reportId') && !rawChunk.includes('content')) {
-          updatedBuffer += rawChunk;
+    //     // Only add to the buffer if it's actual text and not structural JSON keys
+    //     if (rawChunk.length > 0 && !rawChunk.includes('reportId') && !rawChunk.includes('content')) {
+    //       updatedBuffer += rawChunk;
           
-          // // 🚀 BROADCAST TO UI (Typewriter effect!)
-          console.log("📤 BROADCASTING TO UI:", updatedBuffer);
-          await broadcast(supabase, projectId, 'agent_thought', { chunk: updatedBuffer });
-        }
-      }
-    }
+    //       // // 🚀 BROADCAST TO UI (Typewriter effect!)
+    //       console.log("📤 BROADCASTING TO UI:", updatedBuffer);
+    //       await broadcast(supabase, projectId, 'agent_thought', { chunk: updatedBuffer });
+    //     }
+    //   }
+    // }
   }
 
   // ---------------------------------------------------------
