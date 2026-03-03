@@ -27,13 +27,21 @@ export class ChatOrchestrator {
         client: SupabaseClient;
         /** Called after the model finishes generating (reliable hook for persistence). */
         onFinish?: (event: { text: string; finishReason: string }) => void | Promise<void>;
+        /** Map: document outline from the live editor */
+        documentOutline?: string;
+        /** Lens: active section markdown from the live editor */
+        activeSectionMarkdown?: string;
+        /** Lens: heading of the active section */
+        activeSectionHeading?: string;
+        /** Full report markdown from the live editor (for server-side document tools) */
+        fullReportMarkdown?: string;
     }) {
-        const { messages, provider, context, projectId, userId, reportId, selectionEdit, systemMessage, client, onFinish } = params;
+        const { messages, provider, context, projectId, userId, reportId, selectionEdit, systemMessage, client, onFinish, documentOutline, activeSectionMarkdown, activeSectionHeading, fullReportMarkdown } = params;
 
         // Build tools - include report skills if we have context
         const tools: any = {
             ...researchSkills(projectId ?? ''),
-            ...chatSkills,
+            ...chatSkills(fullReportMarkdown),
             ...visionSkills
         };
 
@@ -45,7 +53,7 @@ export class ChatOrchestrator {
         // Edit flow is selection-only and handled by EditOrchestrator via ai-edit route; Chat has no edit tools.
 
         // Build system prompt - use custom systemMessage if provided (e.g. selection-edit ack), otherwise default
-        const systemPrompt = systemMessage || this.buildSystemPrompt(false);
+        const systemPrompt = systemMessage || this.buildSystemPrompt(false, documentOutline, activeSectionMarkdown, activeSectionHeading, fullReportMarkdown);
 
         return streamText({
             model: ModelStrategy.getModel(provider),
@@ -58,9 +66,41 @@ export class ChatOrchestrator {
     }
 
     /**
-     * Build the system prompt: Chat answers questions in the chat and uses research when needed.
+     * Build the system prompt with Map & Lens context when available.
+     * Use report-aware prompt whenever document tools exist (fullReportMarkdown) — even if outline is empty.
      */
-    private buildSystemPrompt(_hasReportContext: boolean): string {
+    private buildSystemPrompt(
+        _hasReportContext: boolean,
+        documentOutline?: string,
+        activeSectionMarkdown?: string,
+        activeSectionHeading?: string,
+        fullReportMarkdown?: string,
+    ): string {
+        const hasDocumentTools = !!(fullReportMarkdown?.trim());
+        const hasMapLens = !!(documentOutline?.trim());
+
+        if (hasDocumentTools) {
+            const outlineBlock = hasMapLens
+                ? `DOCUMENT OUTLINE (Table of Contents):\n${documentOutline}\n\n`
+                : '';
+            const activeSectionBlock = activeSectionHeading
+                ? `THE USER IS CURRENTLY LOOKING AT THIS SECTION: "${activeSectionHeading}"
+--- Active Section Content ---
+${activeSectionMarkdown || '(empty section)'}
+--- End Active Section ---\n\n`
+                : '';
+
+            return `You are an expert report editor. The user is actively editing a report.
+
+CRITICAL RULE: When the user refers to "this report", "the report", "the document", or asks about ANY content that could be in the report (e.g. "metal stairs", "executive summary", "what does it say about X"), you MUST use read_full_report or read_specific_sections FIRST. NEVER use searchInternalKnowledge or searchWeb for report content. Research tools are ONLY for external facts (standards, regulations, best practices) that would NOT be in the report.
+
+${outlineBlock}${activeSectionBlock}HOW TO ANSWER (follow strictly):
+1. For questions about the report content: call read_full_report (or read_specific_sections if you see section names in the outline above). Answer from that.
+2. ONLY use searchInternalKnowledge or searchWeb when the user explicitly asks for external information (e.g. "what does OSHA say about...", "industry best practices for...").
+
+Respond concisely. Do not explain your reasoning.`;
+        }
+
         return `You are a helpful assistant for engineering report writing and research.
 
 YOUR ROLE: When the user asks a question (about the report or anything else), respond in the chat. Use your research tools when you need to look something up to answer accurately.

@@ -109,6 +109,8 @@ interface ReportContentProps {
   editorRef?: React.RefObject<TiptapEditorHandle | null>;
   /** Called when selection changes in Tiptap (to pin selection when user blurs to chat) */
   onSelectionChange?: (context: import("../smart_components/TiptapEditor").SelectionContext | null) => void;
+  /** Called on every cursor move — used to refresh Map & Lens context */
+  onCursorActivity?: () => void;
 }
 
 export function ReportContent({
@@ -146,6 +148,7 @@ export function ReportContent({
   onSetDiffContent,
   editorRef,
   onSelectionChange,
+  onCursorActivity,
 }: ReportContentProps) {
   // Local state for pending changes if not managed by parent
   const [localPendingChange, setLocalPendingChange] = useState<PendingChange | null>(null);
@@ -571,6 +574,7 @@ export function ReportContent({
                                   setDiffContent(null);
                                 }}
                                 onSelectionChange={onSelectionChange}
+                                onCursorActivity={onCursorActivity}
                               />
                             ) : mode === "peer-review" && peerReview && peerReview.comments ? (
                               <HighlightableText

@@ -18,7 +18,7 @@ export const researchSkills = (
    * Replaces: private searchVectorStore()
    */
   searchInternalKnowledge: tool({
-    description: 'Search the internal project memory/database for information. ALWAYS try this first as it is the quickest and cheapest way to get information.',
+    description: 'Search the internal project memory/database for EXTERNAL information (standards, past project data, reference material). Do NOT use this for questions about the current report — use read_specific_sections or read_full_report instead.',
     inputSchema: z.object({
       query: z.string().describe('The question or topic to search for'),
       // reasoning: z.string().optional().describe('A "scratchpad" to think out loud and let the user know what you are thinking.'),

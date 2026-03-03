@@ -206,6 +206,14 @@ interface AIChatSidebarProps {
   onToggleSelectionMode?: () => void;
   useTiptap?: boolean;
   onSetDiffContent?: (content: string) => void;
+  /** Map: document outline string injected from the live editor */
+  documentOutline?: string;
+  /** Lens: active section markdown injected from the live editor */
+  activeSectionMarkdown?: string;
+  /** Lens: heading name of the active section */
+  activeSectionHeading?: string;
+  /** Full report markdown from the live editor (sent to server for document tools) */
+  fullReportMarkdown?: string;
 }
 
 export function AIChatSidebar({
@@ -232,6 +240,10 @@ export function AIChatSidebar({
   onToggleSelectionMode,
   useTiptap = false,
   onSetDiffContent,
+  documentOutline,
+  activeSectionMarkdown,
+  activeSectionHeading,
+  fullReportMarkdown,
 }: AIChatSidebarProps) {
   const [isResizing, setIsResizing] = useState(false);
   const [windowWidth, setWindowWidth] = useState(0);
@@ -304,10 +316,15 @@ export function AIChatSidebar({
           reportId,
           projectId,
           provider: chatProvider,
+          documentOutline,
+          activeSectionMarkdown,
+          activeSectionHeading,
+          fullReportMarkdown,
         },
       }),
-    [sessionId, activeSectionId, reportId, projectId, chatProvider]
+    [sessionId, activeSectionId, reportId, projectId, chatProvider, documentOutline, activeSectionMarkdown, activeSectionHeading, fullReportMarkdown]
   );
+
   const chat = useChat({ id: sessionId ?? 'pending', transport });
   const runtime = useAISDKRuntime(chat);
 

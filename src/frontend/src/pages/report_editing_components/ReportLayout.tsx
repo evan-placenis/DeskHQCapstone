@@ -124,6 +124,45 @@ export function ReportLayout({
   // Pinned selection: survives blur so user can highlight in editor then type in chat (Cursor-style)
   const [pinnedSelectionContext, setPinnedSelectionContext] = useState<SelectionContext | null>(null);
 
+  // Map & Lens: re-extract whenever the pinned selection changes (proxy for cursor movement / content change)
+  // These are recalculated lazily — we snapshot them so the transport body stays stable between renders.
+  const [documentOutline, setDocumentOutline] = useState<string>('');
+  const [activeSectionMarkdown, setActiveSectionMarkdown] = useState<string>('');
+  const [activeSectionHeading, setActiveSectionHeading] = useState<string>('');
+  // Full report markdown for server-side document tools — synced from report content and editor updates
+  const mainSection = reportContent.sections.find(s => s.id === 'main-content');
+  const [fullReportMarkdown, setFullReportMarkdown] = useState<string>(mainSection?.content ?? '');
+
+  // Sync fullReportMarkdown when report content loads (e.g. async fetch) or changes externally
+  useEffect(() => {
+    const content = mainSection?.content ?? '';
+    if (content) setFullReportMarkdown(content);
+  }, [mainSection?.content]);
+
+  // Refresh lightweight Map & Lens on cursor movement (outline + active section only)
+  const refreshEditorContext = useCallback(() => {
+    if (editorRef.current) {
+      setDocumentOutline(editorRef.current.getDocumentOutlineString());
+      const section = editorRef.current.getActiveSection();
+      setActiveSectionMarkdown(section?.markdown ?? '');
+      setActiveSectionHeading(section?.heading ?? '');
+    }
+  }, []);
+
+  // Refresh the Map & Lens whenever the user's selection/cursor context changes
+  const handleSelectionChange = useCallback((ctx: SelectionContext | null) => {
+    setPinnedSelectionContext(ctx);
+    refreshEditorContext();
+  }, [refreshEditorContext]);
+
+  // Wrap the parent's onEditorUpdate to also refresh Map & Lens context + full markdown
+  const handleEditorUpdateWithContext = useCallback((newContent: string) => {
+    onEditorUpdate?.(newContent);
+    refreshEditorContext();
+    // Capture full markdown on content changes (not on every cursor move — it's expensive)
+    setFullReportMarkdown(newContent);
+  }, [onEditorUpdate, refreshEditorContext]);
+
   // Selection-based AI edit: send markdown to API, store range, apply via editor.replaceRange on accept
   const requestAIEditWithSelection = useCallback(
     async (context: SelectionContext, instruction: string) => {
@@ -340,7 +379,7 @@ export function ReportLayout({
         reportContent={reportContent}
         onContentChange={onContentChange}
         onSectionChange={onSectionChange}
-        onEditorUpdate={onEditorUpdate}
+        onEditorUpdate={handleEditorUpdateWithContext}
         onBack={onBack}
         backLabel={backLabel}
         reportStatus={reportStatus}
@@ -369,7 +408,8 @@ export function ReportLayout({
         diffContent={diffContent}
         onSetDiffContent={setDiffContent}
         editorRef={editorRef}
-        onSelectionChange={setPinnedSelectionContext}
+        onSelectionChange={handleSelectionChange}
+        onCursorActivity={refreshEditorContext}
       />
 
       {/* AI Chat Sidebar - Extracted to AIChatSidebar component */}
@@ -411,6 +451,10 @@ export function ReportLayout({
         onToggleSelectionMode={toggleSelectionMode}
         useTiptap={useTiptap}
         onSetDiffContent={setDiffContent}
+        documentOutline={documentOutline}
+        activeSectionMarkdown={activeSectionMarkdown}
+        activeSectionHeading={activeSectionHeading}
+        fullReportMarkdown={fullReportMarkdown}
       />
 
       {/* Loading overlay: show as soon as user sends a selection edit, until the suggestion is ready.
