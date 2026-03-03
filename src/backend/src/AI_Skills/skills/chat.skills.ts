@@ -70,6 +70,7 @@ export function chatSkills(fullReportMarkdown?: string) {
           .describe('Array of section heading names to retrieve (e.g. ["Executive Summary", "Site Observations"])'),
       }),
       execute: async ({ sections }) => {
+        console.log('[ChatContext] read_specific_sections called:', { sections });
         const result: Record<string, string> = {};
         for (const requested of sections) {
           const normalized = requested.trim().toLowerCase();
@@ -108,6 +109,7 @@ export function chatSkills(fullReportMarkdown?: string) {
           .describe('Brief reason for reading the full report'),
       }),
       execute: async () => {
+        console.log('[ChatContext] read_full_report called, returning', fullReportMarkdown.length, 'chars');
         return { status: 'SUCCESS', markdown: fullReportMarkdown };
       },
     }),

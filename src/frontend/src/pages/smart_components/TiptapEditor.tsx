@@ -121,8 +121,6 @@ interface TiptapEditorProps {
     onRejectDiff?: () => void; // Callback when user rejects the diff
     /** Called when selection changes; used to pin selection so it survives blur (e.g. clicking into chat) */
     onSelectionChange?: (context: SelectionContext | null) => void;
-    /** Called on every cursor move (click, arrow keys) — used to track which section the user is in */
-    onCursorActivity?: () => void;
 }
 
 const SURROUNDING_CHARS = 500;
@@ -135,7 +133,6 @@ export const TiptapEditor = forwardRef<TiptapEditorHandle, TiptapEditorProps>(fu
     onAcceptDiff,
     onRejectDiff,
     onSelectionChange,
-    onCursorActivity,
 }, ref) {
     // Store the original markdown when entering review mode to prevent infinite loops
     const originalMarkdownRef = useRef<string | null>(null);
@@ -354,19 +351,6 @@ export const TiptapEditor = forwardRef<TiptapEditorHandle, TiptapEditorProps>(fu
             editor.off('selectionUpdate', handler);
         };
     }, [editor, onSelectionChange, isReviewMode]);
-
-    // Notify parent on every cursor movement so Map & Lens context stays current.
-    // This fires for clicks, arrow keys, etc. — independently of text selection.
-    useEffect(() => {
-        if (!editor || !onCursorActivity || isReviewMode) return;
-        const handler = () => { onCursorActivity(); };
-        editor.on('selectionUpdate', handler);
-        editor.on('focus', handler);
-        return () => {
-            editor.off('selectionUpdate', handler);
-            editor.off('focus', handler);
-        };
-    }, [editor, onCursorActivity, isReviewMode]);
 
     // Expose selection context and replaceRange for client-side AI edit (markdown in/out, range-based apply)
     useImperativeHandle(

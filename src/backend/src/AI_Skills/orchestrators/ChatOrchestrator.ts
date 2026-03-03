@@ -38,6 +38,19 @@ export class ChatOrchestrator {
     }) {
         const { messages, provider, context, projectId, userId, reportId, selectionEdit, systemMessage, client, onFinish, documentOutline, activeSectionMarkdown, activeSectionHeading, fullReportMarkdown } = params;
 
+        // [ChatContext] Debug: log context available to orchestrator
+        const hasDocumentTools = !!(fullReportMarkdown?.trim());
+        const hasMapLens = !!(documentOutline?.trim());
+        console.log('[ChatContext] ChatOrchestrator.generateStream:', {
+            hasDocumentTools,
+            fullReportMarkdownLen: fullReportMarkdown?.length ?? 0,
+            hasMapLens,
+            documentOutlineLen: documentOutline?.length ?? 0,
+            activeSectionHeading: activeSectionHeading ?? '(none)',
+            activeSectionMarkdownLen: activeSectionMarkdown?.length ?? 0,
+            promptVariant: hasDocumentTools ? 'report-aware' : 'default',
+        });
+
         // Build tools - include report skills if we have context
         const tools: any = {
             ...researchSkills(projectId ?? ''),
@@ -95,8 +108,10 @@ ${activeSectionMarkdown || '(empty section)'}
 CRITICAL RULE: When the user refers to "this report", "the report", "the document", or asks about ANY content that could be in the report (e.g. "metal stairs", "executive summary", "what does it say about X"), you MUST use read_full_report or read_specific_sections FIRST. NEVER use searchInternalKnowledge or searchWeb for report content. Research tools are ONLY for external facts (standards, regulations, best practices) that would NOT be in the report.
 
 ${outlineBlock}${activeSectionBlock}HOW TO ANSWER (follow strictly):
-1. For questions about the report content: call read_full_report (or read_specific_sections if you see section names in the outline above). Answer from that.
-2. ONLY use searchInternalKnowledge or searchWeb when the user explicitly asks for external information (e.g. "what does OSHA say about...", "industry best practices for...").
+1. For "summarize the report", "overview of the report", "entire report" — ALWAYS call read_full_report first. Do not rely on the Active Section alone; it is only the section where the cursor is. Give equal weight to all sections in your summary.
+2. For questions about specific sections: call read_specific_sections with the heading names from the outline above.
+3. For other report content questions: call read_full_report (or read_specific_sections if you know the section).
+4. ONLY use searchInternalKnowledge or searchWeb when the user explicitly asks for external information (e.g. "what does OSHA say about...", "industry best practices for...").
 
 Respond concisely. Do not explain your reasoning.`;
         }

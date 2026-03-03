@@ -124,44 +124,38 @@ export function ReportLayout({
   // Pinned selection: survives blur so user can highlight in editor then type in chat (Cursor-style)
   const [pinnedSelectionContext, setPinnedSelectionContext] = useState<SelectionContext | null>(null);
 
-  // Map & Lens: re-extract whenever the pinned selection changes (proxy for cursor movement / content change)
-  // These are recalculated lazily — we snapshot them so the transport body stays stable between renders.
-  const [documentOutline, setDocumentOutline] = useState<string>('');
-  const [activeSectionMarkdown, setActiveSectionMarkdown] = useState<string>('');
-  const [activeSectionHeading, setActiveSectionHeading] = useState<string>('');
-  // Full report markdown for server-side document tools — synced from report content and editor updates
-  const mainSection = reportContent.sections.find(s => s.id === 'main-content');
-  const [fullReportMarkdown, setFullReportMarkdown] = useState<string>(mainSection?.content ?? '');
-
-  // Sync fullReportMarkdown when report content loads (e.g. async fetch) or changes externally
-  useEffect(() => {
-    const content = mainSection?.content ?? '';
-    if (content) setFullReportMarkdown(content);
-  }, [mainSection?.content]);
-
-  // Refresh lightweight Map & Lens on cursor movement (outline + active section only)
-  const refreshEditorContext = useCallback(() => {
+  // Fetch Map & Lens from the live editor at send time — no state, no cursor listeners
+  const getEditorContext = useCallback(() => {
     if (editorRef.current) {
-      setDocumentOutline(editorRef.current.getDocumentOutlineString());
+      const outline = editorRef.current.getDocumentOutlineString();
       const section = editorRef.current.getActiveSection();
-      setActiveSectionMarkdown(section?.markdown ?? '');
-      setActiveSectionHeading(section?.heading ?? '');
+      const full = editorRef.current.getFullMarkdown();
+      return {
+        documentOutline: outline,
+        activeSectionMarkdown: section?.markdown ?? '',
+        activeSectionHeading: section?.heading ?? '',
+        fullReportMarkdown: full,
+      };
     }
-  }, []);
+    // Fallback when editor not mounted (e.g. non-Tiptap mode)
+    const main = reportContent.sections.find(s => s.id === 'main-content');
+    return {
+      documentOutline: '',
+      activeSectionMarkdown: '',
+      activeSectionHeading: '',
+      fullReportMarkdown: main?.content ?? '',
+    };
+  }, [reportContent]);
 
-  // Refresh the Map & Lens whenever the user's selection/cursor context changes
+  // Refresh pinned selection only (for selection-edit flow)
   const handleSelectionChange = useCallback((ctx: SelectionContext | null) => {
     setPinnedSelectionContext(ctx);
-    refreshEditorContext();
-  }, [refreshEditorContext]);
+  }, []);
 
-  // Wrap the parent's onEditorUpdate to also refresh Map & Lens context + full markdown
+  // Wrap parent's onEditorUpdate — no Map/Lens state to update
   const handleEditorUpdateWithContext = useCallback((newContent: string) => {
     onEditorUpdate?.(newContent);
-    refreshEditorContext();
-    // Capture full markdown on content changes (not on every cursor move — it's expensive)
-    setFullReportMarkdown(newContent);
-  }, [onEditorUpdate, refreshEditorContext]);
+  }, [onEditorUpdate]);
 
   // Selection-based AI edit: send markdown to API, store range, apply via editor.replaceRange on accept
   const requestAIEditWithSelection = useCallback(
@@ -409,7 +403,6 @@ export function ReportLayout({
         onSetDiffContent={setDiffContent}
         editorRef={editorRef}
         onSelectionChange={handleSelectionChange}
-        onCursorActivity={refreshEditorContext}
       />
 
       {/* AI Chat Sidebar - Extracted to AIChatSidebar component */}
@@ -451,10 +444,7 @@ export function ReportLayout({
         onToggleSelectionMode={toggleSelectionMode}
         useTiptap={useTiptap}
         onSetDiffContent={setDiffContent}
-        documentOutline={documentOutline}
-        activeSectionMarkdown={activeSectionMarkdown}
-        activeSectionHeading={activeSectionHeading}
-        fullReportMarkdown={fullReportMarkdown}
+        getEditorContext={getEditorContext}
       />
 
       {/* Loading overlay: show as soon as user sends a selection edit, until the suggestion is ready.

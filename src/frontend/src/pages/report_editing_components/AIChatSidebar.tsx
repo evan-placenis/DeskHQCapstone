@@ -206,14 +206,13 @@ interface AIChatSidebarProps {
   onToggleSelectionMode?: () => void;
   useTiptap?: boolean;
   onSetDiffContent?: (content: string) => void;
-  /** Map: document outline string injected from the live editor */
-  documentOutline?: string;
-  /** Lens: active section markdown injected from the live editor */
-  activeSectionMarkdown?: string;
-  /** Lens: heading name of the active section */
-  activeSectionHeading?: string;
-  /** Full report markdown from the live editor (sent to server for document tools) */
-  fullReportMarkdown?: string;
+  /** Called at send time to get fresh Map & Lens from the live editor. Avoids stale state. */
+  getEditorContext?: () => {
+    documentOutline: string;
+    activeSectionMarkdown: string;
+    activeSectionHeading: string;
+    fullReportMarkdown: string;
+  };
 }
 
 export function AIChatSidebar({
@@ -240,10 +239,7 @@ export function AIChatSidebar({
   onToggleSelectionMode,
   useTiptap = false,
   onSetDiffContent,
-  documentOutline,
-  activeSectionMarkdown,
-  activeSectionHeading,
-  fullReportMarkdown,
+  getEditorContext,
 }: AIChatSidebarProps) {
   const [isResizing, setIsResizing] = useState(false);
   const [windowWidth, setWindowWidth] = useState(0);
@@ -307,22 +303,32 @@ export function AIChatSidebar({
     };
   }, [isResizing, windowWidth, onResize]);
 
+  // Body is a function so it's evaluated at send time — ensures fresh Map & Lens from the live editor
   const transport = useMemo(
     () =>
       new AssistantChatTransport({
         api: sessionId ? `/api/chat/sessions/${sessionId}/stream` : '',
-        body: {
-          activeSectionId,
-          reportId,
-          projectId,
-          provider: chatProvider,
-          documentOutline,
-          activeSectionMarkdown,
-          activeSectionHeading,
-          fullReportMarkdown,
+        body: () => {
+          const ctx = getEditorContext?.();
+          const body = {
+            activeSectionId,
+            reportId,
+            projectId,
+            provider: chatProvider,
+            documentOutline: ctx?.documentOutline ?? '',
+            activeSectionMarkdown: ctx?.activeSectionMarkdown ?? '',
+            activeSectionHeading: ctx?.activeSectionHeading ?? '',
+            fullReportMarkdown: ctx?.fullReportMarkdown ?? '',
+          };
+          console.log('[ChatContext] Body at send time:', {
+            documentOutlineLen: body.documentOutline.length,
+            activeSectionHeading: body.activeSectionHeading || '(none)',
+            fullReportMarkdownLen: body.fullReportMarkdown.length,
+          });
+          return body;
         },
       }),
-    [sessionId, activeSectionId, reportId, projectId, chatProvider, documentOutline, activeSectionMarkdown, activeSectionHeading, fullReportMarkdown]
+    [sessionId, activeSectionId, reportId, projectId, chatProvider, getEditorContext]
   );
 
   const chat = useChat({ id: sessionId ?? 'pending', transport });
