@@ -415,6 +415,7 @@ export function ReportLayout({
         onSetDiffContent={setDiffContent}
         editorRef={editorRef}
         onSelectionChange={handleSelectionChange}
+        pinnedSelectionRange={pinnedSelectionContext?.range ?? null}
       />
 
       {/* AI Chat Sidebar - Extracted to AIChatSidebar component */}

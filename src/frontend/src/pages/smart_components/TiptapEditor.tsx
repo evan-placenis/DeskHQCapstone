@@ -3,6 +3,9 @@
 import { useEditor, EditorContent } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
 import { Markdown } from 'tiptap-markdown' // You need to install this
+import { Extension } from '@tiptap/core'
+import { Plugin } from '@tiptap/pm/state'
+import { Decoration, DecorationSet } from '@tiptap/pm/view'
 import { useEffect, useMemo, useState, useRef, forwardRef, useImperativeHandle, useCallback } from 'react'
 import {
     extractOutline,
@@ -118,6 +121,30 @@ export interface TiptapEditorHandle {
     getFullMarkdown: () => string;
 }
 
+/** Extension that shows a persistent highlight for a pinned selection range (survives blur when user clicks into chat) */
+function createPinnedHighlightExtension(getRange: () => { from: number; to: number } | null) {
+    return Extension.create({
+        name: 'pinnedHighlight',
+        addProseMirrorPlugins() {
+            return [
+                new Plugin({
+                    props: {
+                        decorations(state) {
+                            const range = getRange();
+                            if (!range || range.from >= range.to) return null;
+                            const { from, to } = range;
+                            const docSize = state.doc.content.size;
+                            if (from < 0 || to > docSize) return null;
+                            const deco = Decoration.inline(from, to, { class: 'pinned-selection-highlight' });
+                            return DecorationSet.create(state.doc, [deco]);
+                        },
+                    },
+                }),
+            ];
+        },
+    });
+}
+
 interface TiptapEditorProps {
     content: string; // This expects the Markdown string from your processNode
     editable?: boolean; //make everything editable
@@ -127,6 +154,8 @@ interface TiptapEditorProps {
     onRejectDiff?: () => void; // Callback when user rejects the diff
     /** Called when selection changes; used to pin selection so it survives blur (e.g. clicking into chat) */
     onSelectionChange?: (context: SelectionContext | null) => void;
+    /** When set, show a persistent highlight at this range (e.g. when user selected text then clicked into chat) */
+    pinnedSelectionRange?: { from: number; to: number } | null;
 }
 
 const SURROUNDING_CHARS = 500;
@@ -139,6 +168,7 @@ export const TiptapEditor = forwardRef<TiptapEditorHandle, TiptapEditorProps>(fu
     onAcceptDiff,
     onRejectDiff,
     onSelectionChange,
+    pinnedSelectionRange,
 }, ref) {
     // Store the original markdown when entering review mode to prevent infinite loops
     const originalMarkdownRef = useRef<string | null>(null);
@@ -149,9 +179,16 @@ export const TiptapEditor = forwardRef<TiptapEditorHandle, TiptapEditorProps>(fu
     const lastEmittedMarkdownRef = useRef<string | null>(null);
     const imageFileInputRef = useRef<HTMLInputElement | null>(null);
     const audioFileInputRef = useRef<HTMLInputElement | null>(null);
+    const pinnedRangeRef = useRef<{ from: number; to: number } | null>(null);
+    pinnedRangeRef.current = pinnedSelectionRange ?? null;
 
     // Determine if we're in review mode
     const isReviewMode = !!diffContent;
+
+    const pinnedHighlightExtension = useMemo(
+        () => createPinnedHighlightExtension(() => pinnedRangeRef.current),
+        [] // ref is stable; we update .current and dispatch to force re-render
+    );
 
     const editor = useEditor({
         immediatelyRender: false,
@@ -192,6 +229,7 @@ export const TiptapEditor = forwardRef<TiptapEditorHandle, TiptapEditorProps>(fu
             TableRow,
             TableHeader,
             TableCell,
+            pinnedHighlightExtension,
         ],
         content: content, // Always start with the content prop
         editable: editable && !isReviewMode, // Disable editing in review mode
@@ -310,6 +348,13 @@ export const TiptapEditor = forwardRef<TiptapEditorHandle, TiptapEditorProps>(fu
             editor.commands.setContent(content);
         }
     }, [content, editor, isReviewMode]);
+
+    // Force ProseMirror view to re-render when pinned range changes (so decoration appears/disappears)
+    useEffect(() => {
+        if (!editor) return;
+        const tr = editor.state.tr.setMeta('addToHistory', false);
+        editor.view.dispatch(tr);
+    }, [editor, pinnedSelectionRange]);
 
     // Notify parent when selection changes so we can "pin" it (survives blur when user clicks into chat)
     useEffect(() => {
