@@ -9,8 +9,10 @@ import {
     outlineToString,
     extractActiveSection,
     extractSectionsByHeading,
+    getPositionForInsertAnchor,
     type OutlineEntry,
     type ActiveSectionInfo,
+    type InsertAnchor,
 } from '@/frontend/lib/editorContext'
 
 import { Table } from '@tiptap/extension-table'
@@ -98,6 +100,10 @@ export interface TiptapEditorHandle {
     getSelectionContext: () => SelectionContext | null;
     /** Replace the given range with new markdown (parsed and inserted). Use when accepting an AI edit. */
     replaceRange: (range: { from: number; to: number }, newMarkdown: string) => void;
+    /** Insert markdown at a position (for structure-based insertion, no selection). */
+    insertAtPosition: (pos: number, markdown: string) => void;
+    /** Resolve structural anchor to ProseMirror position for insertion. */
+    getInsertPositionForAnchor: (anchor: InsertAnchor) => number | null;
     /** Collapse the selection so the next getSelectionContext() returns null (e.g. after using selection for an edit). */
     clearSelection: () => void;
     /** Map: returns the document outline (all headings) as structured entries */
@@ -400,6 +406,24 @@ export const TiptapEditor = forwardRef<TiptapEditorHandle, TiptapEditorProps>(fu
                     editor.chain().focus().setTextSelection({ from: range.from, to: range.to }).deleteSelection().run();
                     editor.commands.insertContent(newMarkdown);
                 }
+            },
+            insertAtPosition(pos: number, markdown: string) {
+                if (!editor || isReviewMode) return;
+                try {
+                    const commands = editor.commands as { insertContentAt?: (pos: number, content: string) => boolean };
+                    if (typeof commands.insertContentAt === "function") {
+                        commands.insertContentAt(pos, markdown);
+                    } else {
+                        editor.chain().focus().setTextSelection(pos).run();
+                        editor.commands.insertContent(markdown);
+                    }
+                } catch (e) {
+                    console.warn("insertAtPosition failed:", e);
+                }
+            },
+            getInsertPositionForAnchor(anchor: InsertAnchor) {
+                if (!editor) return null;
+                return getPositionForInsertAnchor(editor, anchor);
             },
             clearSelection() {
                 if (!editor || isReviewMode) return;

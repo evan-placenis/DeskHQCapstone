@@ -162,7 +162,10 @@ const CustomMessage = () => {
 };
 
 
-// EditSuggestion type (selection-based flow uses range; section-based uses sectionRowId)
+/** Anchor for structure-based insertion (no selection) */
+export type InsertAnchor = 'end_of_report' | { afterHeading: string };
+
+// EditSuggestion type (selection-based flow uses range; structure-based uses insertAnchor)
 export interface EditSuggestion {
   sectionRowId?: string;    // UUID from report_sections (section-based flow only)
   sectionId?: string;
@@ -173,6 +176,8 @@ export interface EditSuggestion {
   status: 'PENDING' | 'ACCEPTED' | 'REJECTED';
   /** ProseMirror range for range-based replace in Tiptap (selection flow) */
   range?: { from: number; to: number };
+  /** Structure-based: insert at end or after section (resolved at accept time) */
+  insertAnchor?: InsertAnchor;
   /** Legacy: when set without range, Accept used fullDocument replace (deprecated) */
   fullDocument?: string;
   startIdx?: number;
@@ -391,6 +396,7 @@ export function AIChatSidebar({
 
   // Track processed edits to avoid duplicates
   const lastUserMessageRef = useRef<string | null>(null);
+  const lastProcessedStructureInsertRef = useRef<string | null>(null);
 
   // Listen for message completion to handle tool calls and trigger non-streaming edits
   useEffect(() => {
@@ -410,6 +416,47 @@ export function AIChatSidebar({
         const allToolCalls = [...toolCalls, ...toolInvocations];
         
         if (allToolCalls.length > 0) {
+          // Structure-based insertion: user asked to write something without selection
+          const structureInsertCall = allToolCalls.find(
+            (tool: any) => {
+              const toolName = tool.toolName || tool.name;
+              const hasResult = 'result' in tool;
+              return toolName === 'propose_structure_insertion' && hasResult;
+            }
+          );
+
+          if (structureInsertCall && onEditSuggestion) {
+            const msgId = (lastMessage as any).id ?? '';
+            const callId = `${msgId}-propose_structure_insertion`;
+            if (lastProcessedStructureInsertRef.current === callId) {
+              // Already processed this tool call
+            } else {
+              lastProcessedStructureInsertRef.current = callId;
+              const result = structureInsertCall.result;
+              const content = result?.content ?? '';
+              const anchor = result?.anchor;
+              const reason = result?.reason ?? 'AI proposed insertion';
+              if (content && anchor) {
+                const insertAnchor: InsertAnchor = anchor === 'end_of_report'
+                  ? 'end_of_report'
+                  : typeof anchor === 'object' && anchor?.afterHeading
+                    ? { afterHeading: anchor.afterHeading }
+                    : 'end_of_report';
+                const sectionLabel = insertAnchor === 'end_of_report'
+                  ? 'End of report'
+                  : `After "${(insertAnchor as { afterHeading: string }).afterHeading}"`;
+                onEditSuggestion({
+                  originalText: '',
+                  suggestedText: content,
+                  reason,
+                  status: 'PENDING',
+                  insertAnchor,
+                  sectionHeading: sectionLabel,
+                });
+              }
+            }
+          }
+
           // Check for updateSection tool calls (legacy)
           const updateSectionCall = allToolCalls.find(
             (tool: any) => {
@@ -472,7 +519,7 @@ export function AIChatSidebar({
     });
 
     return () => unsubscribe();
-  }, [runtime, sessionId, activeSectionId, useTiptap, onSuggestionAccept, onSetDiffContent]);
+  }, [runtime, sessionId, activeSectionId, useTiptap, onSuggestionAccept, onSetDiffContent, onEditSuggestion]);
 
   const handleCustomSend = async (message: string) => {
     if (!runtime) return;

@@ -156,7 +156,7 @@ export function DiffPopup({
           <div className="flex items-center justify-between">
             <div>
               <h3 className="font-semibold text-slate-900 text-sm">
-                Suggested Edit
+                {suggestion.insertAnchor ? 'Suggested Insertion' : 'Suggested Edit'}
               </h3>
               <p className="text-xs text-slate-500 mt-0.5">
                 {suggestion.sectionHeading ?? 'Selection'}
