@@ -163,7 +163,7 @@ const CustomMessage = () => {
 
 
 /** Anchor for structure-based insertion (no selection) */
-export type InsertAnchor = 'end_of_report' | { afterHeading: string };
+export type InsertAnchor = 'start_of_report' | 'end_of_report' | { afterHeading: string };
 
 // EditSuggestion type (selection-based flow uses range; structure-based uses insertAnchor)
 export interface EditSuggestion {
@@ -437,14 +437,18 @@ export function AIChatSidebar({
               const anchor = result?.anchor;
               const reason = result?.reason ?? 'AI proposed insertion';
               if (content && anchor) {
-                const insertAnchor: InsertAnchor = anchor === 'end_of_report'
-                  ? 'end_of_report'
-                  : typeof anchor === 'object' && anchor?.afterHeading
-                    ? { afterHeading: anchor.afterHeading }
-                    : 'end_of_report';
-                const sectionLabel = insertAnchor === 'end_of_report'
-                  ? 'End of report'
-                  : `After "${(insertAnchor as { afterHeading: string }).afterHeading}"`;
+                const insertAnchor: InsertAnchor = anchor === 'start_of_report'
+                  ? 'start_of_report'
+                  : anchor === 'end_of_report'
+                    ? 'end_of_report'
+                    : typeof anchor === 'object' && anchor?.afterHeading
+                      ? { afterHeading: anchor.afterHeading }
+                      : 'end_of_report';
+                const sectionLabel = insertAnchor === 'start_of_report'
+                  ? 'Start of report'
+                  : insertAnchor === 'end_of_report'
+                    ? 'End of report'
+                    : `After "${(insertAnchor as { afterHeading: string }).afterHeading}"`;
                 onEditSuggestion({
                   originalText: '',
                   suggestedText: content,

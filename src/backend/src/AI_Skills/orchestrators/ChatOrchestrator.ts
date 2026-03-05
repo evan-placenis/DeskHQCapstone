@@ -115,7 +115,7 @@ ${outlineBlock}${activeSectionBlock}HOW TO ANSWER (follow strictly):
 
 STRUCTURE-BASED WRITING (when user asks to WRITE something without selecting text):
 5. When the user asks to write content (e.g. "write a conclusion", "add an executive summary", "write an intro", "can you add a recommendations section") — FIRST call read_full_report to understand the report, then call propose_structure_insertion with:
-   - insertLocation: "end_of_report" for conclusions, summaries, appendices, or any content that belongs at the end. Use "after_heading" only when inserting between existing sections.
+   - insertLocation: "start_of_report" for introductions, overviews, or any content that belongs at the beginning. "end_of_report" for conclusions, summaries, appendices, or content at the end. "after_heading" only when inserting between existing sections.
    - targetHeading: When insertLocation is "after_heading", provide the exact heading name from the report outline. Otherwise omit.
    - content: Full markdown including the heading (e.g. ## Conclusion) and body. Match heading levels to neighboring sections. For a conclusion: summarize key findings and recommendations from the report.
 6. The user's cursor position does NOT matter — infer the correct location from report structure and conventions.
