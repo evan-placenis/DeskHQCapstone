@@ -42,7 +42,19 @@ export async function POST(
     try {
         const { sessionId } = await params;
         const body = await req.json();
-        const { messages, activeSectionId, reportId, projectId, provider = 'gemini-cheap', selectionEdit } = body;
+        const { messages, activeSectionId, reportId, projectId, provider = 'gemini-cheap', selectionEdit, documentOutline, activeSectionMarkdown, activeSectionHeading, fullReportMarkdown } = body;
+
+        // [ChatContext] Debug: log what report context the chatbot received
+        const userMsg = Container.chatService.getLastUserMessageTextFromBody(body);
+        console.log('[ChatContext] POST /stream received:', {
+            userMessagePreview: userMsg?.slice(0, 80) + (userMsg && userMsg.length > 80 ? '...' : ''),
+            documentOutlineLen: documentOutline?.length ?? 0,
+            documentOutlinePreview: documentOutline?.slice(0, 120) ?? '(none)',
+            activeSectionHeading: activeSectionHeading ?? '(none)',
+            activeSectionMarkdownLen: activeSectionMarkdown?.length ?? 0,
+            fullReportMarkdownLen: fullReportMarkdown?.length ?? 0,
+            hasDocumentTools: !!(fullReportMarkdown?.trim()),
+        });
 
         const { supabase, user } = await createAuthenticatedClient();
         if (!user) {
@@ -112,6 +124,10 @@ You MUST respond with ONLY one short acknowledgment. Examples: "I've suggested a
             selectionEdit: !!selectionEdit,
             systemMessage,
             client: supabase,
+            documentOutline,
+            activeSectionMarkdown,
+            activeSectionHeading,
+            fullReportMarkdown,
             onFinish: async ({ text }) => {
                 const trimmed = (text ?? '').trim();
                 if (!trimmed) return;

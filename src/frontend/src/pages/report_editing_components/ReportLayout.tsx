@@ -124,6 +124,39 @@ export function ReportLayout({
   // Pinned selection: survives blur so user can highlight in editor then type in chat (Cursor-style)
   const [pinnedSelectionContext, setPinnedSelectionContext] = useState<SelectionContext | null>(null);
 
+  // Fetch Map & Lens from the live editor at send time — no state, no cursor listeners
+  const getEditorContext = useCallback(() => {
+    if (editorRef.current) {
+      const outline = editorRef.current.getDocumentOutlineString();
+      const section = editorRef.current.getActiveSection();
+      const full = editorRef.current.getFullMarkdown();
+      return {
+        documentOutline: outline,
+        activeSectionMarkdown: section?.markdown ?? '',
+        activeSectionHeading: section?.heading ?? '',
+        fullReportMarkdown: full,
+      };
+    }
+    // Fallback when editor not mounted (e.g. non-Tiptap mode)
+    const main = reportContent.sections.find(s => s.id === 'main-content');
+    return {
+      documentOutline: '',
+      activeSectionMarkdown: '',
+      activeSectionHeading: '',
+      fullReportMarkdown: main?.content ?? '',
+    };
+  }, [reportContent]);
+
+  // Refresh pinned selection only (for selection-edit flow)
+  const handleSelectionChange = useCallback((ctx: SelectionContext | null) => {
+    setPinnedSelectionContext(ctx);
+  }, []);
+
+  // Wrap parent's onEditorUpdate — no Map/Lens state to update
+  const handleEditorUpdateWithContext = useCallback((newContent: string) => {
+    onEditorUpdate?.(newContent);
+  }, [onEditorUpdate]);
+
   // Selection-based AI edit: send markdown to API, store range, apply via editor.replaceRange on accept
   const requestAIEditWithSelection = useCallback(
     async (context: SelectionContext, instruction: string) => {
@@ -340,7 +373,7 @@ export function ReportLayout({
         reportContent={reportContent}
         onContentChange={onContentChange}
         onSectionChange={onSectionChange}
-        onEditorUpdate={onEditorUpdate}
+        onEditorUpdate={handleEditorUpdateWithContext}
         onBack={onBack}
         backLabel={backLabel}
         reportStatus={reportStatus}
@@ -369,7 +402,7 @@ export function ReportLayout({
         diffContent={diffContent}
         onSetDiffContent={setDiffContent}
         editorRef={editorRef}
-        onSelectionChange={setPinnedSelectionContext}
+        onSelectionChange={handleSelectionChange}
       />
 
       {/* AI Chat Sidebar - Extracted to AIChatSidebar component */}
@@ -411,6 +444,7 @@ export function ReportLayout({
         onToggleSelectionMode={toggleSelectionMode}
         useTiptap={useTiptap}
         onSetDiffContent={setDiffContent}
+        getEditorContext={getEditorContext}
       />
 
       {/* Loading overlay: show as soon as user sends a selection edit, until the suggestion is ready.

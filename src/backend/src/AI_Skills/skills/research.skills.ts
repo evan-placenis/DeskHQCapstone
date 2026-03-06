@@ -1,6 +1,13 @@
 import { tool } from 'ai';
 import { z } from 'zod/v3';
 import { Container } from '../../config/container'; // Assuming your container is here
+function sanitizeQuery(rawQuery: string): string {
+  // Matches standard UUIDv4 formats
+  const uuidRegex = /[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}/g;
+  
+  // Strip the UUID and clean up extra spaces
+  return rawQuery.replace(uuidRegex, '').replace(/\s+/g, ' ').trim();
+}
 
 export const researchSkills = (
   projectId: string, 
@@ -11,16 +18,17 @@ export const researchSkills = (
    * Replaces: private searchVectorStore()
    */
   searchInternalKnowledge: tool({
-    description: 'Search the internal project memory/database for information. ALWAYS try this first as it is the quickest and cheapest way to get information.',
+    description: 'Search the internal project memory/database for EXTERNAL information (standards, past project data, reference material). Do NOT use this for questions about the current report — use read_specific_sections or read_full_report instead.',
     inputSchema: z.object({
       query: z.string().describe('The question or topic to search for'),
       // reasoning: z.string().optional().describe('A "scratchpad" to think out loud and let the user know what you are thinking.'),
     }),
     execute: async ({ query }) => {
       try {
-        console.log(`🧠 [Research Skill] Searching Internal Memory: "${query}"`);
+        const cleanQuery = sanitizeQuery(query);
+        console.log(`🧠 [Research Skill] Searching Internal Memory: "${cleanQuery}"`);
         // KnowledgeService.search takes string[] and returns string[]
-        const results = await Container.knowledgeService.search([query], projectId);
+        const results = await Container.knowledgeService.search([cleanQuery], projectId);
 
         if (results && results.length > 0) {
           return `[MEMORY MATCH FOUND]:\n${results.join('\n\n')}`;
@@ -46,9 +54,10 @@ export const researchSkills = (
     }),
     execute: async ({ query}) => {
       try {
-        console.log(`🌎 [Skill] Searching Web (Exa): "${query}"`);
+        const cleanQuery = sanitizeQuery(query);
+        console.log(`🌎 [Skill] Searching Web (Exa): "${cleanQuery}"`);
 
-        const result = await Container.exa.searchAndContents(query, {
+        const result = await Container.exa.searchAndContents(cleanQuery, {
           type: "neural",
           useAutoprompt: true,
           numResults: 2,

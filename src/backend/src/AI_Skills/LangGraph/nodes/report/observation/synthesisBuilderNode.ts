@@ -2,6 +2,7 @@ import { SystemMessage, HumanMessage } from "@langchain/core/messages";
 import { ModelStrategy } from "../../../models/modelStrategy";
 import { ObservationState } from "../../../state/report/ObservationState";
 import { Container } from "../../../../../config/container";
+import { dumpAgentContext } from "../../../utils/agent-logger";
 export async function synthesisBuilderNode(state: typeof ObservationState.State) {
   const { 
     reportPlan, 
@@ -61,12 +62,18 @@ export async function synthesisBuilderNode(state: typeof ObservationState.State)
         PURPOSE OF THIS SECTION (From Plan):
         ${section.purpose || "Provide a high-level overview and actionable next steps."}
 
-        INPUT DATA (The Findings):
+        INPUT DATA (The Reprot Findings needed for Context Only):
         ${observationsContext}
 
-        STRICT FORMATTING RULES:
+        ---
+        GLOBAL REPORT STRUCTURE (For Context Only):
+        The following is the structure for the ENTIRE report. Use this to understand where your section fits in, but DO NOT write the other sections.
         ${structureInstructions}
 
+        CRITICAL EXECUTION RULES 
+        1. You are currently executing ONLY the "${section.title}" task.
+        2. DO NOT generate the entire report.
+        3. DO NOT output headers, content, or placeholders for any other sections.
       `;
 
     // 🔄 RETRY LOOP
@@ -74,13 +81,23 @@ export async function synthesisBuilderNode(state: typeof ObservationState.State)
       attempts++;
       console.log(`✍️ [Synthesis] Writing "${section.title}"...`);
       try {
+        // 📝 Log the INPUT (The prompt + any RAG history it is carrying)
+        const taskName = `SynthesisBuilder_Task_${section.title}`;
+        dumpAgentContext(draftReportId || "", taskName, [new SystemMessage(systemPrompt || "You are an expert technical writer."), new HumanMessage(prompt)], 'INPUT');
+
         const response = await model.invoke([
           new SystemMessage(systemPrompt || "You are an expert technical writer."),
           new HumanMessage(prompt)
         ]);
 
-        const text = typeof response.content === 'string' ? response.content : JSON.stringify(response.content);
-        newContent[section.title] = text;
+        // 📝 Log the OUTPUT (What the AI just generated / The tools it wants to call)
+        dumpAgentContext(draftReportId || "", taskName, [response], 'OUTPUT');
+
+        const rawText = typeof response.content === 'string' ? response.content : JSON.stringify(response.content);
+
+        // leaving only the pure report text.
+        const cleanReportText = rawText.replace(/<thinking>[\s\S]*?<\/thinking>/gi, '').trim();
+        newContent[section.title] = cleanReportText;
 
         // 2. MARK SUCCESS HERE (The AI did its job)
         success = true;
@@ -94,7 +111,7 @@ export async function synthesisBuilderNode(state: typeof ObservationState.State)
                   draftReportId,
                   section.sectionId,
                   section.title,
-                  text,
+                  cleanReportText,
                   safeOrder, // Use the correct order from the plan
                   freshClient
               );

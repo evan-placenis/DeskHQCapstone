@@ -17,7 +17,7 @@ export class ModelStrategy {
             case 'gemini-cheap':
                 return new ChatGoogleGenerativeAI({ model: "gemini-3-flash-preview", apiKey: process.env.GOOGLE_API_KEY});
             case 'claude':
-                return new ChatAnthropic({ model: "claude-sonnet-4-5" , apiKey: process.env.ANTHROPIC_API_KEY});
+                return new ChatAnthropic({ model: "claude-sonnet-4-6" , apiKey: process.env.ANTHROPIC_API_KEY});
             default:
                 return new ChatGoogleGenerativeAI({ model: "gemini-1.5-flash", apiKey: process.env.GOOGLE_API_KEY });
         }

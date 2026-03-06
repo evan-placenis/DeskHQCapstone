@@ -154,35 +154,45 @@ export const generateReportTask = task({
       console.log(`📝 Draft report ${draftReportId} created in database`);
 
       // 5. FETCH TEMPLATE FOR CONTEXT (if using observation workflow)
-      let contextPrompt = "";
+      let system_prompt = "";
       let structureInstructions = "";
-      
-      if (workflowType === 'observation' && payload.input.templateId) {
+
+      // --- LOGGING: Trace whether frontend sent templateId and whether DB fetch succeeds ---
+      const rawTemplateId = payload.input.templateId;
+      const hasTemplateId = Boolean(rawTemplateId?.trim?.() ?? rawTemplateId);
+
+
+      if (hasTemplateId) {
+        const templateIdToFetch = (typeof rawTemplateId === "string" ? rawTemplateId.trim() : String(rawTemplateId));
         try {
-          const { data: template } = await supabase
+          const { data: template, error: templateError } = await supabase
             .from('report_templates')
             .select('system_prompt, structure_instructions')
-            .eq('id', payload.input.templateId)
+            .eq('id', templateIdToFetch)
             .single();
-          
+
+          if (templateError) {
+            console.error(`❌ [Template] Supabase error: code=${templateError.code}, message=${templateError.message}, details=${JSON.stringify(templateError.details)}`);
+          }
           if (template) {
-            contextPrompt = template.system_prompt || "";
+            system_prompt = template.system_prompt || "";
             structureInstructions = template.structure_instructions || "";
-            console.log(`📋 Loaded template context for observation workflow`);
+            console.log(`📋 [Template] Loaded template: system_prompt length=${system_prompt.length}, structure_instructions length=${structureInstructions.length}`);
+          } else {
+            console.log(`🔍 [Template] No row returned (data is null/undefined). Check that id exists in report_templates.`);
           }
         } catch (err) {
-          console.warn('⚠️ Could not load template, using defaults:', err);
+          console.warn('⚠️ [Template] Exception while loading template, using defaults:', err);
         }
       }
-
       // 6. SELECT THE APPROPRIATE WORKFLOW GRAPH
       const workflowGraph = getWorkflow(workflowType);
 
       // 7. PREPARE LANGGRAPH STATE
-      // Instead of calling reportService.generateReportStream, we prepare the Graph Input
+      // Use explicit strings so state never has undefined for systemPrompt/structureInstructions (builder/architect expect them)
       const inputState = {
         messages: [new HumanMessage("Generate the report.")],
-        context: contextPrompt,
+        systemPrompt: system_prompt ?? "",
         projectId: payload.projectId,
         userId: payload.userId,
         reportType: payload.input.reportType,
@@ -192,7 +202,7 @@ export const generateReportTask = task({
         draftReportId: draftReportId,
         client: supabase,
         photoNotes: "",
-        structureInstructions: structureInstructions,
+        structureInstructions: structureInstructions ?? "",
         currentSection: "init",
         processingMode: payload.input.processingMode ?? "IMAGE_AND_TEXT", // TEXT_ONLY = no vision tools
       };
@@ -227,8 +237,9 @@ export const generateReportTask = task({
         });
         // Debounced reasoning broadcast (so text flows smoothly)
         if (textBuffer.length > 0 && Date.now() - lastUpdate > UPDATE_INTERVAL) {
-          await broadcast(supabase, payload.projectId!, 'reasoning', { chunk: textBuffer });
-          textBuffer = "";
+          // ✅ CHANGED 'reasoning' to 'agent_thought'
+          await broadcast(supabase, payload.projectId!, 'agent_thought', { chunk: textBuffer });
+          textBuffer = ""; // Clears the buffer so we don't send duplicate text!
           lastUpdate = Date.now();
         }
       }
@@ -382,79 +393,106 @@ async function processStreamEvent({
   // 1. LLM TOKEN STREAMING (The "Typewriter" Effect)
   // ---------------------------------------------------------
   if (event.event === "on_chat_model_stream") {
-    // 🔍 EXTRACT CONTENT
-    // LangChain is inconsistent. It could be:
-    // A. event.data.chunk.content (Standard)
-    // B. event.data.chunk (String)
-    // C. event.data.content (Legacy)
+    // const chunk = event.data?.chunk;
     
-    let content = "";
-    const chunk = event.data?.chunk;
-    
-    if (typeof chunk === "string") {
-      content = chunk;
-    } else if (chunk && typeof chunk.content === "string") {
-      content = chunk.content;
-    } else if (event.data?.content) {
-      content = event.data.content;
-    }
+    // // A. Standard Text Stream (If the model speaks normally)
+    // if (typeof chunk === "string") {
+    //   updatedBuffer += chunk;
+    // } else if (chunk?.content && typeof chunk.content === "string") {
+    //   updatedBuffer += chunk.content;
+    // }
 
-    // 🛡️ IGNORE EMPTY CHUNKS
-    if (content && content.length > 0) {
-      updatedBuffer += content;
-      
-      // OPTIONAL: Log if you want to see it working
-      // if (STREAM_DEBUG) console.log(`🔤 Chunk: ${content.slice(0, 20)}...`);
-    }
+    // // B. Tool Call Argument Stream (Schema-Driven CoT!)
+    // // When the LLM builds a tool call, it streams the raw JSON string piece by piece here.
+    // if (chunk?.tool_call_chunks && chunk.tool_call_chunks.length > 0) {
+    //   // 🕵️ X-RAY LOG 1: What does the raw tool chunk look like?
+    //   console.log("🔍 RAW STREAMING TOOL CHUNK:", JSON.stringify(chunk.tool_call_chunks[0], null, 2));
+    //   const tcChunk = chunk.tool_call_chunks[0];
+
+    //   if (tcChunk.args) {
+    //     let rawChunk = tcChunk.args;
+
+    //     // 🕵️ X-RAY LOG 2: What text are we actually trying to process?
+    //     console.log("📝 STREAMING PROCESSING STRING:", rawChunk);
+
+    //     // 🧹 CLEANUP THE JSON SYNTAX
+    //     // We strip out the JSON keys so the UI just sees the English reasoning.
+    //     rawChunk = rawChunk.replace(/^{\s*"reasoning"\s*:\s*"/, ""); // Opening key
+    //     rawChunk = rawChunk.replace(/^{\s*"query"\s*:\s*"/, "");     // Query key (if it searches first)
+    //     rawChunk = rawChunk.replace(/\\n/g, "\n"); 
+    //     rawChunk = rawChunk.replace(/\\"/g, '"');
+
+    //     // 🛑 THE CUT-OFF SWITCH
+    //     // As soon as the AI finishes "reasoning" and starts typing the next field 
+    //     // (like "reportId" or "content"), we stop adding to the buffer.
+    //     if (rawChunk.includes('", "') || rawChunk.includes('","')) {
+    //       rawChunk = rawChunk.split('",')[0]; 
+    //    }
+        
+    //     // Only add to the buffer if it's actual text and not structural JSON keys
+    //     if (rawChunk.length > 0 && !rawChunk.includes('reportId') && !rawChunk.includes('content')) {
+    //       updatedBuffer += rawChunk;
+          
+    //       // // 🚀 BROADCAST TO UI (Typewriter effect!)
+    //       console.log("📤 BROADCASTING TO UI:", updatedBuffer);
+    //       await broadcast(supabase, projectId, 'agent_thought', { chunk: updatedBuffer });
+    //     }
+    //   }
+    // }
   }
 
   // ---------------------------------------------------------
   // 2. TOOL START (Capture Intent & Reasoning)
   // ---------------------------------------------------------
   else if (event.event === "on_tool_start") {
-    const toolName = event.name;
-    const toolInput = event.data?.input;
+    // ☢️ NUCLEAR X-RAY LOG: What exactly is LangChain handing us?
+    // console.log("==========================================");
+    // console.log(`🚀 ON_TOOL_START: ${event.name}`);
+    // console.dir(event.data?.input, { depth: null, colors: true });
+    // console.log("==========================================");
 
-    // 🔍 DEBUG LOG: See exactly what LangChain gives us
-    console.log(`🔍 [Stream Debug] ${toolName} Input:`, JSON.stringify(toolInput, null, 2));
+    const toolName = event.name;
+    let toolInput = event.data?.input;
+
+    // 🚀 UNIVERSAL CAPTURE: Works for Gemini, OpenAI, Claude, etc.
+    if (toolInput && toolInput.input) toolInput = toolInput.input;
+    if (typeof toolInput === 'string') {
+      try { toolInput = JSON.parse(toolInput); } catch (e) {}
+    }
+    if (toolInput && typeof toolInput.reasoning === 'string') {
+      // Send the perfectly formatted string to the UI
+      await broadcast(supabase, projectId, 'agent_thought', { chunk: toolInput.reasoning + "\n\n" });
+    } else {
+       console.log(`⚠️ [Debug] Tool started but no re asoning found. Input was:`, toolInput);
+    }
 
     // Get the formatted header + reasoning string
     const statusMessage = streamingAdapter.getFriendlyStatus(toolName, toolInput);
-
     if (statusMessage) {
-        console.log(`[Stream] ${statusMessage.split('\n')[0]}`); // Log just the header to console
-        
         // Broadcast to UI
-        await broadcast(supabase, projectId, 'reasoning', { 
-            chunk: `\n${statusMessage}\n\n` // Add spacing
+        await broadcast(supabase, projectId, 'status', { 
+            chunk: `${statusMessage}`
         });
-        
-        updatedBuffer += `\n${statusMessage}\n\n`;
     }
   }
   
-  /// ---------------------------------------------------------
-// 2. TOOL END (Capture Results)
+/// ---------------------------------------------------------
+// 3. TOOL END (Capture Results - Hidden from AI thought stream)
 // ---------------------------------------------------------
 else if (event.event === "on_tool_end") {
   const toolName = event.name;
-  const toolOutput = event.data?.output;
 
-  // Get the formatted result string
-  const completionMessage = streamingAdapter.getFriendlyCompletion(toolName, toolOutput);
-
-  if (completionMessage) {
-      // Broadcast to UI
-      await broadcast(supabase, projectId, 'reasoning', { 
-          chunk: `\n${completionMessage}\n\n` 
-      });
-      
-      updatedBuffer += `\n${completionMessage}\n\n`;
-    }
+  // We update the 'status' bar to say "Search Complete", but we DO NOT 
+  // inject the raw results into the updatedBuffer/reasoning stream.
+  if (toolName === 'searchInternalKnowledge') {
+    await broadcast(supabase, projectId, 'status', { chunk: "Search complete. Agent is analyzing results..." });
+  } else if (toolName === 'writeSection') {
+    await broadcast(supabase, projectId, 'status', { chunk: "Section saved successfully." });
   }
+}
   
   // ---------------------------------------------------------
-  // 3. NODE TRANSITIONS (Graph State Updates)
+  // 4. NODE TRANSITIONS
   // ---------------------------------------------------------
   else if (event.event === "on_chain_start" && event.name && event.name !== "LangGraph") {
      // You can broadcast this too if you want granular UI updates
@@ -463,6 +501,7 @@ else if (event.event === "on_tool_end") {
 
   return updatedBuffer;
 }
+
 
 
 /**
@@ -480,7 +519,6 @@ async function handleResumeAction(
 
   try {
     console.log(`🔄 Resuming workflow for report ${reportId}`);
-    console.log(`📋 Approval status: ${approvalStatus}`);
     if (userFeedback) {
       console.log(`💬 User feedback: ${userFeedback}`);
     }
@@ -531,19 +569,35 @@ async function handleResumeAction(
       console.log(`📝 [Resume] Replaced messages with resume context; current task: ${currentTaskTitle}`);
     }
 
-    console.log(`🔍 [Resume] Setting draftReportId in state: "${existingDraftReportId}"`);
-    await workflowGraph.updateState(config, stateUpdate);
-
-    console.log(`✅ State updated for thread ${reportId}`);
-
-    // 4. Get projectId from the report for broadcasting
+    // 4. Get projectId and optionally re-inject template context (checkpoint may not persist systemPrompt/structureInstructions)
     const { data: report } = await supabase
       .from('reports')
-      .select('project_id')
+      .select('project_id, template_id')
       .eq('id', reportId)
       .single();
 
     const projectId = report?.project_id;
+    if (report?.template_id) {
+      try {
+        const { data: template } = await supabase
+          .from('report_templates')
+          .select('system_prompt, structure_instructions')
+          .eq('id', report.template_id)
+          .single();
+        if (template) {
+          stateUpdate.systemPrompt = template.system_prompt ?? "";
+          stateUpdate.structureInstructions = template.structure_instructions ?? "";
+          console.log("📋 [Resume] Re-injecting template context (systemPrompt/structureInstructions) into state");
+        }
+      } catch (err) {
+        console.warn("⚠️ [Resume] Could not load template for context:", err);
+      }
+    }
+
+    console.log(`🔍 [Resume] Setting draftReportId in state: "${existingDraftReportId}"`);
+    await workflowGraph.updateState(config, stateUpdate);
+
+    console.log(`✅ State updated for thread ${reportId}`);
     if (!projectId) {
       console.warn('⚠️ Could not find projectId for broadcasting');
     }
@@ -573,7 +627,7 @@ async function handleResumeAction(
       });
       // Debounced reasoning broadcast (so text flows smoothly)
       if (textBuffer.length > 0 && projectId && Date.now() - lastUpdate > UPDATE_INTERVAL) {
-        await broadcast(supabase, projectId, 'reasoning', { chunk: textBuffer });
+        await broadcast(supabase, projectId, 'agent_thought', { chunk: textBuffer });
         textBuffer = "";
         lastUpdate = Date.now();
       }
@@ -581,7 +635,7 @@ async function handleResumeAction(
 
     // 7. Flush remaining buffer
     if (textBuffer.length > 0 && projectId) {
-      await broadcast(supabase, projectId, 'reasoning', { chunk: textBuffer });
+      await broadcast(supabase, projectId, 'agent_thought', { chunk: textBuffer });
     }
 
     // 8. Check if we paused again (rejection cycle)

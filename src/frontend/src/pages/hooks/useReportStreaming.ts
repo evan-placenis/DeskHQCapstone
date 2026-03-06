@@ -38,12 +38,13 @@ export function useReportStreaming(projectId: string | null, isGenerating: boole
           const chunk = payload?.payload?.chunk ?? payload?.chunk ?? payload?.payload?.payload?.chunk ?? (typeof payload === 'string' ? payload : null);
           if (typeof chunk === 'string') setStatus(chunk);
         })
-        .on('broadcast', { event: 'reasoning' }, (payload: any) => {
-          const chunk = payload?.payload?.chunk ?? payload?.chunk ?? payload?.payload?.payload?.chunk ?? (typeof payload === 'string' ? payload : null);
+        // 2. TYPEWRITER STREAM: The Schema-Driven Chain of Thought
+        .on('broadcast', { event: 'agent_thought' }, (payload: any) => {
+          const chunk = payload?.payload?.chunk ?? payload?.chunk;
           if (typeof chunk === 'string') setReasoningText(prev => prev + chunk);
         })
-        .on('broadcast', { event: 'review_reasoning' }, (payload: any) => {
-          const chunk = payload?.payload?.chunk ?? payload?.chunk;
+        .on('broadcast', { event: 'reasoning' }, (payload: any) => {
+          const chunk = payload?.payload?.chunk ?? payload?.chunk ?? payload?.payload?.payload?.chunk ?? (typeof payload === 'string' ? payload : null);
           if (typeof chunk === 'string') setReasoningText(prev => prev + chunk);
         })
         .on('broadcast', { event: 'report_complete' }, (payload: any) => {

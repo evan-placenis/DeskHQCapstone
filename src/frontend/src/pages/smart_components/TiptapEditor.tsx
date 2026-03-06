@@ -4,6 +4,14 @@ import { useEditor, EditorContent } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
 import { Markdown } from 'tiptap-markdown' // You need to install this
 import { useEffect, useMemo, useState, useRef, forwardRef, useImperativeHandle, useCallback } from 'react'
+import {
+    extractOutline,
+    outlineToString,
+    extractActiveSection,
+    extractSectionsByHeading,
+    type OutlineEntry,
+    type ActiveSectionInfo,
+} from '@/frontend/lib/editorContext'
 
 import { Table } from '@tiptap/extension-table'
 import { TableRow } from '@tiptap/extension-table-row'
@@ -92,6 +100,16 @@ export interface TiptapEditorHandle {
     replaceRange: (range: { from: number; to: number }, newMarkdown: string) => void;
     /** Collapse the selection so the next getSelectionContext() returns null (e.g. after using selection for an edit). */
     clearSelection: () => void;
+    /** Map: returns the document outline (all headings) as structured entries */
+    getDocumentOutline: () => OutlineEntry[];
+    /** Map: returns the document outline as a plain-text string for system prompts */
+    getDocumentOutlineString: () => string;
+    /** Lens: returns the heading + markdown of the section the cursor is currently in */
+    getActiveSection: () => ActiveSectionInfo | null;
+    /** Tool helper: extract markdown for specific sections by heading name */
+    getSectionsByHeading: (headings: string[]) => Record<string, string>;
+    /** Tool helper: return the full document markdown */
+    getFullMarkdown: () => string;
 }
 
 interface TiptapEditorProps {
@@ -192,7 +210,7 @@ export const TiptapEditor = forwardRef<TiptapEditorHandle, TiptapEditorProps>(fu
 
                 [&_table]:border-collapse [&_table]:border [&_table]:border-slate-300 [&_table]:w-full
                 [&_td]:border [&_td]:border-slate-300
-                [&_th]:border [&_th]:border-slate-300 [&_th]:bg-white
+                [&_th]:border [&_th]:border-slate-300 [&_th]:bg-white [&_th]:font-normal
             `.replace(/\s+/g, ' ').trim(),
             },
         },
@@ -387,6 +405,30 @@ export const TiptapEditor = forwardRef<TiptapEditorHandle, TiptapEditorProps>(fu
                 if (!editor || isReviewMode) return;
                 const { from } = editor.state.selection;
                 editor.commands.setTextSelection(from);
+            },
+            getDocumentOutline() {
+                if (!editor) return [];
+                return extractOutline(editor);
+            },
+            getDocumentOutlineString() {
+                if (!editor) return '';
+                return outlineToString(extractOutline(editor));
+            },
+            getActiveSection() {
+                if (!editor) return null;
+                return extractActiveSection(editor);
+            },
+            getSectionsByHeading(headings: string[]) {
+                if (!editor) return {};
+                return extractSectionsByHeading(editor, headings);
+            },
+            getFullMarkdown() {
+                if (!editor) return '';
+                try {
+                    return (editor.storage as any).markdown.getMarkdown() ?? '';
+                } catch {
+                    return '';
+                }
             },
         }),
         [editor, isReviewMode]
