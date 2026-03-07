@@ -113,5 +113,61 @@ export function chatSkills(fullReportMarkdown?: string) {
         return { status: 'SUCCESS', markdown: fullReportMarkdown };
       },
     }),
+
+    /**
+     * Propose inserting new content at a structural location in the report.
+     * Use when the user asks to WRITE something (conclusion, executive summary, intro, etc.)
+     * WITHOUT highlighting a specific place. The insertion location is inferred from report
+     * structure and standard conventions (e.g. conclusion goes at end).
+     */
+    propose_structure_insertion: tool({
+      description:
+        'Propose adding new content to the report at a structural location. ' +
+        'Use when the user asks to write something (e.g. "write an intro", "add an executive summary", "write a conclusion") without selecting text. ' +
+        'Use insertLocation: start_of_report for intros/overviews, end_of_report for conclusions/appendices, after_heading for content between sections. ' +
+        'First call read_full_report to understand the report, then generate the content and call this tool. ',
+      
+      inputSchema: z.object({
+        // 1. Keep content first to ensure safe streaming
+        content: z
+          .string()
+          .describe('Full markdown to insert, including heading (e.g. ## Conclusion) and body. Use same heading level as neighboring sections.'),
+        
+        // 2. FLATTENED SCHEMA: Replace z.union with a simple enum
+        insertLocation: z
+          .enum(['start_of_report', 'end_of_report', 'after_heading'])
+          .describe('Where to insert: start_of_report (intro, overview), end_of_report (conclusion, appendix), or after_heading (between sections)'),
+          
+        // 3. Optional string instead of a nested object
+        targetHeading: z
+          .string()
+          .optional()
+          .describe('If insertLocation is after_heading, provide the exact heading name. Otherwise omit.'),
+          
+        reason: z
+          .string()
+          .optional()
+          .describe('Brief reason for this insertion'),
+      }),
+      
+      execute: async ({ content, insertLocation, targetHeading, reason }) => {
+        // Reconstruct the anchor object here so your React frontend 
+        // doesn't break when it reads `structureInsertCall.result.anchor`
+        const anchor = insertLocation === 'end_of_report'
+          ? 'end_of_report'
+          : insertLocation === 'start_of_report'
+            ? 'start_of_report'
+            : { afterHeading: targetHeading || '' };
+
+        console.log('[ChatContext] propose_structure_insertion:', { anchor, contentLen: content.length, reason });
+        
+        return { 
+          status: 'SUCCESS', 
+          anchor, 
+          content, 
+          reason: reason ?? 'AI proposed insertion' 
+        };
+      },
+    }),
   };
 }

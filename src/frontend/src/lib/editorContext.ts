@@ -136,3 +136,40 @@ export function extractSectionsByHeading(
 
   return result;
 }
+
+/** Anchor for structure-based insertion (no selection) */
+export type InsertAnchor = 'start_of_report' | 'end_of_report' | { afterHeading: string };
+
+/**
+ * Get the ProseMirror position for inserting content at a structural anchor.
+ * Used when the AI proposes insertion (e.g. intro at start, conclusion at end, section after X).
+ */
+export function getPositionForInsertAnchor(
+  editor: Editor,
+  anchor: InsertAnchor
+): number | null {
+  const doc = editor.state.doc;
+  if (anchor === 'start_of_report') {
+    return 0;
+  }
+  if (anchor === 'end_of_report') {
+    return doc.content.size;
+  }
+  const outline = extractOutline(editor);
+  const normalizedTarget = anchor.afterHeading.trim().toLowerCase();
+  for (let i = 0; i < outline.length; i++) {
+    const entry = outline[i];
+    if (entry.text.trim().toLowerCase() === normalizedTarget) {
+      // Insert after this section: position = start of next section (or doc end)
+      let sectionEnd = doc.content.size;
+      for (let j = i + 1; j < outline.length; j++) {
+        if (outline[j].level <= entry.level) {
+          sectionEnd = outline[j].pos;
+          break;
+        }
+      }
+      return sectionEnd;
+    }
+  }
+  return null;
+}
