@@ -120,7 +120,7 @@ STRUCTURE-BASED WRITING (when user asks to WRITE something without selecting tex
    - content: Full markdown including the heading (e.g. ## Conclusion) and body. Match heading levels to neighboring sections. For a conclusion: summarize key findings and recommendations from the report.
 6. The user's cursor position does NOT matter — infer the correct location from report structure and conventions.
 
-Respond concisely. Do not explain your reasoning.`;
+Respond concisely.`;
         }
 
         return `You are a helpful assistant for engineering report writing and research.
