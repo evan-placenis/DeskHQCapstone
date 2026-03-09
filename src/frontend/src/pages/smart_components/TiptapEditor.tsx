@@ -598,25 +598,41 @@ export const TiptapEditor = forwardRef<TiptapEditorHandle, TiptapEditorProps>(fu
                     <DropdownMenu>
                         <DropdownMenuTrigger asChild>
                             <button
-                                className="px-2 border rounded flex items-center gap-1"
+                                className={`px-2 border rounded flex items-center gap-1 ${editor.isActive('heading') ? 'bg-slate-100 border-slate-300' : ''}`}
                                 title="Heading level"
                             >
                                 <HeadingIcon className="w-4 h-4" />
-                                <span>Heading</span>
+                                <span>
+                                    {editor.isActive('heading')
+                                        ? `Heading ${editor.getAttributes('heading').level}`
+                                        : 'Heading'}
+                                </span>
                                 <ChevronDown className="w-3.5 h-3.5 opacity-70" />
                             </button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="start">
-                            <DropdownMenuItem onClick={() => editor.chain().focus().setParagraph().run()}>
+                            <DropdownMenuItem
+                                onClick={() => editor.chain().focus().setParagraph().run()}
+                                className={!editor.isActive('heading') ? 'bg-slate-50 text-slate-600' : ''}
+                            >
                                 Paragraph
                             </DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => editor.chain().focus().toggleHeading({ level: 1 }).run()}>
+                            <DropdownMenuItem
+                                onClick={() => editor.chain().focus().toggleHeading({ level: 1 }).run()}
+                                className={editor.isActive('heading', { level: 1 }) ? 'bg-slate-50 text-slate-600' : ''}
+                            >
                                 Heading 1
                             </DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()}>
+                            <DropdownMenuItem
+                                onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()}
+                                className={editor.isActive('heading', { level: 2 }) ? 'bg-slate-50 text-slate-600' : ''}
+                            >
                                 Heading 2
                             </DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => editor.chain().focus().toggleHeading({ level: 3 }).run()}>
+                            <DropdownMenuItem
+                                onClick={() => editor.chain().focus().toggleHeading({ level: 3 }).run()}
+                                className={editor.isActive('heading', { level: 3 }) ? 'bg-slate-50 text-slate-600' : ''}
+                            >
                                 Heading 3
                             </DropdownMenuItem>
                         </DropdownMenuContent>
