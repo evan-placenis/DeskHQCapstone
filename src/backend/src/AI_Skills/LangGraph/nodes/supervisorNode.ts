@@ -3,8 +3,8 @@ import { SystemMessage, HumanMessage } from "@langchain/core/messages";
 
 
 export async function supervisorNode(state: any) {
-  const { messages, currentSection, provider,  context } = state;
-  const model = ModelStrategy.getModel(provider || 'gemini-cheap');
+  const { messages, currentSection, provider, context, heliconeInput } = state;
+  const model = ModelStrategy.getModel(provider || 'gemini-cheap', heliconeInput);
   // 1. Define the Supervisor's Goal
   const systemPrompt = `You are the Report Manager.
   Current Context: ${context}

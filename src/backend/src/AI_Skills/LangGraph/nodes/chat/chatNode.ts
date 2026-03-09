@@ -6,7 +6,7 @@ import { researchSkills } from "../../../LangGraph_skills/research.skills";
 import { chatSkills} from "../../../LangGraph_skills/chat.skills";
 
 export async function chatNode(state: any) {
-  const { messages, context, projectId, userId, client, selectedImageIds, provider, systemMessage } = state;
+  const { messages, context, projectId, userId, client, selectedImageIds, provider, systemMessage, heliconeInput } = state;
 
   // 1. Define Base Tools (Research, Chat, Vision)
   const baseTools = [
@@ -22,7 +22,7 @@ export async function chatNode(state: any) {
   const activeTools = [...baseTools, ...reportTools];
 
   // 3. Bind Tools to Model
-  const baseModel = ModelStrategy.getModel(provider || 'gemini-cheap');
+  const baseModel = ModelStrategy.getModel(provider || 'gemini-cheap', heliconeInput);
   const model = typeof baseModel.bindTools === 'function'
     ? baseModel.bindTools(activeTools)
     : baseModel;

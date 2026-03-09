@@ -4,6 +4,7 @@ import { Container } from "@/backend/config/container";
 import { createAuthenticatedClient } from "@/app/api/utils";
 import { v4 as uuidv4 } from 'uuid';
 import { Report } from '@/backend/domain/reports/report.types';
+import { HeliconeContextBuilder } from '@/backend/AI_Skills/gateway/HeliconeContextBuilder';
 
 export async function POST(
     request: Request
@@ -59,6 +60,27 @@ export async function POST(
             templateId
         });
 
+        // Build Helicone context and serialize for the Trigger worker
+        let heliconeContext: string | undefined;
+        try {
+            const { data: project } = await supabase
+                .from('projects')
+                .select('organization_id')
+                .eq('id', projectId)
+                .single();
+
+            heliconeContext = HeliconeContextBuilder.serializeForTrigger({
+                userId: user.id,
+                organizationId: project?.organization_id ?? undefined,
+                projectId,
+                reportId,
+                templateId: templateId || undefined,
+                feature: 'report_generation',
+            });
+        } catch (err) {
+            console.warn('[Helicone] Failed to build context for Trigger payload:', err);
+        }
+
         // Queue the report generation task in Trigger.dev
         // Pass the reportId so the worker uses this specific ID
         await Container.jobQueue.enqueueReportGeneration(
@@ -74,7 +96,8 @@ export async function POST(
                 sections: sections,
                 workflowType: workflowType,
                 processingMode: processingMode === 'TEXT_ONLY' ? 'TEXT_ONLY' : 'IMAGE_AND_TEXT',
-            }
+            },
+            heliconeContext,
         );
 
         console.log("✅ Report generation queued successfully");

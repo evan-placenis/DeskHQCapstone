@@ -4,6 +4,7 @@ import { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
 import { Container } from '@/backend/config/container';
 import { createAuthenticatedClient } from "@/app/api/utils";
+import type { HeliconeContextInput } from '@/backend/AI_Skills/gateway/HeliconeContextBuilder';
 
 // GET chat history (same shape as sessions/[sessionId] GET, so frontend can use /stream for both)
 export async function GET(
@@ -111,6 +112,27 @@ You MUST respond with ONLY one short acknowledgment. Examples: "I've suggested a
             systemMessage = `You are helping edit a report section. Current section content:\n\n${contextText}\n\nWhen the user asks to edit this section, use the updateSection tool.`;
         }
 
+        // Build Helicone tracking context from authenticated user
+        let heliconeInput: HeliconeContextInput | undefined;
+        try {
+            const { data: profile } = await supabase
+                .from('profiles')
+                .select('organization_id')
+                .eq('id', user.id)
+                .single();
+
+            heliconeInput = {
+                userId: user.id,
+                organizationId: profile?.organization_id ?? undefined,
+                projectId: session.projectId,
+                reportId: reportId ?? undefined,
+                sessionId: effectiveSessionId,
+                feature: 'chat',
+            };
+        } catch (err) {
+            console.warn('[Helicone] Failed to build context, proceeding without tracking:', err);
+        }
+
         // Generate stream using the orchestrator from Container.
         // onFinish is called by the AI SDK after the model finishes generating,
         // BEFORE the stream closes — guaranteed to run even in serverless environments.
@@ -128,6 +150,7 @@ You MUST respond with ONLY one short acknowledgment. Examples: "I've suggested a
             activeSectionMarkdown,
             activeSectionHeading,
             fullReportMarkdown,
+            heliconeInput,
             onFinish: async ({ text }) => {
                 const trimmed = (text ?? '').trim();
                 if (!trimmed) return;

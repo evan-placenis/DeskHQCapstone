@@ -121,6 +121,7 @@ export async function builderNode(state: typeof ObservationState.State) {
     systemPrompt,       
     structureInstructions,
     messages,
+    heliconeInput,
   } = state;
   // ✅ Get fresh client
   const freshClient = Container.adminClient;
@@ -278,7 +279,7 @@ export async function builderNode(state: typeof ObservationState.State) {
     ...researchSkills(projectId) // Keep research for building codes, etc.
   ];
 
-  const baseModel = ModelStrategy.getModel(provider || 'gemini-cheap');
+  const baseModel = ModelStrategy.getModel(provider || 'gemini-cheap', heliconeInput);
     if (typeof baseModel.bindTools !== 'function') {
     throw new Error("Model does not support tools");
  }

@@ -1,5 +1,6 @@
 import { SupabaseClient } from '@supabase/supabase-js';
 import { EditOrchestrator } from '../AI_Skills/orchestrators/EditOrchestrator';
+import type { HeliconeContextInput } from '../AI_Skills/gateway/HeliconeContextBuilder';
 
 const VALID_PROVIDERS = ['grok', 'gemini-pro', 'claude', 'gemini-cheap'] as const;
 type Provider = (typeof VALID_PROVIDERS)[number];
@@ -32,16 +33,29 @@ export class EditService {
             instruction: string;
             provider?: string;
         },
-        client: SupabaseClient
+        client: SupabaseClient,
+        userId?: string,
     ): Promise<Response> {
         const { data: report, error: reportError } = await client
             .from('reports')
-            .select('project_id')
+            .select('project_id, organization_id, template_id')
             .eq('id', reportId)
             .single();
 
         if (reportError || !report?.project_id) {
             throw new ReportNotFoundError('Report not found');
+        }
+
+        let heliconeInput: HeliconeContextInput | undefined;
+        if (userId) {
+            heliconeInput = {
+                userId,
+                organizationId: report.organization_id ?? undefined,
+                projectId: String(report.project_id),
+                reportId,
+                templateId: report.template_id ?? undefined,
+                feature: 'ai_edit',
+            };
         }
 
         const provider = normalizeProvider(params.provider);
@@ -52,6 +66,7 @@ export class EditService {
             instruction: params.instruction,
             provider,
             projectId: String(report.project_id),
+            heliconeInput,
         });
 
         const encoder = new TextEncoder();

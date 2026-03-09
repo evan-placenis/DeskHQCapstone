@@ -10,7 +10,8 @@ export async function synthesisBuilderNode(state: typeof ObservationState.State)
     structureInstructions, 
     draftReportId,
     systemPrompt, 
-    provider
+    provider,
+    heliconeInput,
   } = state;
 
   console.log("🧩 [Synthesis] Checking for missing report sections...");
@@ -45,7 +46,7 @@ export async function synthesisBuilderNode(state: typeof ObservationState.State)
     .join("\n\n");
 
   const newContent: Record<string, string> = {};
-  const model = ModelStrategy.getModel(provider || 'gemini-pro'); 
+  const model = ModelStrategy.getModel(provider || 'gemini-pro', heliconeInput); 
   const freshClient = Container.adminClient;
 
   // 3. GENERATE MISSING SECTIONS
