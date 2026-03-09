@@ -240,14 +240,29 @@ export function ReportLayout({
         editorRef.current.replaceRange(range, suggestedText);
         console.log("✅ Edit accepted via Tiptap replaceRange (save will sync via onUpdate)");
       } else if (insertAnchor != null) {
-        const pos = editorRef.current.getInsertPositionForAnchor(insertAnchor);
-        if (pos != null) {
-          // Ensure proper spacing: prepend newlines when inserting mid-document or at end
-          const content = (pos > 0 && !suggestedText.startsWith('\n') ? '\n\n' : '') + suggestedText;
-          editorRef.current.insertAtPosition(pos, content);
-          console.log("✅ Structure-based insertion accepted at position", pos);
+        // Replace section: use replaceRange when anchor is { replaceSection: "Heading" }
+        const replaceSection =
+          typeof insertAnchor === 'object' && 'replaceSection' in insertAnchor
+            ? insertAnchor.replaceSection
+            : null;
+        if (replaceSection) {
+          const range = editorRef.current.getRangeForReplaceSection(replaceSection);
+          if (range) {
+            editorRef.current.replaceRange(range, suggestedText);
+            console.log("✅ Section replacement accepted for", replaceSection);
+          } else {
+            console.warn("Could not resolve section for replacement:", replaceSection);
+          }
         } else {
-          console.warn("Could not resolve insert anchor:", insertAnchor);
+          const pos = editorRef.current.getInsertPositionForAnchor(insertAnchor);
+          if (pos != null) {
+            // Ensure proper spacing: prepend newlines when inserting mid-document or at end
+            const content = (pos > 0 && !suggestedText.startsWith('\n') ? '\n\n' : '') + suggestedText;
+            editorRef.current.insertAtPosition(pos, content);
+            console.log("✅ Structure-based insertion accepted at position", pos);
+          } else {
+            console.warn("Could not resolve insert anchor:", insertAnchor);
+          }
         }
       }
     } else if (pendingEditSuggestion.fullDocument != null) {

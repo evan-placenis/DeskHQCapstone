@@ -162,8 +162,12 @@ const CustomMessage = () => {
 };
 
 
-/** Anchor for structure-based insertion (no selection) */
-export type InsertAnchor = 'start_of_report' | 'end_of_report' | { afterHeading: string };
+/** Anchor for structure-based insertion or replacement (no selection) */
+export type InsertAnchor =
+  | 'start_of_report'
+  | 'end_of_report'
+  | { afterHeading: string }
+  | { replaceSection: string };
 
 // EditSuggestion type (selection-based flow uses range; structure-based uses insertAnchor)
 export interface EditSuggestion {
@@ -436,21 +440,26 @@ export function AIChatSidebar({
               const content = result?.content ?? '';
               const anchor = result?.anchor;
               const reason = result?.reason ?? 'AI proposed insertion';
+              const originalContent = result?.originalContent;
               if (content && anchor) {
                 const insertAnchor: InsertAnchor = anchor === 'start_of_report'
                   ? 'start_of_report'
                   : anchor === 'end_of_report'
                     ? 'end_of_report'
-                    : typeof anchor === 'object' && anchor?.afterHeading
-                      ? { afterHeading: anchor.afterHeading }
-                      : 'end_of_report';
+                    : typeof anchor === 'object' && (anchor as any)?.replaceSection
+                      ? { replaceSection: (anchor as { replaceSection: string }).replaceSection }
+                      : typeof anchor === 'object' && anchor?.afterHeading
+                        ? { afterHeading: anchor.afterHeading }
+                        : 'end_of_report';
                 const sectionLabel = insertAnchor === 'start_of_report'
                   ? 'Start of report'
                   : insertAnchor === 'end_of_report'
                     ? 'End of report'
-                    : `After "${(insertAnchor as { afterHeading: string }).afterHeading}"`;
+                    : typeof insertAnchor === 'object' && 'replaceSection' in insertAnchor
+                      ? `Replace "${insertAnchor.replaceSection}"`
+                      : `After "${(insertAnchor as { afterHeading: string }).afterHeading}"`;
                 onEditSuggestion({
-                  originalText: '',
+                  originalText: originalContent ?? '',
                   suggestedText: content,
                   reason,
                   status: 'PENDING',

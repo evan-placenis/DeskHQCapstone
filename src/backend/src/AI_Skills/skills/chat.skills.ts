@@ -122,10 +122,11 @@ export function chatSkills(fullReportMarkdown?: string) {
      */
     propose_structure_insertion: tool({
       description:
-        'Propose adding new content to the report at a structural location. ' +
-        'Use when the user asks to write something (e.g. "write an intro", "add an executive summary", "write a conclusion") without selecting text. ' +
-        'Use insertLocation: start_of_report for intros/overviews, end_of_report for conclusions/appendices, after_heading for content between sections. ' +
-        'First call read_full_report to understand the report, then generate the content and call this tool. ',
+        'Propose adding or modifying content to the report at a structural location. ' +
+        'WRITE (new content): Use insertLocation start_of_report, end_of_report, or after_heading. ' +
+        'EDIT (modify existing section): Use insertLocation replace_section with targetHeading set to the section name (e.g. "Conclusion"). This REPLACES the section content. ' +
+        'For edits like "make the conclusion more concise", "rewrite the intro", "shorten the executive summary" — use replace_section, NOT after_heading. ' +
+        'First call read_specific_sections to get the current section content, then generate the revised content and call this tool with replace_section. ',
       
       inputSchema: z.object({
         // 1. Keep content first to ensure safe streaming
@@ -135,14 +136,14 @@ export function chatSkills(fullReportMarkdown?: string) {
         
         // 2. FLATTENED SCHEMA: Replace z.union with a simple enum
         insertLocation: z
-          .enum(['start_of_report', 'end_of_report', 'after_heading'])
-          .describe('Where to insert: start_of_report (intro, overview), end_of_report (conclusion, appendix), or after_heading (between sections)'),
+          .enum(['start_of_report', 'end_of_report', 'after_heading', 'replace_section'])
+          .describe('Where to insert/replace: start_of_report (intro, overview), end_of_report (conclusion, appendix), after_heading (insert between sections), replace_section (REPLACE existing section content - use for edits like "make the conclusion more concise")'),
           
         // 3. Optional string instead of a nested object
         targetHeading: z
           .string()
           .optional()
-          .describe('If insertLocation is after_heading, provide the exact heading name. Otherwise omit.'),
+          .describe('Required when insertLocation is after_heading or replace_section: the exact heading name from the report outline.'),
           
         reason: z
           .string()
@@ -157,7 +158,21 @@ export function chatSkills(fullReportMarkdown?: string) {
           ? 'end_of_report'
           : insertLocation === 'start_of_report'
             ? 'start_of_report'
-            : { afterHeading: targetHeading || '' };
+            : insertLocation === 'replace_section'
+              ? { replaceSection: targetHeading || '' }
+              : { afterHeading: targetHeading || '' };
+
+        // For replace_section, include original content so the diff popup can show before/after
+        let originalContent: string | undefined;
+        if (insertLocation === 'replace_section' && targetHeading) {
+          const normalized = targetHeading.trim().toLowerCase();
+          for (const [heading, sectionContent] of sectionMap) {
+            if (heading.toLowerCase() === normalized) {
+              originalContent = sectionContent;
+              break;
+            }
+          }
+        }
 
         console.log('[ChatContext] propose_structure_insertion:', { anchor, contentLen: content.length, reason });
         
@@ -165,7 +180,8 @@ export function chatSkills(fullReportMarkdown?: string) {
           status: 'SUCCESS', 
           anchor, 
           content, 
-          reason: reason ?? 'AI proposed insertion' 
+          reason: reason ?? 'AI proposed insertion',
+          ...(originalContent !== undefined && { originalContent }),
         };
       },
     }),

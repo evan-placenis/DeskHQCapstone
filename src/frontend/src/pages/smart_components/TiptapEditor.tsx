@@ -13,6 +13,7 @@ import {
     extractActiveSection,
     extractSectionsByHeading,
     getPositionForInsertAnchor,
+    getRangeForReplaceSection as getRangeForReplaceSectionImpl,
     type OutlineEntry,
     type ActiveSectionInfo,
     type InsertAnchor,
@@ -107,6 +108,8 @@ export interface TiptapEditorHandle {
     insertAtPosition: (pos: number, markdown: string) => void;
     /** Resolve structural anchor to ProseMirror position for insertion. */
     getInsertPositionForAnchor: (anchor: InsertAnchor) => number | null;
+    /** Get range (from, to) for replacing a section by heading name. */
+    getRangeForReplaceSection: (heading: string) => { from: number; to: number } | null;
     /** Collapse the selection so the next getSelectionContext() returns null (e.g. after using selection for an edit). */
     clearSelection: () => void;
     /** Map: returns the document outline (all headings) as structured entries */
@@ -469,6 +472,10 @@ export const TiptapEditor = forwardRef<TiptapEditorHandle, TiptapEditorProps>(fu
             getInsertPositionForAnchor(anchor: InsertAnchor) {
                 if (!editor) return null;
                 return getPositionForInsertAnchor(editor, anchor);
+            },
+            getRangeForReplaceSection(heading: string) {
+                if (!editor) return null;
+                return getRangeForReplaceSectionImpl(editor, heading);
             },
             clearSelection() {
                 if (!editor || isReviewMode) return;
