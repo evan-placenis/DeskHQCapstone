@@ -109,6 +109,8 @@ interface ReportContentProps {
   editorRef?: React.RefObject<TiptapEditorHandle | null>;
   /** Called when selection changes in Tiptap (to pin selection when user blurs to chat) */
   onSelectionChange?: (context: import("../smart_components/TiptapEditor").SelectionContext | null) => void;
+  /** When user has pinned selection (e.g. selected then clicked into chat), show persistent highlight at this range */
+  pinnedSelectionRange?: { from: number; to: number } | null;
 }
 
 export function ReportContent({
@@ -146,6 +148,7 @@ export function ReportContent({
   onSetDiffContent,
   editorRef,
   onSelectionChange,
+  pinnedSelectionRange,
 }: ReportContentProps) {
   // Local state for pending changes if not managed by parent
   const [localPendingChange, setLocalPendingChange] = useState<PendingChange | null>(null);
@@ -571,6 +574,7 @@ export function ReportContent({
                                   setDiffContent(null);
                                 }}
                                 onSelectionChange={onSelectionChange}
+                                pinnedSelectionRange={pinnedSelectionRange}
                               />
                             ) : mode === "peer-review" && peerReview && peerReview.comments ? (
                               <HighlightableText

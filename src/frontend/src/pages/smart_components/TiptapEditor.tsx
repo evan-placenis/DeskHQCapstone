@@ -3,14 +3,20 @@
 import { useEditor, EditorContent } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
 import { Markdown } from 'tiptap-markdown' // You need to install this
+import { Extension } from '@tiptap/core'
+import { Plugin } from '@tiptap/pm/state'
+import { Decoration, DecorationSet } from '@tiptap/pm/view'
 import { useEffect, useMemo, useState, useRef, forwardRef, useImperativeHandle, useCallback } from 'react'
 import {
     extractOutline,
     outlineToString,
     extractActiveSection,
     extractSectionsByHeading,
+    getPositionForInsertAnchor,
+    getRangeForReplaceSection as getRangeForReplaceSectionImpl,
     type OutlineEntry,
     type ActiveSectionInfo,
+    type InsertAnchor,
 } from '@/frontend/lib/editorContext'
 
 import { Table } from '@tiptap/extension-table'
@@ -98,6 +104,12 @@ export interface TiptapEditorHandle {
     getSelectionContext: () => SelectionContext | null;
     /** Replace the given range with new markdown (parsed and inserted). Use when accepting an AI edit. */
     replaceRange: (range: { from: number; to: number }, newMarkdown: string) => void;
+    /** Insert markdown at a position (for structure-based insertion, no selection). */
+    insertAtPosition: (pos: number, markdown: string) => void;
+    /** Resolve structural anchor to ProseMirror position for insertion. */
+    getInsertPositionForAnchor: (anchor: InsertAnchor) => number | null;
+    /** Get range (from, to) for replacing a section by heading name. */
+    getRangeForReplaceSection: (heading: string) => { from: number; to: number } | null;
     /** Collapse the selection so the next getSelectionContext() returns null (e.g. after using selection for an edit). */
     clearSelection: () => void;
     /** Map: returns the document outline (all headings) as structured entries */
@@ -112,6 +124,30 @@ export interface TiptapEditorHandle {
     getFullMarkdown: () => string;
 }
 
+/** Extension that shows a persistent highlight for a pinned selection range (survives blur when user clicks into chat) */
+function createPinnedHighlightExtension(getRange: () => { from: number; to: number } | null) {
+    return Extension.create({
+        name: 'pinnedHighlight',
+        addProseMirrorPlugins() {
+            return [
+                new Plugin({
+                    props: {
+                        decorations(state) {
+                            const range = getRange();
+                            if (!range || range.from >= range.to) return null;
+                            const { from, to } = range;
+                            const docSize = state.doc.content.size;
+                            if (from < 0 || to > docSize) return null;
+                            const deco = Decoration.inline(from, to, { class: 'pinned-selection-highlight' });
+                            return DecorationSet.create(state.doc, [deco]);
+                        },
+                    },
+                }),
+            ];
+        },
+    });
+}
+
 interface TiptapEditorProps {
     content: string; // This expects the Markdown string from your processNode
     editable?: boolean; //make everything editable
@@ -121,6 +157,8 @@ interface TiptapEditorProps {
     onRejectDiff?: () => void; // Callback when user rejects the diff
     /** Called when selection changes; used to pin selection so it survives blur (e.g. clicking into chat) */
     onSelectionChange?: (context: SelectionContext | null) => void;
+    /** When set, show a persistent highlight at this range (e.g. when user selected text then clicked into chat) */
+    pinnedSelectionRange?: { from: number; to: number } | null;
 }
 
 const SURROUNDING_CHARS = 500;
@@ -133,6 +171,7 @@ export const TiptapEditor = forwardRef<TiptapEditorHandle, TiptapEditorProps>(fu
     onAcceptDiff,
     onRejectDiff,
     onSelectionChange,
+    pinnedSelectionRange,
 }, ref) {
     // Store the original markdown when entering review mode to prevent infinite loops
     const originalMarkdownRef = useRef<string | null>(null);
@@ -143,9 +182,16 @@ export const TiptapEditor = forwardRef<TiptapEditorHandle, TiptapEditorProps>(fu
     const lastEmittedMarkdownRef = useRef<string | null>(null);
     const imageFileInputRef = useRef<HTMLInputElement | null>(null);
     const audioFileInputRef = useRef<HTMLInputElement | null>(null);
+    const pinnedRangeRef = useRef<{ from: number; to: number } | null>(null);
+    pinnedRangeRef.current = pinnedSelectionRange ?? null;
 
     // Determine if we're in review mode
     const isReviewMode = !!diffContent;
+
+    const pinnedHighlightExtension = useMemo(
+        () => createPinnedHighlightExtension(() => pinnedRangeRef.current),
+        [] // ref is stable; we update .current and dispatch to force re-render
+    );
 
     const editor = useEditor({
         immediatelyRender: false,
@@ -186,6 +232,7 @@ export const TiptapEditor = forwardRef<TiptapEditorHandle, TiptapEditorProps>(fu
             TableRow,
             TableHeader,
             TableCell,
+            pinnedHighlightExtension,
         ],
         content: content, // Always start with the content prop
         editable: editable && !isReviewMode, // Disable editing in review mode
@@ -305,6 +352,13 @@ export const TiptapEditor = forwardRef<TiptapEditorHandle, TiptapEditorProps>(fu
         }
     }, [content, editor, isReviewMode]);
 
+    // Force ProseMirror view to re-render when pinned range changes (so decoration appears/disappears)
+    useEffect(() => {
+        if (!editor) return;
+        const tr = editor.state.tr.setMeta('addToHistory', false);
+        editor.view.dispatch(tr);
+    }, [editor, pinnedSelectionRange]);
+
     // Notify parent when selection changes so we can "pin" it (survives blur when user clicks into chat)
     useEffect(() => {
         if (!editor || !onSelectionChange || isReviewMode) return;
@@ -400,6 +454,28 @@ export const TiptapEditor = forwardRef<TiptapEditorHandle, TiptapEditorProps>(fu
                     editor.chain().focus().setTextSelection({ from: range.from, to: range.to }).deleteSelection().run();
                     editor.commands.insertContent(newMarkdown);
                 }
+            },
+            insertAtPosition(pos: number, markdown: string) {
+                if (!editor || isReviewMode) return;
+                try {
+                    const commands = editor.commands as { insertContentAt?: (pos: number, content: string) => boolean };
+                    if (typeof commands.insertContentAt === "function") {
+                        commands.insertContentAt(pos, markdown);
+                    } else {
+                        editor.chain().focus().setTextSelection(pos).run();
+                        editor.commands.insertContent(markdown);
+                    }
+                } catch (e) {
+                    console.warn("insertAtPosition failed:", e);
+                }
+            },
+            getInsertPositionForAnchor(anchor: InsertAnchor) {
+                if (!editor) return null;
+                return getPositionForInsertAnchor(editor, anchor);
+            },
+            getRangeForReplaceSection(heading: string) {
+                if (!editor) return null;
+                return getRangeForReplaceSectionImpl(editor, heading);
             },
             clearSelection() {
                 if (!editor || isReviewMode) return;
@@ -522,25 +598,41 @@ export const TiptapEditor = forwardRef<TiptapEditorHandle, TiptapEditorProps>(fu
                     <DropdownMenu>
                         <DropdownMenuTrigger asChild>
                             <button
-                                className="px-2 border rounded flex items-center gap-1"
+                                className={`px-2 border rounded flex items-center gap-1 ${editor.isActive('heading') ? 'bg-slate-100 border-slate-300' : ''}`}
                                 title="Heading level"
                             >
                                 <HeadingIcon className="w-4 h-4" />
-                                <span>Heading</span>
+                                <span>
+                                    {editor.isActive('heading')
+                                        ? `Heading ${editor.getAttributes('heading').level}`
+                                        : 'Heading'}
+                                </span>
                                 <ChevronDown className="w-3.5 h-3.5 opacity-70" />
                             </button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="start">
-                            <DropdownMenuItem onClick={() => editor.chain().focus().setParagraph().run()}>
+                            <DropdownMenuItem
+                                onClick={() => editor.chain().focus().setParagraph().run()}
+                                className={!editor.isActive('heading') ? 'bg-slate-50 text-slate-600' : ''}
+                            >
                                 Paragraph
                             </DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => editor.chain().focus().toggleHeading({ level: 1 }).run()}>
+                            <DropdownMenuItem
+                                onClick={() => editor.chain().focus().toggleHeading({ level: 1 }).run()}
+                                className={editor.isActive('heading', { level: 1 }) ? 'bg-slate-50 text-slate-600' : ''}
+                            >
                                 Heading 1
                             </DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()}>
+                            <DropdownMenuItem
+                                onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()}
+                                className={editor.isActive('heading', { level: 2 }) ? 'bg-slate-50 text-slate-600' : ''}
+                            >
                                 Heading 2
                             </DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => editor.chain().focus().toggleHeading({ level: 3 }).run()}>
+                            <DropdownMenuItem
+                                onClick={() => editor.chain().focus().toggleHeading({ level: 3 }).run()}
+                                className={editor.isActive('heading', { level: 3 }) ? 'bg-slate-50 text-slate-600' : ''}
+                            >
                                 Heading 3
                             </DropdownMenuItem>
                         </DropdownMenuContent>
