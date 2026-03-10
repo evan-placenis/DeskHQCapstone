@@ -41,7 +41,7 @@ export default function Dashboard() {
     router.push(ROUTES.project(project.id));
   };
 
-  const handleSelectReport = (reportId: number, isPeerReview: boolean = false) => {
+  const handleSelectReport = (reportId: string | number, isPeerReview: boolean = false) => {
     router.push(ROUTES.report(reportId, isPeerReview));
   };
 

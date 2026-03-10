@@ -16,6 +16,7 @@ import { Page } from "@/app/pages/config/routes";
 import { User } from "@/frontend/types";
 import { Cpu, Settings, LogOut, BarChart3, Home, Shield, UserCog, Wrench, Menu, Activity } from "lucide-react";
 import { useState } from "react";
+import { MobileBottomNav } from "./MobileBottomNav";
 
 interface AppHeaderProps {
   currentPage: Page;
@@ -23,10 +24,11 @@ interface AppHeaderProps {
   onNavigate: (page: Page) => void;
   onLogout: () => void;
   onRoleSwitch?: (role: "manager" | "technician") => void;
+  onRecordClick?: () => void;
   pageTitle?: string; // Optional page title to display in header
 }
 
-export function AppHeader({ currentPage, currentUser, onNavigate, onLogout, onRoleSwitch, pageTitle }: AppHeaderProps) {
+export function AppHeader({ currentPage, currentUser, onNavigate, onLogout, onRoleSwitch, onRecordClick, pageTitle }: AppHeaderProps) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   const getRoleBadge = (role: string) => {
@@ -65,6 +67,7 @@ export function AppHeader({ currentPage, currentUser, onNavigate, onLogout, onRo
   };
 
   return (
+    <>
     <header className="bg-card border-b border-border shadow-sm transition-colors sticky top-0 z-50">
       <div className="container mx-auto px-4 sm:px-6 py-3 sm:py-4 flex items-center justify-between max-w-7xl">
         {/* Logo */}
@@ -303,5 +306,12 @@ export function AppHeader({ currentPage, currentUser, onNavigate, onLogout, onRo
         </div>
       </div>
     </header>
+    <MobileBottomNav
+      currentPage={currentPage}
+      onNavigate={onNavigate}
+      onRecordClick={onRecordClick ?? (() => onNavigate("capture"))}
+      currentUser={currentUser ? { role: (currentUser.role === "admin" || currentUser.role === "employee" ? "manager" : currentUser.role) as "manager" | "technician", name: currentUser.name, email: currentUser.email ?? "" } : undefined}
+    />
+    </>
   );
 }

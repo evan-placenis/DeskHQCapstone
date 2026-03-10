@@ -119,7 +119,9 @@ export class ChatService {
             const updateCall = toolCalls.find((c: any) => c.toolName === 'updateSection') as any;
             if (updateCall && updateCall.args) {
                 suggestion = {
-                    targetSectionId: activeSectionId,
+                    sectionId: activeSectionId,
+                    sectionRowId: reportContext?.id ?? activeSectionId,
+                    sectionHeading: reportContext?.heading ?? '',
                     originalText: this.sectionToText(reportContext),
                     suggestedText: updateCall.args.content, // Use content from hybrid schema
                     reason: "AI suggested edit",
@@ -152,16 +154,20 @@ export class ChatService {
         if (!message?.suggestion) throw new Error("No suggestion found");
 
         // 1. Fetch current section to preserve 'order' and 'metadata'
+        // sectionId = template id (section_id column); targetSectionId = legacy field
+        const sectionId = message.suggestion.sectionId ?? (message.suggestion as { targetSectionId?: string }).targetSectionId;
+        if (!sectionId) throw new Error("Suggestion missing sectionId or sectionRowId");
+
         const existing = await this.reportService.getSectionContextForAI(
             session.reportId,
-            message.suggestion.targetSectionId,
+            sectionId,
             client
         );
 
         // 2. Apply the update using the new 7-argument signature
         await this.reportService.updateSectionInReport(
             session.reportId,                 // 1. reportId
-            message.suggestion.targetSectionId, // 2. sectionId
+            sectionId,                         // 2. sectionId
             existing.heading,                 // 3. heading (preserve original)
             message.suggestion.suggestedText,  // 4. content (the AI fix)
             existing.order || 0,              // 5. order

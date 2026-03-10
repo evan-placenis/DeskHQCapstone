@@ -18,7 +18,7 @@ export default function Capture() {
     router.back();
   };
 
-  const handleSave = (projectId: number, photos: any[], audioTranscript?: string, groupName?: string) => {
+  const handleSave = (projectId: number | string, photos: any[], audioTranscript?: string, groupName?: string) => {
     console.log("Saving capture to project:", projectId, photos, audioTranscript, groupName);
     // In a real app, you would save this data via API
     router.push(ROUTES.project(projectId));

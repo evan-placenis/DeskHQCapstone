@@ -5,7 +5,7 @@ import { getWorkflow } from '../LangGraph/workflow'; // Dynamic workflow selecto
 import { CustomLangChainAdapter } from '../LangGraph/utils/custom-adapter';
 
 import { SupabaseClient } from "@supabase/supabase-js";
-import { imageGeneration } from "@langchain/openai/dist/tools/imageGeneration.cjs";
+// import { imageGeneration } from "@langchain/openai/dist/tools/imageGeneration.cjs";
 interface GenerateParams {
   messages: any[];
   systemPrompt: string,       
