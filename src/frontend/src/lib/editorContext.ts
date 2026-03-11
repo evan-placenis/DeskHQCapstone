@@ -84,8 +84,7 @@ export function extractActiveSection(editor: Editor): ActiveSectionInfo | null {
   // Slice the document between the heading and the section end, then serialize to markdown
   try {
     const slice = doc.slice(active.pos, sectionEnd);
-    const storage = (editor.storage as any).markdown;
-    const markdown: string = storage?.serializer?.serialize(slice.content) ?? '';
+    const markdown: string = (editor as any).markdown?.serialize?.({ type: 'doc', content: slice.content.toJSON() }) ?? '';
     return {
       heading: active.text,
       level: active.level,
@@ -126,8 +125,7 @@ export function extractSectionsByHeading(
 
     try {
       const slice = doc.slice(entry.pos, sectionEnd);
-      const storage = (editor.storage as any).markdown;
-      const markdown: string = storage?.serializer?.serialize(slice.content) ?? '';
+      const markdown: string = (editor as any).markdown?.serialize?.({ type: 'doc', content: slice.content.toJSON() }) ?? '';
       result[entry.text] = markdown;
     } catch {
       result[entry.text] = '[Error extracting section]';
