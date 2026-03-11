@@ -8,7 +8,7 @@ import { Project, KnowledgeDocument, PhotoFolder, Photo, Report } from "@/fronte
 import { KnowledgeUploadModal } from "@/frontend/pages/large_modal_components/KnowledgeUploadModal";
 import { PhotoUploadModal } from "@/frontend/pages/large_modal_components/PhotoUploadModal";
 import { PhotoFolderView } from "@/frontend/pages/smart_components/PhotoFolderView";
-import { Page } from "@/app/pages/config/routes";
+import { Page, ROUTES } from "@/app/pages/config/routes";
 import { Button } from "@/frontend/pages/ui_components/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/frontend/pages/ui_components/card";
 import { Badge } from "@/frontend/pages/ui_components/badge";
@@ -860,7 +860,7 @@ export function ProjectDetailPage({
       // Step 1: Compress all images in parallel
       console.log(`📦 Compressing ${files.length} images...`);
       setUploadProgress(10); // Show progress for compression phase
-      
+
       const compressedFiles = await Promise.all(
         files.map(async (file) => {
           const compressed = await compressImage(file);
@@ -887,22 +887,22 @@ export function ProjectDetailPage({
         if (useFileNameAsDescription) {
           // Remove extension: "Living Room.jpg" -> "Living Room"
           desc = original.name.replace(/\.[^/.]+$/, "");
-        } 
+        }
         // If box is UNCHECKED, we push an empty string. 
         // This tells the backend: "Use the global description (if any), or nothing."
-        
+
         descriptions.push(desc);
       });
 
       // 3. Append the descriptions array as a JSON string
       formData.append('descriptions', JSON.stringify(descriptions));
-      
+
 
       // Add metadata (shared for all files in this batch)
       if (targetFolderName) {
         formData.append('folderName', targetFolderName);
       }
-    
+
 
       setUploadProgress(40); // FormData ready
 
@@ -925,7 +925,7 @@ export function ProjectDetailPage({
       // Step 4: Map response images to Photo objects
       const uploadedPhotos: Photo[] = data.images.map((dbImage: any, index: number) => {
         const originalFile = compressedFiles[index].original;
-        const description = useFileNameAsDescription 
+        const description = useFileNameAsDescription
           ? originalFile.name.replace(/\.[^/.]+$/, "")
           : dbImage.description || "";
 
@@ -1004,8 +1004,9 @@ export function ProjectDetailPage({
   };
 
   const handleAudioTimelineClick = (folderId: number) => {
-    // Navigate to audio timeline for this folder
-    onNavigate("audio-timeline");
+    const folder = photoFolders.find((f) => f.id === folderId);
+    const folderName = folder?.name ?? "";
+    window.location.href = ROUTES.audioTimeline(project.id, folderName);
   };
 
   // Extract unique users from folder names (initials at the end)

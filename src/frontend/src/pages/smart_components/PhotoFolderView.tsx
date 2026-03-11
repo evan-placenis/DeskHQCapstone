@@ -8,11 +8,11 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "../ui_components/collapsible";
-import { 
-  Calendar, 
-  Eye, 
-  Trash2, 
-  ChevronDown, 
+import {
+  Calendar,
+  Eye,
+  Trash2,
+  ChevronDown,
   FolderOpen,
   Check,
   Volume2
@@ -23,17 +23,17 @@ interface PhotoFolderViewProps {
   folders: PhotoFolder[];
   photos: Photo[];
   mode: "view" | "select";
-  
+
   // For view mode
   onPhotoClick?: (photo: Photo) => void;
   onDeletePhoto?: (photoId: string | number) => void;
   onDeleteFolder?: (folderId: number) => void;
   onAudioTimelineClick?: (folderId: number) => void;
-  
+
   // For select mode
   selectedPhotoIds?: (string | number)[];
   onTogglePhoto?: (photoId: string | number) => void;
-  
+
   // Grid size control
   gridSize?: number;
   onGridSizeChange?: (size: number) => void;
@@ -52,7 +52,7 @@ export function PhotoFolderView({
   gridSize = 2,
   onGridSizeChange,
 }: PhotoFolderViewProps) {
-  
+
   // Define grid classes based on gridSize
   const getGridCols = () => {
     switch (gridSize) {
@@ -63,12 +63,12 @@ export function PhotoFolderView({
       default: return "grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6";
     }
   };
-  
+
   return (
     <div className="space-y-3">
       {folders.map((folder) => {
         const folderPhotos = photos.filter(p => p.folderId === folder.id);
-        
+
         return (
           <Collapsible key={folder.id} defaultOpen>
             <div className="border-2 border-slate-200 rounded-xl overflow-hidden hover:border-theme-hover-border transition-all">
@@ -90,7 +90,7 @@ export function PhotoFolderView({
                     </div>
                     <ChevronDown className="w-4 h-4 sm:w-5 sm:h-5 text-slate-400 transition-transform ui-open:rotate-180 flex-shrink-0" />
                   </CollapsibleTrigger>
-                  
+
                   {/* Action Buttons - Below on Mobile, Same Line on Desktop */}
                   <div className="flex items-center gap-2">
                     {mode === "view" && onAudioTimelineClick && (
@@ -130,13 +130,12 @@ export function PhotoFolderView({
                     {folderPhotos.map((photo) => (
                       <div
                         key={photo.id}
-                        className={`group rounded-lg overflow-hidden border transition-all relative ${
-                          mode === "select"
+                        className={`group rounded-lg overflow-hidden border transition-all relative ${mode === "select"
                             ? selectedPhotoIds.includes(photo.id)
                               ? "border-2 border-theme-action-primary bg-theme-focus-ring-light"
                               : "border-slate-200 hover:border-theme-hover-border cursor-pointer"
                             : "border-slate-200 hover:border-theme-hover-border"
-                        }`}
+                          }`}
                         onClick={() => {
                           if (mode === "select" && onTogglePhoto) {
                             onTogglePhoto(photo.id);
@@ -154,22 +153,21 @@ export function PhotoFolderView({
                             alt={photo.name}
                             className="w-full h-full object-cover"
                           />
-                          
+
                           {/* Select Mode - Checkbox */}
                           {mode === "select" && (
                             <div className="absolute top-1.5 right-1.5">
-                              <div className={`w-5 h-5 rounded-full flex items-center justify-center ${
-                                selectedPhotoIds.includes(photo.id)
+                              <div className={`w-5 h-5 rounded-full flex items-center justify-center ${selectedPhotoIds.includes(photo.id)
                                   ? "bg-theme-action-primary"
                                   : "bg-white border-2 border-slate-300"
-                              }`}>
+                                }`}>
                                 {selectedPhotoIds.includes(photo.id) && (
                                   <Check className="w-3.5 h-3.5 text-white" />
                                 )}
                               </div>
                             </div>
                           )}
-                          
+
                           {/* View Mode - Hover overlay & Delete */}
                           {mode === "view" && (
                             <>
@@ -183,7 +181,7 @@ export function PhotoFolderView({
                                 <Button
                                   variant="ghost"
                                   size="icon"
-                                  className="absolute top-1.5 right-1.5 h-6 w-6 bg-red-600/90 hover:bg-red-700 opacity-0 group-hover:opacity-100 transition-opacity rounded-md"
+                                  className="absolute top-1.5 right-1.5 h-6 w-6 group/del bg-white/90 hover:!bg-red-600 opacity-0 group-hover:opacity-100 transition-all rounded-md"
                                   onClick={(e) => {
                                     e.stopPropagation();
                                     if (confirm(`Delete photo "${photo.name}"?`)) {
@@ -191,12 +189,12 @@ export function PhotoFolderView({
                                     }
                                   }}
                                 >
-                                  <Trash2 className="w-3 h-3 text-white" />
+                                  <Trash2 className="w-3 h-3 text-slate-600 group-hover/del:text-white" />
                                 </Button>
                               )}
                             </>
                           )}
-                          
+
                           {/* Description Checkmark - Bottom Right */}
                           {mode === "view" && photo.description && (
                             <div className="absolute bottom-1.5 right-1.5">

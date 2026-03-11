@@ -9,17 +9,16 @@ import {
   DialogTitle,
   DialogDescription,
 } from "../ui_components/dialog";
-import { ImageWithFallback } from "../figma/ImageWithFallback";
+import { SecureImage } from "../smart_components/SecureImage";
 import { Photo } from "@/frontend/types"; // Import shared Photo type
-import { 
-  X, 
-  Calendar, 
-  MapPin, 
-  Save, 
-  Copy, 
-  Download, 
-  ChevronLeft, 
-  ChevronRight, 
+import {
+  Calendar,
+  MapPin,
+  Save,
+  Copy,
+  Download,
+  ChevronLeft,
+  ChevronRight,
   Sparkles
 } from "lucide-react";
 
@@ -32,10 +31,10 @@ interface PhotoDetailModalProps {
   canNavigate?: { prev: boolean; next: boolean };
 }
 
-export function PhotoDetailModal({ 
-  open, 
-  onOpenChange, 
-  photo, 
+export function PhotoDetailModal({
+  open,
+  onOpenChange,
+  photo,
   onSaveDescription,
   onNavigate,
   canNavigate = { prev: false, next: false }
@@ -84,7 +83,7 @@ export function PhotoDetailModal({
             <DialogDescription className="sr-only">
               View and edit photo details and description
             </DialogDescription>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 mr-8">
               {/* Navigation arrows */}
               {onNavigate && (
                 <div className="flex items-center gap-1 mr-2">
@@ -112,14 +111,6 @@ export function PhotoDetailModal({
                 <Download className="w-4 h-4 mr-2" />
                 Download
               </Button>
-              <Button 
-                variant="ghost" 
-                size="icon" 
-                className="h-8 w-8 rounded-lg"
-                onClick={() => onOpenChange(false)}
-              >
-                <X className="w-4 h-4" />
-              </Button>
             </div>
           </div>
         </DialogHeader>
@@ -128,8 +119,9 @@ export function PhotoDetailModal({
           {/* Left side - Image */}
           <div className="flex-1 bg-slate-900 flex items-center justify-center p-6">
             <div className="max-w-full max-h-full">
-              <ImageWithFallback
+              <SecureImage
                 src={photo.url}
+                storagePath={photo.storagePath}
                 alt={photo.name}
                 className="max-w-full max-h-full object-contain rounded-lg"
               />
@@ -183,7 +175,7 @@ export function PhotoDetailModal({
                     placeholder="Add a detailed description of this photo..."
                     className="flex-1 rounded-lg resize-none"
                   />
-                  
+
                   <div className="flex flex-col gap-2">
                     <Button
                       variant="outline"
@@ -194,7 +186,7 @@ export function PhotoDetailModal({
                       <Sparkles className="w-4 h-4 mr-2 text-theme-primary" />
                       Generate with AI
                     </Button>
-                    
+
                     <div className="flex gap-2">
                       <Button
                         variant="outline"

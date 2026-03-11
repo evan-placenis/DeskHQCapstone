@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { parseBuffer } from "music-metadata";
 import { Container } from "@/backend/config/container";
 import { createAuthenticatedClient } from "@/app/api/utils";
 
@@ -84,7 +85,21 @@ export async function POST(
 
         let audioResult: { public_url: string; storage_path: string } | null = null;
 
+        let audioDurationSeconds: number | null = null;
         if (audioFile && audioFile.size > 0) {
+            try {
+                const arrayBuffer = await audioFile.arrayBuffer();
+                const buffer = Buffer.from(arrayBuffer);
+                const mimeType = audioFile.type || "audio/webm";
+                const metadata = await parseBuffer(buffer, { mimeType });
+                const duration = metadata.format.duration;
+                if (typeof duration === "number" && Number.isFinite(duration) && duration > 0) {
+                    audioDurationSeconds = Math.round(duration * 100) / 100;
+                }
+            } catch {
+                // ignore parse errors; duration stays null
+            }
+
             const fileName = `session-audio-${sessionId}.webm`;
             const result = await Container.storageService.uploadProjectAudio(
                 projectId,
@@ -101,6 +116,7 @@ export async function POST(
                 .update({
                     audio_storage_path: result.storage_path,
                     audio_public_url: result.public_url,
+                    audio_duration_seconds: audioDurationSeconds,
                     notes_text: notesText,
                     status: "uploaded",
                 })
