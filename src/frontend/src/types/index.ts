@@ -24,13 +24,13 @@ export interface Project {
 }
 
 export interface PeerReview {
-  id: number;
+  id: number | string;
   reportId: number | string;
   reportTitle: string;
   projectName: string;
-  requestedById: number;
+  requestedById: number | string;
   requestedByName: string;
-  assignedToId: number;
+  assignedToId: number | string;
   assignedToName: string;
   status: "pending" | "completed";
   requestDate: string;

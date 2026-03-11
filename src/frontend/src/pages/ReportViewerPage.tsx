@@ -2,6 +2,7 @@
 
 import { useState, Suspense, useEffect, useCallback, useRef } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { useAuth } from "@/src/app/context/AuthContext";
 import { AppHeader } from "@/frontend/pages/smart_components/AppHeader";
 import { Page } from "@/app/pages/config/routes";
 import { Project, PeerReview, ReportContent, Photo } from "@/frontend/types";
@@ -151,6 +152,7 @@ export const ReportLiveStream = ({
 function ReportViewerContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const { user: authUser } = useAuth();
   const reportIdParam = searchParams.get("id"); // string
   const fromPeerReview = searchParams.get("fromPeerReview") === "true";
   const generatingParam = searchParams.get("generating") === "true";
@@ -178,23 +180,8 @@ function ReportViewerContent() {
   const [projectId, setProjectId] = useState<string>("");
   const [projectName, setProjectName] = useState<string>("");
 
-  // Mock Peer Reviews State
-  const [peerReviews, setPeerReviews] = useState<PeerReview[]>([
-    {
-      id: 1,
-      reportId: 1,
-      reportTitle: "Foundation Assessment - Phase 1",
-      projectName: "Downtown Tower Complex",
-      requestedById: 1,
-      requestedByName: "John Davis",
-      assignedToId: 2,
-      assignedToName: "Sarah Johnson",
-      status: "pending",
-      requestDate: "2025-11-12",
-      requestNotes: "Please review the concrete strength test results in Section 3.",
-      comments: []
-    }
-  ]);
+  // Assigned peer review (fetched when fromPeerReview mode)
+  const [assignedReview, setAssignedReview] = useState<PeerReview | null>(null);
 
   const [reportStatus, setReportStatus] = useState("Draft");
   const [isRequestPeerReviewModalOpen, setIsRequestPeerReviewModalOpen] = useState(false);
@@ -205,9 +192,7 @@ function ReportViewerContent() {
   const [isSaving, setIsSaving] = useState(false);
   const [polledReportPlan, setPolledReportPlan] = useState<any>(null);
 
-  const currentUserId = 2;
-  // Use String comparison for IDs
-  const assignedReview = peerReviews.find(r => String(r.reportId) === reportId && r.assignedToId === currentUserId);
+  const currentUserId = authUser?.id ?? "";
 
   // 🟢 NEW: Tiptap content state
   const [markdownContent, setMarkdownContent] = useState("");
@@ -272,6 +257,21 @@ function ReportViewerContent() {
         .finally(() => setIsLoading(false));
     }
   }, [reportId, isGenerating]);
+
+  // Fetch assigned peer review when in fromPeerReview mode
+  useEffect(() => {
+    if (fromPeerReview && reportId && reportId !== "0" && authUser?.id) {
+      fetch(`/api/report/${reportId}/assigned-review`)
+        .then((res) => res.json())
+        .then((data) => {
+          if (data.review) setAssignedReview(data.review);
+          else setAssignedReview(null);
+        })
+        .catch(() => setAssignedReview(null));
+    } else {
+      setAssignedReview(null);
+    }
+  }, [fromPeerReview, reportId, authUser?.id]);
 
   // Handle report completion from streaming hook
   useEffect(() => {
@@ -443,46 +443,42 @@ function ReportViewerContent() {
     };
   }, []);
 
-  const handleRequestPeerReview = (reportId: number, reportTitle: string, projectName: string, assignedToId: number, assignedToName: string, notes: string) => {
-    // Mock implementation
-    console.log("Requested peer review:", { reportId, reportTitle, assignedToName, notes });
-  };
+  const onRequestPeerReview = useCallback(async (assignedToId: string, notes: string) => {
+    if (!reportId || reportId === "0") return;
+    try {
+      const res = await fetch("/api/report/review-request", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ reportId, assignedToId, notes }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        alert(data.error || "Failed to request review");
+        return;
+      }
+      setIsRequestPeerReviewModalOpen(false);
+      // Optionally refresh dashboard - user will see it when they go back
+    } catch (err) {
+      console.error("Request review failed:", err);
+      alert("Failed to request review");
+    }
+  }, [reportId]);
 
-  const onRequestPeerReview = (userId: number, notes: string) => {
-    const userNames: { [key: number]: string } = {
-      1: "John Davis",
-      3: "Michael Chen",
-      4: "Emily Rodriguez",
-      5: "David Park",
-      6: "Lisa Thompson"
-    };
-
-    handleRequestPeerReview(
-      Number(reportId) || 0, // Mock needs number, but reportId is string
-      reportContent.title,
-      projectName || "Unknown Project",
-      userId,
-      userNames[userId] || "Unknown User",
-      notes
-    );
-    setIsRequestPeerReviewModalOpen(false);
-  };
-
-  const handleAddReviewComment = (reviewId: number, comment: string, type: "comment" | "suggestion" | "issue" | "question") => {
+  const handleAddReviewComment = (reviewId: number | string, comment: string, type: "comment" | "suggestion" | "issue" | "question") => {
     // Mock implementation
     console.log("Added comment:", { reviewId, comment, type });
   };
 
-  const handleAddHighlightComment = (reviewId: number, highlightedText: string, sectionId: number | string, comment: string, type: "comment" | "suggestion" | "issue" | "question") => {
+  const handleAddHighlightComment = (reviewId: number | string, highlightedText: string, sectionId: number | string, comment: string, type: "comment" | "suggestion" | "issue" | "question") => {
     // Mock implementation
     console.log("Added highlight comment:", { reviewId, highlightedText, sectionId, comment, type });
   };
 
-  const handleResolveComment = (reviewId: number, commentId: number) => {
+  const handleResolveComment = (reviewId: number | string, commentId: number | string) => {
     console.log("Resolved comment:", { reviewId, commentId });
   };
 
-  const handleCompleteReview = (reviewId: number) => {
+  const handleCompleteReview = (reviewId: number | string) => {
     console.log("Completed review:", reviewId);
   };
 
@@ -628,7 +624,7 @@ function ReportViewerContent() {
         onStatusChange={setReportStatus}
         onRequestPeerReview={!fromPeerReview ? () => setIsRequestPeerReviewModalOpen(true) : undefined}
         onExport={handleExportPDF}
-        peerReview={assignedReview}
+        peerReview={assignedReview ?? undefined}
         onAddReviewComment={assignedReview ? (comment, type) => handleAddReviewComment(assignedReview.id, comment, type) : undefined}
         onAddHighlightComment={assignedReview ? (text, sectionId, comment, type) => handleAddHighlightComment(assignedReview.id, text, sectionId, comment, type) : undefined}
         onResolveComment={assignedReview ? (commentId) => handleResolveComment(assignedReview.id, commentId) : undefined}
@@ -642,7 +638,7 @@ function ReportViewerContent() {
         open={isRequestPeerReviewModalOpen}
         onOpenChange={setIsRequestPeerReviewModalOpen}
         reportTitle={reportContent.title}
-        currentUserId={currentUserId}
+        currentUserId={String(currentUserId)}
         onRequestReview={onRequestPeerReview}
       />
 
