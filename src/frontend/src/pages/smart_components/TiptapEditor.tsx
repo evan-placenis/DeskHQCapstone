@@ -2,7 +2,7 @@
 
 import { useEditor, EditorContent } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
-import { Markdown } from 'tiptap-markdown' // You need to install this
+import { Markdown } from '@tiptap/markdown' // You need to install this
 import { Extension } from '@tiptap/core'
 import { Plugin } from '@tiptap/pm/state'
 import { Decoration, DecorationSet } from '@tiptap/pm/view'
@@ -51,6 +51,19 @@ const CustomImageExtension = Image.extend({
     name: 'image',
     draggable: true,
 
+    // 🔥 THE FIX: Aggressively force Tiptap to treat this as inline
+    inline: true,
+    group: 'inline',
+
+    // Official @tiptap/markdown: helpers has renderChildren, indent, wrapInBlock — no escape.
+    renderMarkdown: (node) => {
+        const escapeAlt = (s: string) => String(s ?? '').replace(/\\/g, '\\\\').replace(/\]/g, '\\]');
+        const escapeSrc = (s: string) => String(s ?? '').replace(/\\/g, '\\\\').replace(/\)/g, '\\)').replace(/\(/g, '\\(');
+        const alt = escapeAlt(node.attrs?.alt ?? '');
+        const src = escapeSrc(node.attrs?.src ?? '');
+        return `![${alt}](${src})`;
+    },
+
     addAttributes() {
         return {
             ...this.parent?.(),
@@ -58,12 +71,6 @@ const CustomImageExtension = Image.extend({
                 default: null,
                 // Look for data-src first (our safe storage), then src (legacy/standard)
                 parseHTML: element => element.getAttribute('data-src') || element.getAttribute('src'),
-                // Write UUID/URL to data-src, put a transparent placeholder in src
-                // This prevents the browser from making failed requests for UUID strings
-                renderHTML: attributes => ({
-                    'data-src': attributes.src,
-                    'src': 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7'
-                }),
             },
             alt: { default: null },
             title: { default: null },
@@ -72,13 +79,20 @@ const CustomImageExtension = Image.extend({
     // Support parsing legacy report formats alongside standard <img> tags
     parseHTML() {
         return [
-            { tag: 'img[src]' },
-            { tag: 'img[data-src]' },
+            { tag: 'img[data-src]' }, // Priority: Our custom HTML fallback
+            { tag: 'img[src]' }, // Standard HTML fallback
             { tag: 'div[data-type="report-image"]' }, // Legacy support
+            { tag: 'span[data-type="report-image"]' } // Catch any broken reports from our testing!
         ]
     },
+    // This handles the HTML generation for BOTH the DOM and the HTML Table Fallback
     renderHTML({ HTMLAttributes }) {
-        return ['span', { 'data-type': 'report-image', ...HTMLAttributes }]
+        return ['img', {
+            ...HTMLAttributes, 
+            'data-type': 'report-image',
+            'data-src': HTMLAttributes.src, // Store UUID safely
+            'src': 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7' // Transparent pixel prevents 404
+        }]
     },
     addNodeView() {
         return ReactNodeViewRenderer(ReportImageComponent)
@@ -208,23 +222,10 @@ export const TiptapEditor = forwardRef<TiptapEditorHandle, TiptapEditorProps>(fu
             }),
             AdditionMark, // Add diff marks
             DeletionMark, // Add diff marks
-            Markdown.configure({
-                transformPastedText: true,
-                transformCopiedText: true,
-                // @ts-ignore
-                serializers: {
-                    image: (state: any, node: any) => {
-                        // Forces: ![Alt](Src)
-                        // Uses a safety check (|| '') to prevent crashes if attributes are missing
-                        const alt = state.esc(node.attrs.alt || '');
-                        const src = state.esc(node.attrs.src || '');
-                        state.write(`![${alt}](${src})`);
-                    }
-                }
-            }),   // <--- The Magic: Allows Tiptap to read/write Markdown
+            Markdown,   // <--- The Magic: Allows Tiptap to read/write Markdown
             // 2. Register Table (Configure it to allow resizing)
             Table.configure({
-                resizable: true,
+                resizable: false, // Disable resizing, this was causing issues with the table iamges not being displayed correctly
                 HTMLAttributes: {
                     class: 'my-table-class',
                 },
@@ -234,7 +235,8 @@ export const TiptapEditor = forwardRef<TiptapEditorHandle, TiptapEditorProps>(fu
             TableCell,
             pinnedHighlightExtension,
         ],
-        content: content, // Always start with the content prop
+        content: content,
+        contentType: 'markdown',
         editable: editable && !isReviewMode, // Disable editing in review mode
         editorProps: {
             attributes: {
@@ -268,7 +270,7 @@ export const TiptapEditor = forwardRef<TiptapEditorHandle, TiptapEditorProps>(fu
             if (isReviewMode || isUpdatingRef.current) return;
 
             // When user types, we extract the new Markdown
-            const newMarkdown = (editor.storage as any).markdown.getMarkdown();
+            const newMarkdown = editor.getMarkdown();
             // Track what we emitted so the content-sync effect can skip the echo
             lastEmittedMarkdownRef.current = newMarkdown;
             if (onUpdate) onUpdate(newMarkdown);
@@ -280,7 +282,7 @@ export const TiptapEditor = forwardRef<TiptapEditorHandle, TiptapEditorProps>(fu
         if (diffContent && editor && !originalMarkdownRef.current) {
             try {
                 // Get the current markdown from the editor BEFORE applying diff
-                const currentMarkdown = (editor.storage as any).markdown.getMarkdown();
+                const currentMarkdown = editor.getMarkdown();
                 const original = currentMarkdown || content;
                 originalMarkdownRef.current = original;
                 setOriginalMarkdown(original); // Update state to trigger useMemo
@@ -317,7 +319,7 @@ export const TiptapEditor = forwardRef<TiptapEditorHandle, TiptapEditorProps>(fu
             // Tiptap's Markdown extension will parse the Markdown and the HTML spans
             // The AdditionMark and DeletionMark extensions will parse the spans into marks
             if (diffMarkdown) {
-                editor.commands.setContent(diffMarkdown);
+                editor.commands.setContent(diffMarkdown, { contentType: 'markdown' });
             }
         } finally {
             // Reset the flag after update completes
@@ -340,7 +342,7 @@ export const TiptapEditor = forwardRef<TiptapEditorHandle, TiptapEditorProps>(fu
         // Get current editor state
         let currentMarkdown = "";
         try {
-            currentMarkdown = (editor.storage as any).markdown.getMarkdown();
+            currentMarkdown = editor.getMarkdown();
         } catch (e) {
             console.warn("Tiptap storage not ready yet");
             return;
@@ -348,7 +350,7 @@ export const TiptapEditor = forwardRef<TiptapEditorHandle, TiptapEditorProps>(fu
 
         // Only apply if the incoming content is genuinely different from what's in the editor
         if (content && content !== currentMarkdown) {
-            editor.commands.setContent(content);
+            editor.commands.setContent(content, { contentType: 'markdown' });
         }
     }, [content, editor, isReviewMode]);
 
@@ -374,10 +376,9 @@ export const TiptapEditor = forwardRef<TiptapEditorHandle, TiptapEditorProps>(fu
             let fullMarkdown = '';
             let markdown = '';
             try {
-                const storage = (editor.storage as any).markdown;
-                fullMarkdown = storage?.getMarkdown() ?? '';
+                fullMarkdown = editor.getMarkdown() ?? '';
                 const slice = doc.slice(from, to);
-                markdown = storage?.serializer?.serialize(slice.content) ?? selection;
+                markdown = (editor as any).markdown?.serialize?.({ type: 'doc', content: slice.content.toJSON() }) ?? selection;
             } catch {
                 return null;
             }
@@ -423,10 +424,9 @@ export const TiptapEditor = forwardRef<TiptapEditorHandle, TiptapEditorProps>(fu
                 let fullMarkdown = '';
                 let markdown = '';
                 try {
-                    const storage = (editor.storage as any).markdown;
-                    fullMarkdown = storage?.getMarkdown() ?? '';
+                    fullMarkdown = editor.getMarkdown() ?? '';
                     const slice = doc.slice(from, to);
-                    markdown = storage?.serializer?.serialize(slice.content) ?? selection;
+                    markdown = (editor as any).markdown?.serialize?.({ type: 'doc', content: slice.content.toJSON() }) ?? selection;
                 } catch {
                     return null;
                 }
@@ -442,29 +442,17 @@ export const TiptapEditor = forwardRef<TiptapEditorHandle, TiptapEditorProps>(fu
                 if (!editor || isReviewMode) return;
                 try {
                     editor.chain().focus().setTextSelection({ from: range.from, to: range.to }).deleteSelection().run();
-                    // tiptap-markdown extends commands with insertContentAt(position, markdownString)
-                    const commands = editor.commands as { insertContentAt?: (pos: number, content: string) => boolean };
-                    if (typeof commands.insertContentAt === "function") {
-                        commands.insertContentAt(range.from, newMarkdown);
-                    } else {
-                        editor.commands.insertContent(newMarkdown);
-                    }
+                    editor.commands.insertContentAt(range.from, newMarkdown, { contentType: 'markdown' });
                 } catch (e) {
                     console.warn("replaceRange failed, inserting as plain text", e);
                     editor.chain().focus().setTextSelection({ from: range.from, to: range.to }).deleteSelection().run();
-                    editor.commands.insertContent(newMarkdown);
+                    editor.commands.insertContent(newMarkdown, { contentType: 'markdown' });
                 }
             },
             insertAtPosition(pos: number, markdown: string) {
                 if (!editor || isReviewMode) return;
                 try {
-                    const commands = editor.commands as { insertContentAt?: (pos: number, content: string) => boolean };
-                    if (typeof commands.insertContentAt === "function") {
-                        commands.insertContentAt(pos, markdown);
-                    } else {
-                        editor.chain().focus().setTextSelection(pos).run();
-                        editor.commands.insertContent(markdown);
-                    }
+                    editor.commands.insertContentAt(pos, markdown, { contentType: 'markdown' });
                 } catch (e) {
                     console.warn("insertAtPosition failed:", e);
                 }
@@ -501,7 +489,7 @@ export const TiptapEditor = forwardRef<TiptapEditorHandle, TiptapEditorProps>(fu
             getFullMarkdown() {
                 if (!editor) return '';
                 try {
-                    return (editor.storage as any).markdown.getMarkdown() ?? '';
+                    return editor.getMarkdown() ?? '';
                 } catch {
                     return '';
                 }
