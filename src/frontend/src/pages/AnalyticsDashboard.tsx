@@ -48,7 +48,10 @@ import {
   Trophy,
   Medal,
   Crown,
+  BrainCircuit,
 } from "lucide-react";
+import { useAIUsage } from "@/frontend/lib/useAIUsage";
+import { AIUsagePanel } from "@/frontend/pages/smart_components/AIUsagePanel";
 
 // Enhanced employee productivity data
 
@@ -203,8 +206,9 @@ import { ROUTES, getRoute } from "@/app/pages/config/routes";
 
 export function AnalyticsDashboard() {
   const router = useRouter();
-  const [timeRange, setTimeRange] = useState("30");
+  const [timeRange, setTimeRange] = useState("month");
   const [selectedEmployee, setSelectedEmployee] = useState<number | "all">("all");
+  const { data: aiUsageData, loading: aiUsageLoading, error: aiUsageError } = useAIUsage(timeRange);
 
   const currentUser: User = {
     id: 2,
@@ -396,6 +400,10 @@ export function AnalyticsDashboard() {
             <TabsTrigger value="leaderboard" className="rounded-md text-xs sm:text-sm">
               <Trophy className="w-3 h-3 sm:w-4 sm:h-4 mr-2" />
               Leaderboard
+            </TabsTrigger>
+            <TabsTrigger value="ai-usage" className="rounded-md text-xs sm:text-sm">
+              <BrainCircuit className="w-3 h-3 sm:w-4 sm:h-4 mr-2" />
+              AI Usage
             </TabsTrigger>
           </TabsList>
 
@@ -869,6 +877,11 @@ export function AnalyticsDashboard() {
                 </div>
               </CardContent>
             </Card>
+          </TabsContent>
+
+          {/* AI Usage Tab */}
+          <TabsContent value="ai-usage">
+            <AIUsagePanel data={aiUsageData} loading={aiUsageLoading} error={aiUsageError} />
           </TabsContent>
         </Tabs>
       </main>

@@ -28,6 +28,8 @@ export const HELICONE_TARGET_URLS: Record<string, string> = {
     anthropic: 'https://api.anthropic.com',
 };
 
+export const HELICONE_TARGET_URL_HEADER = 'Helicone-Target-URL';
+
 export class HeliconeContextBuilder {
     static build(input: HeliconeContextInput): HeliconeContext {
         const apiKey = process.env.HELICONE_API_KEY;

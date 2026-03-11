@@ -5,6 +5,7 @@ import { LanguageModelV2 } from '@ai-sdk/provider';
 import {
     HeliconeContextBuilder,
     HELICONE_TARGET_URLS,
+    HELICONE_TARGET_URL_HEADER,
     type HeliconeContextInput,
 } from '../gateway/HeliconeContextBuilder';
 
@@ -13,9 +14,17 @@ export class ModelStrategy {
         provider: 'grok' | 'gemini-pro' | 'gemini-cheap' | 'claude',
         heliconeInput?: HeliconeContextInput,
     ): LanguageModelV2 {
-        const helicone = heliconeInput
-            ? HeliconeContextBuilder.build(heliconeInput)
-            : null;
+        let helicone: ReturnType<typeof HeliconeContextBuilder.build> | null = null;
+        if (heliconeInput) {
+            try {
+                helicone = HeliconeContextBuilder.build(heliconeInput);
+                console.log('[Helicone] AI SDK routing ACTIVE for provider:', provider, '| baseURL:', helicone.baseURL, '| headers:', Object.keys(helicone.headers).join(', '));
+            } catch (err: any) {
+                console.error('[Helicone] Failed to build context, falling back to direct:', err.message);
+            }
+        } else {
+            console.log('[Helicone] No heliconeInput provided — routing directly to provider:', provider);
+        }
 
         switch (provider) {
             case 'grok': {
@@ -25,7 +34,7 @@ export class ModelStrategy {
                         baseURL: `${helicone.baseURL}/v1`,
                         headers: {
                             ...helicone.headers,
-                            'Helicone-Target-Url': HELICONE_TARGET_URLS.xai,
+                            [HELICONE_TARGET_URL_HEADER]: HELICONE_TARGET_URLS.xai,
                         },
                     }),
                 });
@@ -38,7 +47,7 @@ export class ModelStrategy {
                         baseURL: `${helicone.baseURL}/v1beta`,
                         headers: {
                             ...helicone.headers,
-                            'Helicone-Target-Url': HELICONE_TARGET_URLS.google,
+                            [HELICONE_TARGET_URL_HEADER]: HELICONE_TARGET_URLS.google,
                         },
                     }),
                 });
@@ -51,7 +60,7 @@ export class ModelStrategy {
                         baseURL: `${helicone.baseURL}/v1beta`,
                         headers: {
                             ...helicone.headers,
-                            'Helicone-Target-Url': HELICONE_TARGET_URLS.google,
+                            [HELICONE_TARGET_URL_HEADER]: HELICONE_TARGET_URLS.google,
                         },
                     }),
                 });
@@ -64,7 +73,7 @@ export class ModelStrategy {
                         baseURL: `${helicone.baseURL}/v1`,
                         headers: {
                             ...helicone.headers,
-                            'Helicone-Target-Url': HELICONE_TARGET_URLS.anthropic,
+                            [HELICONE_TARGET_URL_HEADER]: HELICONE_TARGET_URLS.anthropic,
                         },
                     }),
                 });
@@ -77,7 +86,7 @@ export class ModelStrategy {
                         baseURL: `${helicone.baseURL}/v1beta`,
                         headers: {
                             ...helicone.headers,
-                            'Helicone-Target-Url': HELICONE_TARGET_URLS.google,
+                            [HELICONE_TARGET_URL_HEADER]: HELICONE_TARGET_URLS.google,
                         },
                     }),
                 });

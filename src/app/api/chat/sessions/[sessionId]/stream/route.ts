@@ -129,6 +129,12 @@ You MUST respond with ONLY one short acknowledgment. Examples: "I've suggested a
                 sessionId: effectiveSessionId,
                 feature: 'chat',
             };
+            console.log('[Helicone] Built chat heliconeInput:', {
+                userId: heliconeInput.userId,
+                organizationId: heliconeInput.organizationId ?? '(none)',
+                projectId: heliconeInput.projectId ?? '(none)',
+                feature: heliconeInput.feature,
+            });
         } catch (err) {
             console.warn('[Helicone] Failed to build context, proceeding without tracking:', err);
         }

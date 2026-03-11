@@ -20,6 +20,7 @@ import { UserService } from '../Services/UserService';
 import { StorageService } from '../Services/StorageService';
 import { PhotoService } from '../Services/PhotoService';
 import { StatsService } from '../Services/StatsService';
+import { HeliconeStatsService } from '../Services/HeliconeStatsService';
 import Exa from "exa-js";
 
 import { SpecAgent } from '../AI_Skills/llm/VisonAgent/SpecAgent';
@@ -55,6 +56,7 @@ export class Container {
   private static _photoService: PhotoService;
   private static _statsRepo: SupabaseStatsRepository;
   private static _statsService: StatsService;
+  private static _heliconeStatsService: HeliconeStatsService;
 
   private static _exa: Exa;
 
@@ -215,6 +217,13 @@ export class Container {
       this._statsService = new StatsService(this.statsRepo);
     }
     return this._statsService;
+  }
+
+  static get heliconeStatsService() {
+    if (!this._heliconeStatsService) {
+      this._heliconeStatsService = new HeliconeStatsService();
+    }
+    return this._heliconeStatsService;
   }
 
   // --- 6. Vision Agent ---

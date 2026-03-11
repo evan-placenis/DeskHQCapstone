@@ -5,6 +5,7 @@ import { BaseChatModel } from "@langchain/core/language_models/chat_models";
 import {
     HeliconeContextBuilder,
     HELICONE_TARGET_URLS,
+    HELICONE_TARGET_URL_HEADER,
     type HeliconeContext,
     type HeliconeContextInput,
 } from "../../gateway/HeliconeContextBuilder";
@@ -27,7 +28,7 @@ export class ModelStrategy {
                             ? `${helicone.baseURL}/v1`
                             : "https://api.x.ai/v1",
                         defaultHeaders: helicone
-                            ? { ...helicone.headers, 'Helicone-Target-Url': HELICONE_TARGET_URLS.xai }
+                            ? { ...helicone.headers, [HELICONE_TARGET_URL_HEADER]: HELICONE_TARGET_URLS.xai }
                             : undefined,
                     },
                     apiKey: process.env.XAI_API_KEY,
@@ -48,7 +49,7 @@ export class ModelStrategy {
                             baseURL: `${helicone.baseURL}/v1`,
                             defaultHeaders: {
                                 ...helicone.headers,
-                                'Helicone-Target-Url': HELICONE_TARGET_URLS.anthropic,
+                                [HELICONE_TARGET_URL_HEADER]: HELICONE_TARGET_URLS.anthropic,
                             },
                         },
                     }),
@@ -73,7 +74,7 @@ function createGoogleModel(
 
     const googleHeaders: Record<string, string> = {
         ...helicone.headers,
-        'Helicone-Target-Url': HELICONE_TARGET_URLS.google,
+        [HELICONE_TARGET_URL_HEADER]: HELICONE_TARGET_URLS.google,
     };
 
     return new ChatGoogleGenerativeAI({
