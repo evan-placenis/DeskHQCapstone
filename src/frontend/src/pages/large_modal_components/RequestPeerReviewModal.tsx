@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "../ui_components/button";
 import { Badge } from "../ui_components/badge";
 import { Textarea } from "../ui_components/textarea";
@@ -17,86 +17,26 @@ import {
   UserCheck, 
   Search, 
   Check,
-  Star,
   Building,
   Award
 } from "lucide-react";
 
-export interface User {
-  id: number;
+export interface OrgUser {
+  id: string;
   name: string;
   email: string;
   role: string;
   department: string;
   specialty?: string;
-  reviewCount?: number;
 }
 
 interface RequestPeerReviewModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   reportTitle: string;
-  currentUserId: number;
-  onRequestReview: (userId: number, notes: string) => void;
+  currentUserId: string;
+  onRequestReview: (userId: string, notes: string) => void;
 }
-
-// Mock users - in production this would come from a user management system
-const MOCK_USERS: User[] = [
-  {
-    id: 1,
-    name: "John Davis",
-    email: "john.davis@pretiumai.com",
-    role: "Senior Engineer",
-    department: "Structural",
-    specialty: "Foundation & Concrete",
-    reviewCount: 47
-  },
-  {
-    id: 2,
-    name: "Sarah Smith",
-    email: "sarah.smith@pretiumai.com",
-    role: "Lead Engineer",
-    department: "Civil",
-    specialty: "Site Assessment",
-    reviewCount: 62
-  },
-  {
-    id: 3,
-    name: "Michael Chen",
-    email: "michael.chen@pretiumai.com",
-    role: "Project Manager",
-    department: "Management",
-    specialty: "BCA & Compliance",
-    reviewCount: 38
-  },
-  {
-    id: 4,
-    name: "Emily Rodriguez",
-    email: "emily.rodriguez@pretiumai.com",
-    role: "Senior Engineer",
-    department: "Structural",
-    specialty: "Steel & Load Analysis",
-    reviewCount: 51
-  },
-  {
-    id: 5,
-    name: "David Park",
-    email: "david.park@pretiumai.com",
-    role: "Engineer",
-    department: "Safety",
-    specialty: "Safety Inspection",
-    reviewCount: 29
-  },
-  {
-    id: 6,
-    name: "Lisa Thompson",
-    email: "lisa.thompson@pretiumai.com",
-    role: "Engineer",
-    department: "Materials",
-    specialty: "Material Testing",
-    reviewCount: 34
-  },
-];
 
 export function RequestPeerReviewModal({
   open,
@@ -105,17 +45,42 @@ export function RequestPeerReviewModal({
   currentUserId,
   onRequestReview,
 }: RequestPeerReviewModalProps) {
-  const [selectedUserId, setSelectedUserId] = useState<number | null>(null);
+  const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [notes, setNotes] = useState("");
+  const [users, setUsers] = useState<OrgUser[]>([]);
+  const [isLoadingUsers, setIsLoadingUsers] = useState(false);
+
+  useEffect(() => {
+    if (open && currentUserId) {
+      setIsLoadingUsers(true);
+      fetch("/api/organizations/users")
+        .then((res) => {
+          if (!res.ok) throw new Error(`API error: ${res.status}`);
+          return res.json();
+        })
+        .then((data) => {
+          if (data.users && Array.isArray(data.users)) {
+            setUsers(data.users);
+          } else {
+            setUsers([]);
+          }
+        })
+        .catch((err) => {
+          console.error("Failed to fetch org users:", err);
+          setUsers([]);
+        })
+        .finally(() => setIsLoadingUsers(false));
+    }
+  }, [open, currentUserId]);
 
   // Filter out current user and apply search
-  const availableUsers = MOCK_USERS.filter(
+  const availableUsers = users.filter(
     (user) =>
       user.id !== currentUserId &&
       (user.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        user.department.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        user.specialty?.toLowerCase().includes(searchQuery.toLowerCase()))
+        (user.department || "").toLowerCase().includes(searchQuery.toLowerCase()) ||
+        (user.specialty || "").toLowerCase().includes(searchQuery.toLowerCase()))
   );
 
   const handleSubmit = () => {
@@ -138,16 +103,17 @@ export function RequestPeerReviewModal({
       .toUpperCase();
   };
 
-  const getAvatarColor = (id: number) => {
+  const getAvatarColor = (id: string) => {
     const colors = [
-      "bg-blue-500",
-      "bg-green-500",
       "bg-theme-primary",
-      "bg-orange-500",
-      "bg-red-500",
-      "bg-indigo-500",
+      "bg-theme-secondary",
+      "bg-theme-primary-20",
+      "bg-theme-secondary-20",
+      "bg-theme-primary-30",
+      "bg-theme-secondary-30",
     ];
-    return colors[id % colors.length];
+    const hash = id.split("").reduce((acc, c) => acc + c.charCodeAt(0), 0);
+    return colors[Math.abs(hash) % colors.length];
   };
 
   return (
@@ -174,13 +140,20 @@ export function RequestPeerReviewModal({
 
           {/* User List */}
           <div className="space-y-2">
-            {availableUsers.map((user) => (
+            {isLoadingUsers ? (
+              <div className="py-8 text-center text-slate-500 text-sm">Loading colleagues...</div>
+            ) : availableUsers.length === 0 ? (
+              <div className="py-8 text-center text-slate-500 text-sm">
+                {users.length === 0 ? "No other users in your organization." : "No matching users."}
+              </div>
+            ) : (
+            availableUsers.map((user) => (
               <div
                 key={user.id}
                 className={`rounded-lg border-2 p-4 cursor-pointer transition-all ${
                   selectedUserId === user.id
-                    ? "border-blue-500 bg-blue-50"
-                    : "border-slate-200 hover:border-blue-300 hover:bg-slate-50"
+                    ? "border-theme-primary bg-theme-primary-10"
+                    : "border-slate-200 hover:border-theme-primary-30 hover:bg-theme-primary-5"
                 }`}
                 onClick={() => setSelectedUserId(user.id)}
               >
@@ -198,7 +171,7 @@ export function RequestPeerReviewModal({
                         <p className="text-sm text-slate-600">{user.email}</p>
                       </div>
                       {selectedUserId === user.id && (
-                        <div className="w-6 h-6 bg-blue-600 rounded-full flex items-center justify-center flex-shrink-0">
+                        <div className="w-6 h-6 bg-theme-primary-20 rounded-full flex items-center justify-center flex-shrink-0">
                           <Check className="w-4 h-4 text-white" />
                         </div>
                       )}
@@ -220,16 +193,11 @@ export function RequestPeerReviewModal({
                       )}
                     </div>
 
-                    {user.reviewCount && user.reviewCount > 0 && (
-                      <div className="flex items-center gap-1 mt-2 text-xs text-slate-600">
-                        <Star className="w-3 h-3 text-yellow-500 fill-yellow-500" />
-                        <span>{user.reviewCount} reviews completed</span>
-                      </div>
-                    )}
                   </div>
                 </div>
               </div>
-            ))}
+            ))
+            )}
           </div>
 
           {/* Notes */}
@@ -246,8 +214,8 @@ export function RequestPeerReviewModal({
           </div>
 
           {/* Info Box */}
-          <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
-            <p className="text-sm text-blue-900">
+          <div className="bg-theme-primary-10 border border-theme-primary-30 rounded-lg p-3">
+            <p className="text-sm text-theme-primary-dark">
               <strong>Tip:</strong> The reviewer will be able to view your report, add comments, 
               and mark their review as complete. You'll be notified once the review is done.
             </p>
@@ -265,7 +233,7 @@ export function RequestPeerReviewModal({
           <Button
             onClick={handleSubmit}
             disabled={!selectedUserId}
-            className="bg-blue-600 hover:bg-blue-700 rounded-lg"
+            className="bg-theme-primary hover:bg-theme-primary-hover text-white rounded-lg"
           >
             <UserCheck className="w-4 h-4 mr-2" />
             Request Review

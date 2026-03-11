@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useAuth } from "@/app/context/AuthContext";
 import { useDelete } from "@/frontend/pages/hooks/useDelete"; // Import the hook
 import { AppHeader } from "@/frontend/pages/smart_components/AppHeader";
@@ -472,6 +472,8 @@ export function ProjectDetailPage({
   const [isNewReportModalOpen, setIsNewReportModalOpen] = useState(false);
   const [reports, setReports] = useState<Report[]>([]);
   const [isLoadingReports, setIsLoadingReports] = useState(true);
+  const [isLoadingImages, setIsLoadingImages] = useState(true);
+  const [isLoadingKnowledge, setIsLoadingKnowledge] = useState(true);
   const [photos, setPhotos] = useState<Photo[]>([]);
   const [selectedPhoto, setSelectedPhoto] = useState<typeof mockPhotos[0] | null>(null);
   const [isPhotoModalOpen, setIsPhotoModalOpen] = useState(false);
@@ -1008,8 +1010,8 @@ export function ProjectDetailPage({
     onNavigate("audio-timeline");
   };
 
-  // Extract unique users from folder names (initials at the end)
-  const extractUsersFromFolders = () => {
+  // Extract unique users from folder names (initials at the end) - only depends on photoFolders
+  const availableUsers = useMemo(() => {
     const users = new Set<string>();
     photoFolders.forEach(folder => {
       const match = folder.name.match(/- ([A-Z]{2,})$/);
@@ -1018,21 +1020,10 @@ export function ProjectDetailPage({
       }
     });
     return Array.from(users).sort();
-  };
+  }, [photoFolders]);
 
-  // Extract unique dates from folders
-  const extractDatesFromFolders = () => {
-    const dates = new Set<string>();
-    photoFolders.forEach(folder => {
-      if (folder.createdDate) {
-        dates.add(folder.createdDate);
-      }
-    });
-    return Array.from(dates).sort().reverse(); // Most recent first
-  };
-
-  // Apply filters to photos and folders
-  const applyPhotoFilters = () => {
+  // Apply filters to photos and folders - re-run only when raw data or filter inputs change
+  const { folders: filteredFolders, photos: filteredPhotos } = useMemo(() => {
     let filteredFolderIds = new Set<number>();
     let filteredPhotosList = photos;
 
@@ -1092,12 +1083,9 @@ export function ProjectDetailPage({
       folders: filteredFolders,
       photos: filteredPhotosList
     };
-  };
+  }, [photos, photoFolders, photoSearchKeyword, photoFilterDateStart, photoFilterDateEnd, photoFilterUser]);
 
-  const { folders: filteredFolders, photos: filteredPhotos } = applyPhotoFilters();
   const hasActiveFilters = photoSearchKeyword || photoFilterDateStart || photoFilterDateEnd || photoFilterUser !== "all";
-  const availableUsers = extractUsersFromFolders();
-  const availableDates = extractDatesFromFolders();
 
   // Scroll to top when component mounts
   useEffect(() => {
@@ -1105,127 +1093,123 @@ export function ProjectDetailPage({
       window.scrollTo(0, 0);
     }
 
-    // Fetch existing images and knowledge documents from backend
+    // Fetch images, knowledge, and reports in parallel
     const fetchProjectData = async () => {
-      // 1. Fetch Images
-      try {
-        const response = await fetch(`/api/project/${project.id}/images`);
-        if (response.ok) {
-          const data = await response.json();
-          if (data.images && Array.isArray(data.images)) {
-            console.log("Fetched images from DB:", data.images); // Debug log
+      const fetchImages = async () => {
+        try {
+          const response = await fetch(`/api/project/${project.id}/images`);
+          if (response.ok) {
+            const data = await response.json();
+            if (data.images && Array.isArray(data.images)) {
+              const fetchedImages = data.images;
+              const uniqueFolderNames = Array.from(new Set(fetchedImages.map((img: any) => img.folder_name).filter(Boolean))) as string[];
+              const existingFolders = shouldShowMocks ? [...mockPhotoFolders] : [];
+              const newFolders: PhotoFolder[] = [];
 
-            // Identify unique folder names from DB images
-            const fetchedImages = data.images;
-            const uniqueFolderNames = Array.from(new Set(fetchedImages.map((img: any) => img.folder_name).filter(Boolean))) as string[];
+              uniqueFolderNames.forEach(name => {
+                if (!existingFolders.find(f => f.name === name)) {
+                  newFolders.push({
+                    id: Math.max(0, ...existingFolders.map(f => f.id), ...newFolders.map(f => f.id)) + 1,
+                    name: name,
+                    createdDate: new Date().toISOString().split('T')[0]
+                  });
+                }
+              });
 
-            // Sync folders locally first to determine IDs
-            // Start with mockPhotoFolders as base if in test org
-            const existingFolders = shouldShowMocks ? [...mockPhotoFolders] : [];
-            const newFolders: PhotoFolder[] = [];
+              const allFolders = [...newFolders, ...existingFolders];
+              setPhotoFolders(allFolders);
 
-            uniqueFolderNames.forEach(name => {
-              if (!existingFolders.find(f => f.name === name)) {
-                newFolders.push({
-                  id: Math.max(0, ...existingFolders.map(f => f.id), ...newFolders.map(f => f.id)) + 1,
-                  name: name,
-                  createdDate: new Date().toISOString().split('T')[0]
-                });
-              }
-            });
+              const dbPhotos: Photo[] = data.images.map((img: any) => {
+                const folder = allFolders.find(f => f.name === img.folder_name);
+                return {
+                  id: img.id,
+                  url: img.public_url,
+                  storagePath: img.storage_path,
+                  name: img.file_name,
+                  date: new Date(img.created_at).toISOString().split('T')[0],
+                  location: "Uploaded",
+                  linkedReport: null,
+                  description: img.description || "",
+                  folderId: folder ? folder.id : 1
+                };
+              });
 
-            // Update folders state: Put new (DB) folders at the TOP
-            const allFolders = [...newFolders, ...existingFolders];
-            setPhotoFolders(allFolders);
+              setPhotos([...dbPhotos, ...(shouldShowMocks ? mockPhotos : [])]);
+            }
+          }
+        } catch (e) {
+          console.error("Failed to fetch images", e);
+        } finally {
+          setIsLoadingImages(false);
+        }
+      };
 
-            // Map DB images to Frontend Photo objects
-            const dbPhotos: Photo[] = data.images.map((img: any) => {
-              const folder = allFolders.find(f => f.name === img.folder_name);
-              return {
-                id: img.id, // Use UUID from DB
-                url: img.public_url,
-                storagePath: img.storage_path, // Add storage path for signed URLs
-                name: img.file_name,
-                date: new Date(img.created_at).toISOString().split('T')[0],
-                location: "Uploaded",
-                linkedReport: null,
-                description: img.description || "",
-                folderId: folder ? folder.id : 1 // Use found folder ID or default
+      const fetchKnowledge = async () => {
+        try {
+          const response = await fetch(`/api/knowledge/store?projectId=${project.id}`);
+          if (response.ok) {
+            const data = await response.json();
+            if (data.documents && Array.isArray(data.documents)) {
+              const dbDocs: KnowledgeDocument[] = data.documents.map((doc: any) => ({
+                id: doc.kId,
+                name: doc.originalFileName,
+                type: (doc.documentType || 'other').toLowerCase() as KnowledgeDocument['type'],
+                description: "",
+                uploadDate: new Date(doc.uploadedAt).toISOString().split('T')[0],
+                fileSize: "Unknown",
+                fileType: doc.originalFileName.split('.').pop()?.toUpperCase() || 'DOCX'
+              }));
+              setKnowledgeDocuments([...dbDocs, ...(shouldShowMocks ? mockKnowledgeDocuments : [])]);
+            }
+          }
+        } catch (e) {
+          console.error("Failed to fetch knowledge documents", e);
+        } finally {
+          setIsLoadingKnowledge(false);
+        }
+      };
+
+      const fetchReports = async () => {
+        try {
+          const response = await fetch(`/api/project/${project.id}/reports`);
+          if (response.ok) {
+            const data = await response.json();
+            if (data.reports && Array.isArray(data.reports)) {
+              const normalizeStatus = (status: string) => {
+                if (!status) return "Draft";
+                const s = status.toUpperCase();
+                if (s === "DRAFT") return "Draft";
+                if (s === "UNDER_REVIEW" || s === "UNDER REVIEW") return "Under Review";
+                if (s === "COMPLETED" || s === "COMPLETE") return "Completed";
+                return status;
               };
-            });
 
-            // Prepend DB photos to mock photos (showing newest first)
-            setPhotos([...dbPhotos, ...(shouldShowMocks ? mockPhotos : [])]);
+              const dbReports: Report[] = data.reports.map((r: any) => ({
+                id: r.reportId,
+                title: r.title || "Untitled Report",
+                date: new Date(r.updatedAt).toISOString().split('T')[0],
+                status: normalizeStatus(r.status),
+                engineer: "AI Assistant",
+                inspector: "Current User",
+                reviewer: "Pending",
+                photos: r.sections?.reduce((acc: number, s: any) => acc + (s.images?.length || 0), 0) || 0,
+                observations: r.sections?.length || 0,
+                project: project.name,
+                projectId: project.id
+              }));
+
+              setReports([...dbReports, ...(shouldShowMocks ? mockReports : [])]);
+            }
           }
+        } catch (e) {
+          console.error("Failed to fetch reports", e);
+        } finally {
+          setIsLoadingReports(false);
         }
-      } catch (e) {
-        console.error("Failed to fetch images", e);
-      }
+      };
 
-      // 2. Fetch Knowledge Documents
-      try {
-        const response = await fetch(`/api/knowledge/store?projectId=${project.id}`);
-        if (response.ok) {
-          const data = await response.json();
-          if (data.documents && Array.isArray(data.documents)) {
-            console.log("Fetched knowledge documents from DB:", data.documents);
-
-            const dbDocs: KnowledgeDocument[] = data.documents.map((doc: any) => ({
-              id: doc.kId,
-              name: doc.originalFileName,
-              type: (doc.documentType || 'other').toLowerCase() as KnowledgeDocument['type'],
-              description: "", // Description not currently stored in backend
-              uploadDate: new Date(doc.uploadedAt).toISOString().split('T')[0],
-              fileSize: "Unknown", // Size not currently stored in backend
-              fileType: doc.originalFileName.split('.').pop()?.toUpperCase() || 'DOCX'
-            }));
-
-            setKnowledgeDocuments([...dbDocs, ...(shouldShowMocks ? mockKnowledgeDocuments : [])]);
-          }
-        }
-      } catch (e) {
-        console.error("Failed to fetch knowledge documents", e);
-      }
-
-      // 3. Fetch Reports (NEW)
-      try {
-        const response = await fetch(`/api/project/${project.id}/reports`);
-        if (response.ok) {
-          const data = await response.json();
-          if (data.reports && Array.isArray(data.reports)) {
-            console.log("Fetched reports from DB:", data.reports);
-
-            const normalizeStatus = (status: string) => {
-              if (!status) return "Draft";
-              const s = status.toUpperCase();
-              if (s === "DRAFT") return "Draft";
-              if (s === "UNDER_REVIEW" || s === "UNDER REVIEW") return "Under Review";
-              if (s === "COMPLETED" || s === "COMPLETE") return "Completed";
-              return status;
-            };
-
-            const dbReports: Report[] = data.reports.map((r: any) => ({
-              id: r.reportId,
-              title: r.title || "Untitled Report",
-              date: new Date(r.updatedAt).toISOString().split('T')[0],
-              status: normalizeStatus(r.status),
-              engineer: "AI Assistant",
-              inspector: "Current User",
-              reviewer: "Pending",
-              photos: r.sections?.reduce((acc: number, s: any) => acc + (s.images?.length || 0), 0) || 0,
-              observations: r.sections?.length || 0,
-              project: project.name,
-              projectId: project.id
-            }));
-
-            setReports([...dbReports, ...(shouldShowMocks ? mockReports : [])]);
-          }
-        }
-      } catch (e) {
-        console.error("Failed to fetch reports", e);
-      } finally {
-        setIsLoadingReports(false);
-      }
+      // Fire all three fetches in parallel
+      await Promise.all([fetchImages(), fetchKnowledge(), fetchReports()]);
     };
 
     fetchProjectData();
@@ -1480,6 +1464,13 @@ export function ProjectDetailPage({
                 </Button>
               </CardHeader>
               <CardContent>
+                {isLoadingImages ? (
+                  <div className="flex flex-col items-center justify-center py-12">
+                    <Loader2 className="w-8 h-8 animate-spin text-theme-primary mb-4" />
+                    <p className="text-slate-500">Loading photos...</p>
+                  </div>
+                ) : (
+                  <>
                 {/* Filter Controls */}
                 {photoFolders.length > 0 && (
                   <div className="mb-4 space-y-3">
@@ -1638,6 +1629,8 @@ export function ProjectDetailPage({
                     </Button>
                   </div>
                 )}
+                  </>
+                )}
               </CardContent>
             </Card>
           </TabsContent>
@@ -1665,7 +1658,12 @@ export function ProjectDetailPage({
                   isUploading={isKnowledgeUploading}
                 />
 
-                {knowledgeDocuments.length > 0 ? (
+                {isLoadingKnowledge ? (
+                  <div className="flex flex-col items-center justify-center py-12">
+                    <Loader2 className="w-8 h-8 animate-spin text-theme-primary mb-4" />
+                    <p className="text-slate-500">Loading knowledge documents...</p>
+                  </div>
+                ) : knowledgeDocuments.length > 0 ? (
                   <div className="space-y-3">
                     {knowledgeDocuments.map((doc) => (
                       <div
@@ -1733,36 +1731,44 @@ export function ProjectDetailPage({
         </Tabs>
       </main>
 
-      <NewReportModal
-        open={isNewReportModalOpen}
-        onOpenChange={setIsNewReportModalOpen}
-        projectName={project.name}
-        onCreateReport={handleCreateReport}
-        photos={photos}
-        folders={photoFolders}
-      />
+      {isNewReportModalOpen && (
+        <NewReportModal
+          open={true}
+          onOpenChange={setIsNewReportModalOpen}
+          projectName={project.name}
+          onCreateReport={handleCreateReport}
+          photos={photos}
+          folders={photoFolders}
+        />
+      )}
 
-      <PhotoDetailModal
-        open={isPhotoModalOpen}
-        onOpenChange={setIsPhotoModalOpen}
-        photo={selectedPhoto}
-        onSaveDescription={handleSavePhotoDescription}
-        onNavigate={handlePhotoNavigate}
-        canNavigate={getNavigationState()}
-      />
+      {isPhotoModalOpen && (
+        <PhotoDetailModal
+          open={true}
+          onOpenChange={setIsPhotoModalOpen}
+          photo={selectedPhoto}
+          onSaveDescription={handleSavePhotoDescription}
+          onNavigate={handlePhotoNavigate}
+          canNavigate={getNavigationState()}
+        />
+      )}
 
-      <KnowledgeUploadModal
-        open={isKnowledgeUploadModalOpen}
-        onOpenChange={setIsKnowledgeUploadModalOpen}
-        onUpload={handleUploadKnowledge}
-      />
+      {isKnowledgeUploadModalOpen && (
+        <KnowledgeUploadModal
+          open={true}
+          onOpenChange={setIsKnowledgeUploadModalOpen}
+          onUpload={handleUploadKnowledge}
+        />
+      )}
 
-      <PhotoUploadModal
-        open={isPhotoUploadModalOpen}
-        onOpenChange={setIsPhotoUploadModalOpen}
-        existingFolders={photoFolders}
-        onUpload={handleUploadPhotos}
-      />
+      {isPhotoUploadModalOpen && (
+        <PhotoUploadModal
+          open={true}
+          onOpenChange={setIsPhotoUploadModalOpen}
+          existingFolders={photoFolders}
+          onUpload={handleUploadPhotos}
+        />
+      )}
     </div>
   );
 }
