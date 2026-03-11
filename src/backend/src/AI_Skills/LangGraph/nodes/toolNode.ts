@@ -14,7 +14,7 @@ export async function toolNode(state: any) {
 
   // 2. Re-Instantiate Tools
   // We need the *same* tools that the Writer used
-  const reportTools = reportSkills(projectId, userId, client, selectedImageIds);
+  const reportTools = reportSkills(client);
   const researchTools= researchSkills(projectId);
   const visionTools = visionSkills;
 

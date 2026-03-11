@@ -81,6 +81,7 @@
     "pg": "^8.18.0",
     "react": "^19.2.3",
     "react-day-picker": "^9.13.0",
+    "react-diff-viewer-continued": "^4.2.0",
     "react-dom": "^19.2.3",
     "react-hook-form": "^7.50.0",
     "react-markdown": "^9.1.0",

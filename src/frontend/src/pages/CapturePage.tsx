@@ -15,7 +15,7 @@ import { Project } from "@/frontend/types";
 
 interface CapturePageProps {
   onClose: () => void;
-  onSave: (projectId: number, photos: CapturedPhoto[], audioTranscript?: string, groupName?: string) => void;
+  onSave: (projectId: number | string, photos: CapturedPhoto[], audioTranscript?: string, groupName?: string) => void;
   onCreateProject?: () => void;
   projects: Project[];
 }
@@ -178,7 +178,7 @@ export function CapturePage({ onClose, onSave, onCreateProject, projects }: Capt
     }
   };
 
-  const handleProjectSelect = (projectId: number) => {
+  const handleProjectSelect = (projectId: number | string) => {
     onSave(projectId, capturedPhotos, audioTranscript || undefined, groupName || undefined);
     setShowProjectSelector(false);
     onClose();
