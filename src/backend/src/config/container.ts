@@ -15,6 +15,8 @@ import { EditService } from '../Services/EditService';
 import { ChatOrchestrator } from '../AI_Skills/orchestrators/ChatOrchestrator';
 import { EditOrchestrator } from '../AI_Skills/orchestrators/EditOrchestrator';
 import { ReportOrchestrator } from '../AI_Skills/orchestrators/ReportOrchestrator';
+import { CaptureOrchestrator } from '../AI_Skills/orchestrators/CaptureOrchestrator';
+import { CaptureService } from '../Services/CaptureService';
 import { KnowledgeService } from '../Services/KnowledgeServivce';
 import { UserService } from '../Services/UserService';
 import { StorageService } from '../Services/StorageService';
@@ -61,6 +63,8 @@ export class Container {
   private static _chatOrchestrator: ChatOrchestrator;
   private static _editOrchestrator: EditOrchestrator;
   private static _reportOrchestrator: ReportOrchestrator;
+  private static _captureOrchestrator: CaptureOrchestrator;
+  private static _captureService: CaptureService;
 
   private static _specAgent: SpecAgent;
   private static _sitePhotoAgent: SitePhotoAgent;
@@ -179,6 +183,21 @@ export class Container {
     }
     return this._reportOrchestrator;
   }
+
+  static get captureOrchestrator() {
+    if (!this._captureOrchestrator) {
+      this._captureOrchestrator = new CaptureOrchestrator();
+    }
+    return this._captureOrchestrator;
+  }
+
+  static get captureService() {
+    if (!this._captureService) {
+      this._captureService = new CaptureService(this.captureOrchestrator);
+    }
+    return this._captureService;
+  }
+
   static get reportService() {
     if (!this._reportService) {
       this._reportService = new ReportService(
