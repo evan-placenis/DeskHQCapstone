@@ -21,10 +21,7 @@ import {
   FileCheck,
   FileClock,
   Camera,
-  BrainCircuit,
 } from "lucide-react";
-import { useAIUsage } from "@/frontend/lib/useAIUsage";
-import { AIUsagePanel } from "@/frontend/pages/smart_components/AIUsagePanel";
 import { useState, useEffect } from "react";
 import {
   LineChart,
@@ -294,8 +291,6 @@ export function TechnicianAnalyticsPage({
   onRoleSwitch,
 }: TechnicianAnalyticsPageProps) {
   const [selectedTimeRange, setSelectedTimeRange] = useState<"week" | "month" | "all">("month");
-
-  const { data: aiUsageData, loading: aiUsageLoading, error: aiUsageError } = useAIUsage(selectedTimeRange);
   
   // Real stats fetched from database (only totalReports for now)
   const [totalReports, setTotalReports] = useState<number>(0);
@@ -464,10 +459,6 @@ export function TechnicianAnalyticsPage({
             <TabsTrigger value="drafts" className="rounded-md text-xs sm:text-sm">
               <FileCheck className="w-3 h-3 sm:w-4 sm:h-4 mr-2" />
               Drafts
-            </TabsTrigger>
-            <TabsTrigger value="ai-usage" className="rounded-md text-xs sm:text-sm">
-              <BrainCircuit className="w-3 h-3 sm:w-4 sm:h-4 mr-2" />
-              AI Usage
             </TabsTrigger>
           </TabsList>
 
@@ -1226,11 +1217,6 @@ export function TechnicianAnalyticsPage({
                 )}
               </CardContent>
             </Card>
-          </TabsContent>
-
-          {/* AI Usage Tab */}
-          <TabsContent value="ai-usage">
-            <AIUsagePanel data={aiUsageData} loading={aiUsageLoading} error={aiUsageError} />
           </TabsContent>
         </Tabs>
       </main>
