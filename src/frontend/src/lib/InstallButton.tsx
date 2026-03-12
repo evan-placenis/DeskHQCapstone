@@ -21,7 +21,7 @@ export default function InstallButton({ className }: InstallButtonProps) {
   useEffect(() => {
     if (typeof window === 'undefined') return;
 
-    // Already installed / running as PWA
+    // Hide when already installed / running as PWA
     const standalone = window.matchMedia('(display-mode: standalone)').matches
       || (window.navigator as any).standalone === true;
     setIsStandalone(standalone);
@@ -48,17 +48,17 @@ export default function InstallButton({ className }: InstallButtonProps) {
       return;
     }
 
-    // Fallback when native prompt isn't available (dev mode, Safari, etc.)
+    // Fallback for Safari and browsers without beforeinstallprompt
     const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
     const isSafari = /Safari/.test(navigator.userAgent) && !/Chrome/.test(navigator.userAgent);
     if (isIOS || isSafari) {
-      alert('To install: tap the Share button, then "Add to Home Screen".');
+      alert('To install: tap the Share button (square with arrow), then "Add to Home Screen".');
     } else {
       alert('Install from your browser menu (⋮ or ⋯) → "Install app" or "Add to Home Screen".');
     }
   };
 
-  // Hide when already running as installed PWA
+  // Hide only when already installed
   if (isStandalone) return null;
 
   return (
