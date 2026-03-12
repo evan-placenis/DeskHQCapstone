@@ -246,7 +246,6 @@ export function PhotoFolderView({
   gridSize = 2,
   onGridSizeChange,
 }: PhotoFolderViewProps) {
-
   // Define grid classes based on gridSize
   const getGridCols = () => {
     switch (gridSize) {
