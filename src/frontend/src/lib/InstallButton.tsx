@@ -52,7 +52,7 @@ export default function InstallButton({ className }: InstallButtonProps) {
     const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
     const isSafari = /Safari/.test(navigator.userAgent) && !/Chrome/.test(navigator.userAgent);
     if (isIOS || isSafari) {
-      alert('To install: tap the Share button (square with arrow), then "Add to Home Screen".');
+      alert('To install: Must open in Safari, then tap the Share button (square with arrow), then "Add to Home Screen".');
     } else {
       alert('Install from your browser menu (⋮ or ⋯) → "Install app" or "Add to Home Screen".');
     }
