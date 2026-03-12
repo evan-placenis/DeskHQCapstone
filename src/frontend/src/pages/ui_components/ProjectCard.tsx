@@ -11,12 +11,13 @@ import { Button } from "./button";
 
 interface ProjectCardProps {
   project: Project;
-  onClick: () => void;
+  onClick?: () => void;
+  onSelectProject?: (project: Project) => void;
   onStatusChange: (projectId: number, newStatus: string) => void;
   onDelete?: (projectId: number | string) => void;
 }
 
-export function ProjectCard({ project, onClick, onStatusChange, onDelete }: ProjectCardProps) {
+export function ProjectCard({ project, onClick, onSelectProject, onStatusChange, onDelete }: ProjectCardProps) {
   const isCompleted = project.status === "Completed";
   
   const handleDelete = (e: React.MouseEvent) => {
@@ -26,10 +27,12 @@ export function ProjectCard({ project, onClick, onStatusChange, onDelete }: Proj
     }
   };
 
+  const handleClick = onSelectProject ? () => onSelectProject(project) : onClick;
+
   return (
     <div
       className="group p-2 sm:p-4 border-2 border-slate-200 rounded-lg sm:rounded-xl hover:border-theme-primary hover:bg-theme-primary-5 transition-all cursor-pointer"
-      onClick={onClick}
+      onClick={handleClick}
     >
       {/* Single compact row with all content */}
       <div className="flex items-center gap-2 sm:gap-3">

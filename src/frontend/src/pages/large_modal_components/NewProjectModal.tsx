@@ -11,7 +11,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "../ui_components/dialog";
-import { Project } from "../../App";
+import { Project } from "@/frontend/types";
 import { Upload, FileSpreadsheet, X } from "lucide-react";
 import * as XLSX from "xlsx";
 

@@ -13,7 +13,7 @@ import { Project } from "@/frontend/types";
 
 interface RecordingPageProps {
   onClose: () => void;
-  onSave: (projectId: number, transcript: string, audioData: any) => void;
+  onSave: (projectId: number | string, transcript: string, audioData: any) => void;
   projects: Project[];
 }
 
@@ -142,7 +142,7 @@ export function RecordingPage({ onClose, onSave, projects }: RecordingPageProps)
     }
   };
 
-  const handleProjectSelect = (projectId: number) => {
+  const handleProjectSelect = (projectId: number | string) => {
     onSave(projectId, transcript, { duration });
     setShowProjectPicker(false);
     onClose();

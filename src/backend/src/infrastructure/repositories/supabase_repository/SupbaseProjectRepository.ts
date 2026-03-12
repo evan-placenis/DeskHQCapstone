@@ -41,7 +41,8 @@ export class SupabaseProjectRepository implements ProjectRepository {
                 metadata: {
                     uploadedBy: img.uploaded_by,
                     capturedAt: new Date(img.created_at), // Fallback to upload time
-                    tags: [] // Default empty tags
+                    tags: [], // Default empty tags
+                    severity: img.severity || 'low'
                 }
             }));
         }
