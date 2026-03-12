@@ -17,6 +17,7 @@ import { User } from "@/frontend/types";
 import { Cpu, Settings, LogOut, BarChart3, Home, Shield, UserCog, Wrench, Menu, Activity } from "lucide-react";
 import { useState } from "react";
 import { MobileBottomNav } from "./MobileBottomNav";
+import InstallButton from "@/frontend/lib/InstallButton";
 
 interface AppHeaderProps {
   currentPage: Page;
@@ -133,6 +134,7 @@ export function AppHeader({ currentPage, currentUser, onNavigate, onLogout, onRo
 
         {/* Right side - Desktop */}
         <div className="hidden sm:flex items-center gap-3">
+          <InstallButton />
           {currentUser && getRoleBadge(currentUser.role)}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
@@ -200,6 +202,7 @@ export function AppHeader({ currentPage, currentUser, onNavigate, onLogout, onRo
 
         {/* Mobile Menu Button */}
         <div className="flex sm:hidden items-center gap-2">
+          <InstallButton />
           {currentUser && (
             <div className="scale-75">
               {getRoleBadge(currentUser.role)}
@@ -279,8 +282,9 @@ export function AppHeader({ currentPage, currentUser, onNavigate, onLogout, onRo
                 </div>
               )}
 
-              {/* Settings & Logout */}
+              {/* Install App, Settings & Logout */}
               <div className="mt-6 pt-6 border-t border-border space-y-2">
+                <InstallButton className="w-full justify-center" />
                 <Button
                   variant="ghost"
                   className="w-full justify-start h-12 text-base rounded-xl"
