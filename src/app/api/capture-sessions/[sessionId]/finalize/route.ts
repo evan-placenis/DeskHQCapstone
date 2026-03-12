@@ -40,7 +40,7 @@ export async function POST(
                 name: createProject.name,
                 status: "ACTIVE",
                 metadata: {
-                    createdDate: now,
+                    createdAt: now,
                     lastModifiedDate: now,
                     status: "ACTIVE",
                     createdByUserId: resolvedUserId,

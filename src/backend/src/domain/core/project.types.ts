@@ -4,13 +4,13 @@ export interface Project {
     organizationId: string;  // For Multi-Tenancy (Security)
     name: string;
     status: 'ACTIVE' | 'ARCHIVED' | 'COMPLETED';
-    
+
     // Composed Objects
     metadata: ProjectMetadata;
     jobInfo: JobInfoSheet;
-    
+
     // Arrays of Assets (Often loaded separately in real DBs, but good for type defs)
-    images?: Image[]; 
+    images?: Image[];
     knowledgeItems?: KnowledgeItem[];
     createdAt: Date;
     updatedAt: Date;
@@ -28,7 +28,7 @@ export interface JobInfoSheet {
     clientName: string;
     siteAddress: string;
     // Flexible map for other Excel columns (e.g., "Project Manager", "Weather")
-    parsedData: Record<string, string | number>; 
+    parsedData: Record<string, string | number>;
 }
 
 // --- IMAGES / MEDIA ---
@@ -59,5 +59,5 @@ export interface KnowledgeItem {
     documentType: 'PDF' | 'CODE_SNIPPET' | 'PREVIOUS_REPORT';
     originalFileName: string;
     // We don't store the full vector embeddings here, just the reference
-    processedAt: Date; 
+    processedAt: Date;
 }
