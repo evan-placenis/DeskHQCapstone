@@ -282,8 +282,9 @@ export function AppHeader({ currentPage, currentUser, onNavigate, onLogout, onRo
                 </div>
               )}
 
-              {/* Settings & Logout */}
+              {/* Install App, Settings & Logout */}
               <div className="mt-6 pt-6 border-t border-border space-y-2">
+                <InstallButton className="w-full justify-center" />
                 <Button
                   variant="ghost"
                   className="w-full justify-start h-12 text-base rounded-xl"

@@ -10,17 +10,25 @@ interface BeforeInstallPromptEvent extends Event {
   userChoice: Promise<{ outcome: 'accepted' | 'dismissed' }>;
 }
 
-export default function InstallButton() {
+interface InstallButtonProps {
+  className?: string;
+}
+
+export default function InstallButton({ className }: InstallButtonProps) {
   const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null);
-  const [isInstallable, setIsInstallable] = useState(false);
+  const [isStandalone, setIsStandalone] = useState(false);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
 
+    // Already installed / running as PWA
+    const standalone = window.matchMedia('(display-mode: standalone)').matches
+      || (window.navigator as any).standalone === true;
+    setIsStandalone(standalone);
+
     const handleBeforeInstallPrompt = (e: Event) => {
       e.preventDefault();
       setDeferredPrompt(e as BeforeInstallPromptEvent);
-      setIsInstallable(true);
     };
 
     window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
@@ -31,27 +39,34 @@ export default function InstallButton() {
   }, []);
 
   const handleInstallClick = async () => {
-    if (!deferredPrompt) return;
-
-    deferredPrompt.prompt();
-    const { outcome } = await deferredPrompt.userChoice;
-
-    if (outcome === 'accepted') {
-      console.log('User installed the PWA!');
+    if (deferredPrompt) {
+      deferredPrompt.prompt();
+      const { outcome } = await deferredPrompt.userChoice;
+      if (outcome === 'accepted') {
+        setDeferredPrompt(null);
+      }
+      return;
     }
 
-    setDeferredPrompt(null);
-    setIsInstallable(false);
+    // Fallback when native prompt isn't available (dev mode, Safari, etc.)
+    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+    const isSafari = /Safari/.test(navigator.userAgent) && !/Chrome/.test(navigator.userAgent);
+    if (isIOS || isSafari) {
+      alert('To install: tap the Share button, then "Add to Home Screen".');
+    } else {
+      alert('Install from your browser menu (⋮ or ⋯) → "Install app" or "Add to Home Screen".');
+    }
   };
 
-  if (!isInstallable) return null;
+  // Hide when already running as installed PWA
+  if (isStandalone) return null;
 
   return (
     <Button
       variant="outline"
       size="sm"
       onClick={handleInstallClick}
-      className="gap-2"
+      className={`gap-2 ${className ?? ''}`}
     >
       <Download className="w-4 h-4" />
       Install App
