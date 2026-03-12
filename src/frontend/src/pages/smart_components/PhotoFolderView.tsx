@@ -11,11 +11,11 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "../ui_components/collapsible";
-import { 
-  Calendar, 
-  Eye, 
-  Trash2, 
-  ChevronDown, 
+import {
+  Calendar,
+  Eye,
+  Trash2,
+  ChevronDown,
   FolderOpen,
   Check,
   Volume2
@@ -217,17 +217,17 @@ interface PhotoFolderViewProps {
   folders: PhotoFolder[];
   photos: Photo[];
   mode: "view" | "select";
-  
+
   // For view mode
   onPhotoClick?: (photo: Photo) => void;
   onDeletePhoto?: (photoId: string | number) => void;
   onDeleteFolder?: (folderId: number) => void;
   onAudioTimelineClick?: (folderId: number) => void;
-  
+
   // For select mode
   selectedPhotoIds?: (string | number)[];
   onTogglePhoto?: (photoId: string | number) => void;
-  
+
   // Grid size control
   gridSize?: number;
   onGridSizeChange?: (size: number) => void;
@@ -256,12 +256,12 @@ export function PhotoFolderView({
       default: return "grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6";
     }
   };
-  
+
   return (
     <div className="space-y-3">
       {folders.map((folder) => {
         const folderPhotos = photos.filter(p => p.folderId === folder.id);
-        
+
         return (
           <Collapsible key={folder.id} defaultOpen>
             <div className="border-2 border-slate-200 rounded-xl overflow-hidden hover:border-theme-hover-border transition-all">
@@ -283,7 +283,7 @@ export function PhotoFolderView({
                     </div>
                     <ChevronDown className="w-4 h-4 sm:w-5 sm:h-5 text-slate-400 transition-transform ui-open:rotate-180 flex-shrink-0" />
                   </CollapsibleTrigger>
-                  
+
                   {/* Action Buttons - Below on Mobile, Same Line on Desktop */}
                   <div className="flex items-center gap-2">
                     {mode === "view" && onAudioTimelineClick && (
