@@ -8,7 +8,8 @@ const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
   title: "Capstone",
-  description: "Generated at McMaster University",
+  description: "Business Intelligence Tool",
+  manifest: "/manifest.json",
 };
 
 export default function RootLayout({
