@@ -113,5 +113,77 @@ export function chatSkills(fullReportMarkdown?: string) {
         return { status: 'SUCCESS', markdown: fullReportMarkdown };
       },
     }),
+
+    /**
+     * Propose inserting new content at a structural location in the report.
+     * Use when the user asks to WRITE something (conclusion, executive summary, intro, etc.)
+     * WITHOUT highlighting a specific place. The insertion location is inferred from report
+     * structure and standard conventions (e.g. conclusion goes at end).
+     */
+    propose_structure_insertion: tool({
+      description:
+        'Propose adding or modifying content to the report at a structural location. ' +
+        'WRITE (new content): Use insertLocation start_of_report, end_of_report, or after_heading. ' +
+        'EDIT (modify existing section): Use insertLocation replace_section with targetHeading set to the section name (e.g. "Conclusion"). This REPLACES the section content. ' +
+        'For edits like "make the conclusion more concise", "rewrite the intro", "shorten the executive summary" — use replace_section, NOT after_heading. ' +
+        'First call read_specific_sections to get the current section content, then generate the revised content and call this tool with replace_section. ',
+      
+      inputSchema: z.object({
+        // 1. Keep content first to ensure safe streaming
+        content: z
+          .string()
+          .describe('Full markdown to insert, including heading (e.g. ## Conclusion) and body. Use same heading level as neighboring sections.'),
+        
+        // 2. FLATTENED SCHEMA: Replace z.union with a simple enum
+        insertLocation: z
+          .enum(['start_of_report', 'end_of_report', 'after_heading', 'replace_section'])
+          .describe('Where to insert/replace: start_of_report (intro, overview), end_of_report (conclusion, appendix), after_heading (insert between sections), replace_section (REPLACE existing section content - use for edits like "make the conclusion more concise")'),
+          
+        // 3. Optional string instead of a nested object
+        targetHeading: z
+          .string()
+          .optional()
+          .describe('Required when insertLocation is after_heading or replace_section: the exact heading name from the report outline.'),
+          
+        reason: z
+          .string()
+          .optional()
+          .describe('Brief reason for this insertion'),
+      }),
+      
+      execute: async ({ content, insertLocation, targetHeading, reason }) => {
+        // Reconstruct the anchor object here so your React frontend 
+        // doesn't break when it reads `structureInsertCall.result.anchor`
+        const anchor = insertLocation === 'end_of_report'
+          ? 'end_of_report'
+          : insertLocation === 'start_of_report'
+            ? 'start_of_report'
+            : insertLocation === 'replace_section'
+              ? { replaceSection: targetHeading || '' }
+              : { afterHeading: targetHeading || '' };
+
+        // For replace_section, include original content so the diff popup can show before/after
+        let originalContent: string | undefined;
+        if (insertLocation === 'replace_section' && targetHeading) {
+          const normalized = targetHeading.trim().toLowerCase();
+          for (const [heading, sectionContent] of sectionMap) {
+            if (heading.toLowerCase() === normalized) {
+              originalContent = sectionContent;
+              break;
+            }
+          }
+        }
+
+        console.log('[ChatContext] propose_structure_insertion:', { anchor, contentLen: content.length, reason });
+        
+        return { 
+          status: 'SUCCESS', 
+          anchor, 
+          content, 
+          reason: reason ?? 'AI proposed insertion',
+          ...(originalContent !== undefined && { originalContent }),
+        };
+      },
+    }),
   };
 }

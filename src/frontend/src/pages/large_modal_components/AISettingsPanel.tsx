@@ -1,4 +1,5 @@
 import { Button } from "../ui_components/button";
+import { CardHeader } from "../ui_components/card";
 import { Label } from "../ui_components/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui_components/select";
 import { Slider } from "../ui_components/slider";

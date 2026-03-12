@@ -1,7 +1,7 @@
 import { AppHeader } from "./smart_components/AppHeader";
 import { NewProjectModal } from "./large_modal_components/NewProjectModal";
 import { Page } from "@/app/pages/config/routes";
-import { Project, PeerReview, User } from "@/frontend/types";
+import { Project, PeerReview, User, Report } from "@/frontend/types";
 import { Button } from "./ui_components/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "./ui_components/card";
 import { Badge } from "./ui_components/badge";
@@ -13,12 +13,14 @@ import {
   SelectValue,
 } from "./ui_components/select";
 import { Plus, FolderOpen, Camera, FileText, Clock, ArrowRight, TrendingUp, CheckCircle2, AlertCircle, UserCheck, Edit3, Star, CalendarClock } from "lucide-react";
-import { useState } from "react";
+import { useState, useMemo, useCallback } from "react";
 import { ProjectCard } from "./ui_components/ProjectCard";
 import { ReportCard } from "./ui_components/ReportCard";
 import { UpcomingReviewCard } from "./report_editing_components/UpcomingReviewCard";
 import { useEffect } from "react";
 import { useDelete } from "@/frontend/pages/hooks/useDelete";
+import { List } from "react-window";
+import { AutoSizer } from "react-virtualized-auto-sizer";
 
 interface DashboardPageProps {
   onNavigate: (page: Page) => void;
@@ -26,8 +28,6 @@ interface DashboardPageProps {
   onSelectProject: (project: Project) => void;
   onSelectReport: (reportId: number | string, isPeerReview?: boolean) => void;
   currentUser?: User;
-  peerReviews: PeerReview[];
-  handleRequestPeerReview: (reportId: number, reportTitle: string, projectName: string, assignedToId: number, assignedToName: string, notes: string) => void;
   onRoleSwitch?: (role: "manager" | "technician") => void;
 }
 
@@ -131,14 +131,9 @@ export function DashboardPage({
   onSelectProject,
   onSelectReport,
   currentUser,
-  peerReviews,
-  handleRequestPeerReview,
   onRoleSwitch
 }: DashboardPageProps) {
   const TEST_RUNNER_ORG_ID = "b5df0650-c7eb-4b49-afc0-b0640f6a741f";
-
-  console.log("Current User Org:", currentUser?.organizationId);
-  console.log("Target Org:", TEST_RUNNER_ORG_ID);
 
   // Force real data (disable mocks) as per user request
   const showMockData = false; // currentUser?.organizationId === TEST_RUNNER_ORG_ID;
@@ -146,6 +141,8 @@ export function DashboardPage({
   const [isNewProjectModalOpen, setIsNewProjectModalOpen] = useState(false);
   const [filterStatus, setFilterStatus] = useState("all");
   const [projectsList, setProjectsList] = useState<Project[]>([]); // Start empty, fetch on load
+  const [draftReports, setDraftReports] = useState<Report[]>([]);
+  const [peerReviews, setPeerReviews] = useState<PeerReview[]>([]);
   const [isLoadingProjects, setIsLoadingProjects] = useState(true);
 
   // Fetch Projects on Mount
@@ -172,6 +169,8 @@ export function DashboardPage({
 
         if (response.ok && data.projects) {
           setProjectsList(data.projects);
+          setDraftReports(Array.isArray(data.draftReports) ? data.draftReports : []);
+          setPeerReviews(Array.isArray(data.peerReviews) ? data.peerReviews : []);
         } else {
           console.error("Failed to fetch projects:", data.error);
           if (response.status === 404 && data.error.includes("User profile")) {
@@ -201,13 +200,42 @@ export function DashboardPage({
     return () => {
       document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
-  }, [currentUser, showMockData]);
+  }, [currentUser, showMockData, onLogout]);
 
-  const totalReports = projectsList.reduce((sum, p) => sum + p.reports, 0);
-  const totalPhotos = projectsList.reduce((sum, p) => sum + p.photos, 0);
-  const activeProjects = projectsList.filter(p => p.status === "Active").length;
+  const pendingPeerReviews = useMemo(
+    () => peerReviews.filter((r: PeerReview) => r.assignedToId === currentUser?.id && r.status === "pending"),
+    [peerReviews, currentUser?.id]
+  );
 
-  const handleCreateProject = async (newProject: any) => {
+  const activeProjectsList = useMemo(
+    () => projectsList.filter(p => p.status === "Active"),
+    [projectsList]
+  );
+
+  const completedProjectsList = useMemo(
+    () => projectsList.filter(p => p.status === "Completed"),
+    [projectsList]
+  );
+
+  const draftReportsList = useMemo(
+    () => (showMockData ? recentReports.filter(r => r.status === "Draft") : draftReports),
+    [showMockData, draftReports]
+  );
+
+  const upcomingReviewsList = useMemo(
+    () => (showMockData ? upcomingReviews : []),
+    [showMockData]
+  );
+
+  const handleSelectProject = useCallback((project: Project) => {
+    onSelectProject(project);
+  }, [onSelectProject]);
+
+  const handleSelectReport = useCallback((reportId: number | string, isPeerReview?: boolean) => {
+    onSelectReport(reportId, isPeerReview);
+  }, [onSelectReport]);
+
+  const handleCreateProject = useCallback(async (newProject: any) => {
     try {
       console.log("Creating project:", newProject);
 
@@ -250,8 +278,7 @@ export function DashboardPage({
 
       if (response.ok) {
         alert(`Project created! ID: ${data.project.id}`);
-        // Add to local state
-        setProjectsList([...projectsList, { ...newProject, id: data.project.id }]);
+        setProjectsList(prev => [...prev, { ...newProject, id: data.project.id }]);
       } else {
         alert(`Error: ${data.error}`);
       }
@@ -259,22 +286,21 @@ export function DashboardPage({
       console.error("Failed to create project:", error);
       alert("Failed to send request to backend");
     }
-  };
+  }, []);
 
-  const handleProjectStatusChange = (projectId: number, newStatus: string) => {
-    setProjectsList(projectsList.map(project =>
+  const handleProjectStatusChange = useCallback((projectId: number, newStatus: string) => {
+    setProjectsList(prev => prev.map(project =>
       project.id === projectId ? { ...project, status: newStatus } : project
     ));
-  };
+  }, []);
 
   const { deleteItem } = useDelete();
 
-  const handleDeleteProject = async (projectId: number | string) => {
+  const handleDeleteProject = useCallback(async (projectId: number | string) => {
     if (!confirm("Are you sure you want to delete this project? This will delete all reports, photos, and associated knowledge documents.")) return;
 
-    // 1. Optimistic Update
     const previousProjects = [...projectsList];
-    setProjectsList(projectsList.filter(p => p.id !== projectId));
+    setProjectsList(prev => prev.filter(p => p.id !== projectId));
 
     // 2. Call API
     // Only call API if it's a real project (string ID or valid number)
@@ -286,7 +312,13 @@ export function DashboardPage({
         setProjectsList(previousProjects); // Revert
       }
     });
-  };
+  }, [projectsList, deleteItem]);
+
+  const ROW_GAP = 12;
+  const PROJECT_ROW_HEIGHT = 75;
+  const REPORT_ROW_HEIGHT = 75;
+  const DRAFT_REPORT_ROW_HEIGHT = 60; // Compact for RHS column; 60+12=72px ensures no clipping of last item
+  const PEER_REVIEW_ROW_HEIGHT = 120;
 
   return (
     <div className="min-h-screen bg-slate-50">
@@ -307,145 +339,88 @@ export function DashboardPage({
                 <h1 className="text-white mb-1 text-xl sm:text-2xl lg:text-3xl font-bold">Welcome back, Engineer</h1>
                 <p className="text-white/90 text-sm sm:text-base">Manage your projects and generate AI-powered reports</p>
               </div>
-              <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
-                <Button
-                  size="lg"
-                  className="bg-white hover:bg-white/90 text-theme-primary rounded-lg shadow-md w-full sm:w-auto h-12 sm:h-auto font-semibold"
-                  onClick={() => setIsNewProjectModalOpen(true)}
-                >
-                  <Plus className="w-6 h-6 sm:w-7 sm:h-7 mr-2" />
-                  New Project
-                </Button>
-                <Button
-                  size="lg"
-                  variant="outline"
-                  className="lg:hidden bg-white/90 hover:bg-white border-white text-theme-primary rounded-lg shadow-md w-full h-12 font-semibold"
-                  onClick={() => onNavigate("capture-session")}
-                >
-                  <Camera className="w-6 h-6 mr-2" />
-                  Capture Session
-                </Button>
-              </div>
+              <Button
+
+                className="bg-white hover:bg-white/90 text-theme-primary rounded-lg shadow-md w-full sm:w-auto h-12 sm:h-auto font-semibold"
+                onClick={() => setIsNewProjectModalOpen(true)}
+              >
+                <Plus className="w-6 h-6 sm:w-7 sm:h-7 mr-2" />
+                New Project
+              </Button>
             </div>
           </Card>
         </div>
 
         {/* Peer Review Section - Only show if there are pending reviews */}
-        {peerReviews.filter(r => r.assignedToId === currentUser?.id && r.status === "pending").length > 0 && (
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6 mb-6 sm:mb-8">
-            {/* Peer Review - Left Side (2 columns) */}
-            <div className="lg:col-span-2">
+        {pendingPeerReviews.length > 0 && (
+          <div className="mb-6 sm:mb-8">
               <Card className="rounded-xl shadow-sm border-2 border-theme-primary bg-theme-primary-10">
                 <CardHeader className="p-3 sm:p-6">
                   <CardTitle className="flex items-center gap-2 text-sm sm:text-lg font-bold">
                     <UserCheck className="w-4 h-4 sm:w-5 sm:h-5 text-theme-secondary" />
                     Reports to Peer Review
                     <Badge className="bg-theme-primary text-white rounded-md ml-2 text-xs font-bold">
-                      {peerReviews.filter(r => r.assignedToId === currentUser?.id && r.status === "pending").length}
+                      {pendingPeerReviews.length}
                     </Badge>
                   </CardTitle>
                   <CardDescription className="text-xs sm:text-sm">
                     Colleagues have requested your review on these reports
                   </CardDescription>
                 </CardHeader>
-                <CardContent className="p-3 sm:p-6 pt-0">
-                  <div className="space-y-2 sm:space-y-3 max-h-[280px] sm:max-h-none overflow-y-auto">
-                    {peerReviews
-                      .filter(r => r.assignedToId === currentUser?.id && r.status === "pending")
-                      .map((review) => (
-                        <div
-                          key={review.id}
-                          className="group p-2.5 sm:p-4 bg-white border-2 border-theme-primary-30 rounded-lg sm:rounded-xl hover:border-theme-primary hover:shadow-md transition-all cursor-pointer"
-                          onClick={() => onSelectReport(review.reportId, true)}
-                        >
-                          <div className="flex items-start justify-between gap-2">
-                            <div className="flex-1 min-w-0">
-                              <h4 className="text-slate-900 mb-1 text-xs sm:text-base line-clamp-1">{review.reportTitle}</h4>
-                              <p className="text-[10px] sm:text-sm text-slate-600 mb-1.5 sm:mb-2 line-clamp-1">{review.projectName}</p>
-                              <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 text-[10px] sm:text-xs text-slate-600">
-                                <span className="line-clamp-1">By <span className="font-semibold">{review.requestedByName}</span></span>
-                                <span className="hidden sm:inline">•</span>
-                                <span>{review.requestDate}</span>
-                              </div>
-                              {review.requestNotes && (
-                                <div className="mt-1.5 sm:mt-2 p-1.5 sm:p-2 bg-slate-50 border border-slate-200 rounded-lg">
-                                  <p className="text-[10px] sm:text-xs text-slate-700 italic line-clamp-2">"{review.requestNotes}"</p>
-                                </div>
-                              )}
-                            </div>
-                            <ArrowRight className="w-3.5 h-3.5 sm:w-5 sm:h-5 text-theme-primary group-hover:translate-x-1 transition-transform flex-shrink-0" />
-                          </div>
-                        </div>
-                      ))}
-                  </div>
-                </CardContent>
-              </Card>
-            </div>
-
-            {/* Monthly Calendar - Right Side */}
-            <div className="hidden lg:block">
-              <Card className="rounded-xl shadow-sm border-2 border-theme-primary bg-white">
-                <CardHeader className="p-3 sm:p-4 pb-2">
-                  <CardTitle className="text-center text-base sm:text-lg font-bold text-theme-secondary">
-                    November 2025
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="p-3 sm:p-4 pt-2">
-                  {/* Calendar Grid */}
-                  <div className="space-y-2">
-                    {/* Day Headers */}
-                    <div className="grid grid-cols-7 gap-1">
-                      {['S', 'M', 'T', 'W', 'T', 'F', 'S'].map((day, i) => (
-                        <div key={i} className="text-center text-[10px] sm:text-xs font-semibold text-theme-primary py-1">
-                          {day}
-                        </div>
-                      ))}
-                    </div>
-
-                    {/* Calendar Days */}
-                    <div className="grid grid-cols-7 gap-1">
-                      {/* Empty cells for days before month starts (Nov 1, 2025 is Saturday) */}
-                      {[...Array(6)].map((_, i) => (
-                        <div key={`empty-${i}`} className="aspect-square"></div>
-                      ))}
-
-                      {/* Days of the month */}
-                      {[...Array(30)].map((_, i) => {
-                        const day = i + 1;
-                        const isToday = day === 23; // Nov 23, 2025
-                        const hasEvent = [10, 15, 25, 27].includes(day); // Sample event days
-
+                <CardContent className="p-3 sm:p-6 pt-0 flex flex-col flex-1 min-h-0">
+                  <div
+                    className="w-full min-w-0 flex-1 min-h-0 max-h-[35vh]"
+                    style={{ minHeight: pendingPeerReviews.length > 0 ? pendingPeerReviews.length * (PEER_REVIEW_ROW_HEIGHT + ROW_GAP) : 0 }}
+                  >
+                    <AutoSizer
+                      renderProp={({ width = 0, height = 0 }) => {
                         return (
-                          <div
-                            key={day}
-                            className={`aspect-square flex items-center justify-center text-xs sm:text-sm rounded-md transition-all cursor-pointer ${isToday
-                                ? 'bg-theme-primary text-white font-bold'
-                                : hasEvent
-                                  ? 'bg-theme-primary-20 text-theme-secondary font-semibold hover:bg-theme-primary-30'
-                                  : 'text-slate-700 hover:bg-slate-100'
-                              }`}
-                          >
-                            {day}
-                          </div>
+                          <List
+                            rowComponent={({ index, style, ...rowProps }) => {
+                              const reviews = (rowProps as unknown as { reviews: typeof pendingPeerReviews }).reviews;
+                              const review = reviews[index];
+                              if (!review) return null;
+                              return (
+                              <div style={{ ...style, width: "100%", boxSizing: "border-box" }} className="pr-0 pb-2 sm:pb-3">
+                                <div
+                                  className="group p-2.5 sm:p-4 bg-white border-2 border-theme-primary-30 rounded-lg sm:rounded-xl hover:border-theme-primary hover:shadow-md transition-all cursor-pointer w-full"
+                                  onClick={() => handleSelectReport(review.reportId, true)}
+                                >
+                                  <div className="flex items-start justify-between gap-2">
+                                    <div className="flex-1 min-w-0">
+                                      <h4 className="text-slate-900 mb-1 text-xs sm:text-base line-clamp-1">{review.reportTitle}</h4>
+                                      <p className="text-[10px] sm:text-sm text-slate-600 mb-1.5 sm:mb-2 line-clamp-1">{review.projectName}</p>
+                                      <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 text-[10px] sm:text-xs text-slate-600">
+                                        <span className="line-clamp-1">By <span className="font-semibold">{review.requestedByName}</span></span>
+                                        <span className="hidden sm:inline">•</span>
+                                        <span>{review.requestDate}</span>
+                                      </div>
+                                      {review.requestNotes && (
+                                        <div className="mt-1.5 sm:mt-2 p-1.5 sm:p-2 bg-slate-50 border border-slate-200 rounded-lg">
+                                          <p className="text-[10px] sm:text-xs text-slate-700 italic line-clamp-2">"{review.requestNotes}"</p>
+                                        </div>
+                                      )}
+                                    </div>
+                                    <ArrowRight className="w-3.5 h-3.5 sm:w-5 sm:h-5 text-theme-primary group-hover:translate-x-1 transition-transform flex-shrink-0" />
+                                  </div>
+                                </div>
+                              </div>
+                              );
+                            }}
+                            rowProps={{ reviews: pendingPeerReviews } as never}
+                            rowCount={pendingPeerReviews.length}
+                            rowHeight={PEER_REVIEW_ROW_HEIGHT + ROW_GAP}
+                            style={{
+                              width,
+                              height: Math.min(pendingPeerReviews.length * (PEER_REVIEW_ROW_HEIGHT + ROW_GAP), height),
+                            }}
+                          />
                         );
-                      })}
-                    </div>
-
-                    {/* Legend */}
-                    <div className="flex items-center justify-center gap-3 pt-2 text-[10px] text-slate-600">
-                      <div className="flex items-center gap-1">
-                        <div className="w-3 h-3 rounded-sm bg-theme-primary"></div>
-                        <span>Today</span>
-                      </div>
-                      <div className="flex items-center gap-1">
-                        <div className="w-3 h-3 rounded-sm bg-theme-primary-20"></div>
-                        <span>Events</span>
-                      </div>
-                    </div>
+                      }}
+                    />
                   </div>
                 </CardContent>
               </Card>
-            </div>
           </div>
         )}
 
@@ -457,23 +432,45 @@ export function DashboardPage({
                 <CardTitle className="text-base sm:text-xl font-bold">Projects</CardTitle>
                 <CardDescription className="text-xs sm:text-sm">All projects organized by status</CardDescription>
               </CardHeader>
-              <CardContent className="space-y-3 sm:space-y-4 p-2 sm:p-6 pt-1 sm:pt-0">
-                {/* Active Projects */}
+              <CardContent className="flex flex-col flex-1 min-h-0 space-y-3 sm:space-y-4 p-2 sm:p-6 pt-1 sm:pt-0">
                 {isLoadingProjects ? (
                   <div className="p-8 text-center text-slate-500">Loading projects...</div>
-                ) : projectsList.filter(p => p.status === "Active").length > 0 ? (
-                  <div>
+                ) : activeProjectsList.length > 0 ? (
+                  <div className="flex flex-col flex-1 min-h-0">
                     <h3 className="text-sm font-semibold text-slate-700 mb-2 px-1">Active Projects</h3>
-                    <div className="space-y-1.5 sm:space-y-3 max-h-[500px] overflow-y-auto">
-                      {projectsList.filter(p => p.status === "Active").map((project) => (
-                        <ProjectCard
-                          key={project.id}
-                          project={project}
-                          onClick={() => onSelectProject(project)}
-                          onStatusChange={handleProjectStatusChange}
-                          onDelete={handleDeleteProject}
-                        />
-                      ))}
+                    <div
+                      className="w-full min-w-0 flex-1 min-h-0 max-h-[50vh]"
+                      style={{ minHeight: activeProjectsList.length * (PROJECT_ROW_HEIGHT + ROW_GAP) }}
+                    >
+                      <AutoSizer
+                        renderProp={({ width = 0, height = 0 }) => {
+                          return (
+                            <List
+                              rowComponent={({ index, style, ...rowProps }) => {
+                                const project = (rowProps as unknown as { projects: Project[] }).projects[index];
+                                if (!project) return null;
+                                return (
+                                  <div style={{ ...style, width: "100%", boxSizing: "border-box" }} className="pr-0 pb-1.5 sm:pb-3">
+                                    <ProjectCard
+                                      project={project}
+                                      onSelectProject={handleSelectProject}
+                                      onStatusChange={handleProjectStatusChange}
+                                      onDelete={handleDeleteProject}
+                                    />
+                                  </div>
+                                );
+                              }}
+                              rowProps={{ projects: activeProjectsList } as never}
+                              rowCount={activeProjectsList.length}
+                              rowHeight={PROJECT_ROW_HEIGHT + ROW_GAP}
+                              style={{
+                                width,
+                                height: Math.min(activeProjectsList.length * (PROJECT_ROW_HEIGHT + ROW_GAP), height),
+                              }}
+                            />
+                          );
+                        }}
+                      />
                     </div>
                   </div>
                 ) : (
@@ -482,20 +479,42 @@ export function DashboardPage({
                   </div>
                 )}
 
-                {/* Completed Projects */}
-                {!isLoadingProjects && projectsList.filter(p => p.status === "Completed").length > 0 && (
-                  <div>
+                {!isLoadingProjects && completedProjectsList.length > 0 && (
+                  <div className="flex flex-col flex-1 min-h-0">
                     <h3 className="text-sm font-semibold text-slate-700 mb-2 px-1">Completed Projects</h3>
-                    <div className="space-y-1.5 sm:space-y-3 max-h-[500px] overflow-y-auto">
-                      {projectsList.filter(p => p.status === "Completed").map((project) => (
-                        <ProjectCard
-                          key={project.id}
-                          project={project}
-                          onClick={() => onSelectProject(project)}
-                          onStatusChange={handleProjectStatusChange}
-                          onDelete={handleDeleteProject}
-                        />
-                      ))}
+                    <div
+                      className="w-full min-w-0 flex-1 min-h-0 max-h-[50vh]"
+                      style={{ minHeight: completedProjectsList.length * (PROJECT_ROW_HEIGHT + ROW_GAP) }}
+                    >
+                      <AutoSizer
+                        renderProp={({ width = 0, height = 0 }) => {
+                          return (
+                            <List
+                              rowComponent={({ index, style, ...rowProps }) => {
+                                const project = (rowProps as unknown as { projects: Project[] }).projects[index];
+                                if (!project) return null;
+                                return (
+                                  <div style={{ ...style, width: "100%", boxSizing: "border-box" }} className="pr-0 pb-1.5 sm:pb-3">
+                                    <ProjectCard
+                                      project={project}
+                                      onSelectProject={handleSelectProject}
+                                      onStatusChange={handleProjectStatusChange}
+                                      onDelete={handleDeleteProject}
+                                    />
+                                  </div>
+                                );
+                              }}
+                              rowProps={{ projects: completedProjectsList } as never}
+                              rowCount={completedProjectsList.length}
+                              rowHeight={PROJECT_ROW_HEIGHT + ROW_GAP}
+                              style={{
+                                width,
+                                height: Math.min(completedProjectsList.length * (PROJECT_ROW_HEIGHT + ROW_GAP), height),
+                              }}
+                            />
+                          );
+                        }}
+                      />
                     </div>
                   </div>
                 )}
@@ -503,72 +522,125 @@ export function DashboardPage({
             </Card>
           </div>
 
-          {/* Recent Reports */}
-          <div className="space-y-4 sm:space-y-6">
-            {/* Draft Reports Needing Completion */}
-            <Card className="rounded-xl shadow-sm border-slate-200">
-              <CardHeader className="p-3 sm:p-4 pb-2">
+          {/* Recent Reports - RHS: both sections fit on same page, scrollable */}
+          <div className="flex flex-col flex-1 min-h-0 space-y-4 sm:space-y-6 overflow-hidden">
+            {/* Draft Reports Needing Completion - compact on wide screens so both sections fit */}
+            <Card className="rounded-xl shadow-sm border-slate-200 flex flex-col min-h-0 max-h-[50vh] lg:max-h-[38vh] overflow-hidden gap-2">
+              <CardHeader className="p-2 sm:p-3 pb-1 flex-shrink-0">
                 <CardTitle className="flex items-center gap-2 text-base sm:text-xl font-bold">
                   <Edit3 className="w-4 h-4 sm:w-5 sm:h-5 text-theme-primary" />
                   Draft Reports
                   <Badge className="bg-theme-primary text-white rounded-md ml-auto text-xs font-bold">
-                    {(showMockData ? recentReports : []).filter(r => r.status === "Draft").length}
+                    {draftReportsList.length}
                   </Badge>
                 </CardTitle>
                 <CardDescription className="text-xs sm:text-sm">Reports waiting to be completed</CardDescription>
               </CardHeader>
-              <CardContent className="p-3 sm:p-4 pt-2">
-                <div className="space-y-1.5 sm:space-y-2 max-h-[500px] overflow-y-auto">
-                  {(showMockData ? recentReports : []).filter(r => r.status === "Draft").map((report) => (
-                    <ReportCard
-                      key={report.id}
-                      report={report}
-                      onClick={() => onSelectReport(report.id)}
+              <CardContent className="p-2 sm:p-3 pt-0 flex flex-col flex-1 min-h-0 overflow-hidden [&:last-child]:pb-3">
+                {draftReportsList.length > 0 ? (
+                  <div
+                    className="w-full min-w-0 flex-1 min-h-0"
+                    style={{ minHeight: Math.min(draftReportsList.length * (DRAFT_REPORT_ROW_HEIGHT + ROW_GAP), 260) }}
+                  >
+                    <AutoSizer
+                      renderProp={({ width = 0, height = 0 }) => {
+                        const rowHeight = DRAFT_REPORT_ROW_HEIGHT + ROW_GAP;
+                        const totalHeight = draftReportsList.length * rowHeight;
+                        const listHeight = Math.min(totalHeight, height);
+                        return (
+                          <List
+                            rowComponent={({ index, style, ...rowProps }) => {
+                              const reports = (rowProps as unknown as { reports: typeof draftReportsList }).reports;
+                              const report = reports[index];
+                              if (!report) return null;
+                              return (
+                                <div style={{ ...style, width: "100%", boxSizing: "border-box" }} className="pr-0">
+                                  <ReportCard report={report} onSelectReport={handleSelectReport} compact />
+                                </div>
+                              );
+                            }}
+                            rowProps={{ reports: draftReportsList } as never}
+                            rowCount={draftReportsList.length}
+                            rowHeight={rowHeight}
+                            overscanCount={2}
+                            style={{
+                              width,
+                              height: listHeight,
+                              overflowX: "hidden",
+                              overflowY: "auto",
+                            }}
+                          />
+                        );
+                      }}
                     />
-                  ))}
-                  {(showMockData ? recentReports : []).filter(r => r.status === "Draft").length === 0 && (
-                    <div className="p-4 text-center text-sm text-slate-500">
-                      No draft reports
-                    </div>
-                  )}
-                </div>
+                  </div>
+                ) : (
+                  <div className="p-4 text-center text-sm text-slate-500">
+                    No draft reports
+                  </div>
+                )}
               </CardContent>
             </Card>
 
-            {/* Upcoming Reviews - AI Forecasted */}
-            <Card className="rounded-xl shadow-sm border-slate-200">
-              <CardHeader className="p-3 sm:p-6">
+            {/* Upcoming Reviews - AI Forecasted - compact on wide screens */}
+            <Card className="rounded-xl shadow-sm border-slate-200 flex flex-col min-h-0 max-h-[45vh] lg:max-h-[38vh] overflow-hidden">
+              <CardHeader className="p-3 sm:p-6 flex-shrink-0">
                 <CardTitle className="flex items-center gap-2 text-base sm:text-xl font-bold">
                   <CalendarClock className="w-4 h-4 sm:w-5 sm:h-5 text-theme-secondary" />
                   Upcoming Reviews
                 </CardTitle>
                 <CardDescription className="text-xs sm:text-sm">AI-forecasted reviews based on report patterns</CardDescription>
               </CardHeader>
-              <CardContent className="p-3 sm:p-6 pt-0">
-                <div className="space-y-2 sm:space-y-3 max-h-[280px] overflow-y-auto">
-                  {(showMockData ? upcomingReviews : []).map((review) => (
-                    <UpcomingReviewCard
-                      key={review.id}
-                      review={review}
+              <CardContent className="p-3 sm:p-6 pt-0 flex flex-col flex-1 min-h-0 overflow-hidden">
+                {upcomingReviewsList.length > 0 ? (
+                  <div
+                    className="w-full min-w-0 flex-1 min-h-0 overflow-auto"
+                    style={{ minHeight: upcomingReviewsList.length * (REPORT_ROW_HEIGHT + ROW_GAP) }}
+                  >
+                    <AutoSizer
+                      renderProp={({ width = 0, height = 0 }) => {
+                        return (
+                          <List
+                            rowComponent={({ index, style, ...rowProps }) => {
+                              const reviews = (rowProps as unknown as { reviews: typeof upcomingReviewsList }).reviews;
+                              const review = reviews[index];
+                              if (!review) return null;
+                              return (
+                                <div style={{ ...style, width: "100%", boxSizing: "border-box" }} className="pr-0 pb-2 sm:pb-3">
+                                  <UpcomingReviewCard review={review} />
+                                </div>
+                              );
+                            }}
+                            rowProps={{ reviews: upcomingReviewsList } as never}
+                            rowCount={upcomingReviewsList.length}
+                            rowHeight={REPORT_ROW_HEIGHT + ROW_GAP}
+                            style={{
+                              width,
+                              height: Math.min(upcomingReviewsList.length * (REPORT_ROW_HEIGHT + ROW_GAP), height),
+                            }}
+                          />
+                        );
+                      }}
                     />
-                  ))}
-                  {(showMockData ? upcomingReviews : []).length === 0 && (
-                    <div className="p-4 text-center text-sm text-slate-500">
-                      No upcoming reviews forecasted
-                    </div>
-                  )}
-                </div>
+                  </div>
+                ) : (
+                  <div className="p-4 text-center text-sm text-slate-500">
+                    No upcoming reviews forecasted
+                  </div>
+                )}
               </CardContent>
             </Card>
           </div>
         </div>
       </main>
 
-      <NewProjectModal
-        open={isNewProjectModalOpen}
-        onOpenChange={setIsNewProjectModalOpen}
-        onCreateProject={handleCreateProject}
-      />
+      {isNewProjectModalOpen && (
+        <NewProjectModal
+          open={true}
+          onOpenChange={setIsNewProjectModalOpen}
+          onCreateProject={handleCreateProject}
+        />
+      )}
     </div>
   );
 }

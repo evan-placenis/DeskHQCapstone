@@ -2,15 +2,21 @@
 
 import { useEditor, EditorContent } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
-import { Markdown } from 'tiptap-markdown' // You need to install this
+import { Markdown } from '@tiptap/markdown' // You need to install this
+import { Extension } from '@tiptap/core'
+import { Plugin } from '@tiptap/pm/state'
+import { Decoration, DecorationSet } from '@tiptap/pm/view'
 import { useEffect, useMemo, useState, useRef, forwardRef, useImperativeHandle, useCallback } from 'react'
 import {
     extractOutline,
     outlineToString,
     extractActiveSection,
     extractSectionsByHeading,
+    getPositionForInsertAnchor,
+    getRangeForReplaceSection as getRangeForReplaceSectionImpl,
     type OutlineEntry,
     type ActiveSectionInfo,
+    type InsertAnchor,
 } from '@/frontend/lib/editorContext'
 
 import { Table } from '@tiptap/extension-table'
@@ -45,6 +51,19 @@ const CustomImageExtension = Image.extend({
     name: 'image',
     draggable: true,
 
+    // 🔥 THE FIX: Aggressively force Tiptap to treat this as inline
+    inline: true,
+    group: 'inline',
+
+    // Official @tiptap/markdown: helpers has renderChildren, indent, wrapInBlock — no escape.
+    renderMarkdown: (node) => {
+        const escapeAlt = (s: string) => String(s ?? '').replace(/\\/g, '\\\\').replace(/\]/g, '\\]');
+        const escapeSrc = (s: string) => String(s ?? '').replace(/\\/g, '\\\\').replace(/\)/g, '\\)').replace(/\(/g, '\\(');
+        const alt = escapeAlt(node.attrs?.alt ?? '');
+        const src = escapeSrc(node.attrs?.src ?? '');
+        return `![${alt}](${src})`;
+    },
+
     addAttributes() {
         return {
             ...this.parent?.(),
@@ -52,12 +71,6 @@ const CustomImageExtension = Image.extend({
                 default: null,
                 // Look for data-src first (our safe storage), then src (legacy/standard)
                 parseHTML: element => element.getAttribute('data-src') || element.getAttribute('src'),
-                // Write UUID/URL to data-src, put a transparent placeholder in src
-                // This prevents the browser from making failed requests for UUID strings
-                renderHTML: attributes => ({
-                    'data-src': attributes.src,
-                    'src': 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7'
-                }),
             },
             alt: { default: null },
             title: { default: null },
@@ -66,13 +79,20 @@ const CustomImageExtension = Image.extend({
     // Support parsing legacy report formats alongside standard <img> tags
     parseHTML() {
         return [
-            { tag: 'img[src]' },
-            { tag: 'img[data-src]' },
+            { tag: 'img[data-src]' }, // Priority: Our custom HTML fallback
+            { tag: 'img[src]' }, // Standard HTML fallback
             { tag: 'div[data-type="report-image"]' }, // Legacy support
+            { tag: 'span[data-type="report-image"]' } // Catch any broken reports from our testing!
         ]
     },
+    // This handles the HTML generation for BOTH the DOM and the HTML Table Fallback
     renderHTML({ HTMLAttributes }) {
-        return ['span', { 'data-type': 'report-image', ...HTMLAttributes }]
+        return ['img', {
+            ...HTMLAttributes, 
+            'data-type': 'report-image',
+            'data-src': HTMLAttributes.src, // Store UUID safely
+            'src': 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7' // Transparent pixel prevents 404
+        }]
     },
     addNodeView() {
         return ReactNodeViewRenderer(ReportImageComponent)
@@ -98,6 +118,12 @@ export interface TiptapEditorHandle {
     getSelectionContext: () => SelectionContext | null;
     /** Replace the given range with new markdown (parsed and inserted). Use when accepting an AI edit. */
     replaceRange: (range: { from: number; to: number }, newMarkdown: string) => void;
+    /** Insert markdown at a position (for structure-based insertion, no selection). */
+    insertAtPosition: (pos: number, markdown: string) => void;
+    /** Resolve structural anchor to ProseMirror position for insertion. */
+    getInsertPositionForAnchor: (anchor: InsertAnchor) => number | null;
+    /** Get range (from, to) for replacing a section by heading name. */
+    getRangeForReplaceSection: (heading: string) => { from: number; to: number } | null;
     /** Collapse the selection so the next getSelectionContext() returns null (e.g. after using selection for an edit). */
     clearSelection: () => void;
     /** Map: returns the document outline (all headings) as structured entries */
@@ -112,6 +138,30 @@ export interface TiptapEditorHandle {
     getFullMarkdown: () => string;
 }
 
+/** Extension that shows a persistent highlight for a pinned selection range (survives blur when user clicks into chat) */
+function createPinnedHighlightExtension(getRange: () => { from: number; to: number } | null) {
+    return Extension.create({
+        name: 'pinnedHighlight',
+        addProseMirrorPlugins() {
+            return [
+                new Plugin({
+                    props: {
+                        decorations(state) {
+                            const range = getRange();
+                            if (!range || range.from >= range.to) return null;
+                            const { from, to } = range;
+                            const docSize = state.doc.content.size;
+                            if (from < 0 || to > docSize) return null;
+                            const deco = Decoration.inline(from, to, { class: 'pinned-selection-highlight' });
+                            return DecorationSet.create(state.doc, [deco]);
+                        },
+                    },
+                }),
+            ];
+        },
+    });
+}
+
 interface TiptapEditorProps {
     content: string; // This expects the Markdown string from your processNode
     editable?: boolean; //make everything editable
@@ -121,6 +171,8 @@ interface TiptapEditorProps {
     onRejectDiff?: () => void; // Callback when user rejects the diff
     /** Called when selection changes; used to pin selection so it survives blur (e.g. clicking into chat) */
     onSelectionChange?: (context: SelectionContext | null) => void;
+    /** When set, show a persistent highlight at this range (e.g. when user selected text then clicked into chat) */
+    pinnedSelectionRange?: { from: number; to: number } | null;
 }
 
 const SURROUNDING_CHARS = 500;
@@ -133,6 +185,7 @@ export const TiptapEditor = forwardRef<TiptapEditorHandle, TiptapEditorProps>(fu
     onAcceptDiff,
     onRejectDiff,
     onSelectionChange,
+    pinnedSelectionRange,
 }, ref) {
     // Store the original markdown when entering review mode to prevent infinite loops
     const originalMarkdownRef = useRef<string | null>(null);
@@ -143,9 +196,16 @@ export const TiptapEditor = forwardRef<TiptapEditorHandle, TiptapEditorProps>(fu
     const lastEmittedMarkdownRef = useRef<string | null>(null);
     const imageFileInputRef = useRef<HTMLInputElement | null>(null);
     const audioFileInputRef = useRef<HTMLInputElement | null>(null);
+    const pinnedRangeRef = useRef<{ from: number; to: number } | null>(null);
+    pinnedRangeRef.current = pinnedSelectionRange ?? null;
 
     // Determine if we're in review mode
     const isReviewMode = !!diffContent;
+
+    const pinnedHighlightExtension = useMemo(
+        () => createPinnedHighlightExtension(() => pinnedRangeRef.current),
+        [] // ref is stable; we update .current and dispatch to force re-render
+    );
 
     const editor = useEditor({
         immediatelyRender: false,
@@ -162,23 +222,10 @@ export const TiptapEditor = forwardRef<TiptapEditorHandle, TiptapEditorProps>(fu
             }),
             AdditionMark, // Add diff marks
             DeletionMark, // Add diff marks
-            Markdown.configure({
-                transformPastedText: true,
-                transformCopiedText: true,
-                // @ts-ignore
-                serializers: {
-                    image: (state: any, node: any) => {
-                        // Forces: ![Alt](Src)
-                        // Uses a safety check (|| '') to prevent crashes if attributes are missing
-                        const alt = state.esc(node.attrs.alt || '');
-                        const src = state.esc(node.attrs.src || '');
-                        state.write(`![${alt}](${src})`);
-                    }
-                }
-            }),   // <--- The Magic: Allows Tiptap to read/write Markdown
+            Markdown,   // <--- The Magic: Allows Tiptap to read/write Markdown
             // 2. Register Table (Configure it to allow resizing)
             Table.configure({
-                resizable: true,
+                resizable: false, // Disable resizing, this was causing issues with the table iamges not being displayed correctly
                 HTMLAttributes: {
                     class: 'my-table-class',
                 },
@@ -186,8 +233,10 @@ export const TiptapEditor = forwardRef<TiptapEditorHandle, TiptapEditorProps>(fu
             TableRow,
             TableHeader,
             TableCell,
+            pinnedHighlightExtension,
         ],
-        content: content, // Always start with the content prop
+        content: content,
+        contentType: 'markdown',
         editable: editable && !isReviewMode, // Disable editing in review mode
         editorProps: {
             attributes: {
@@ -221,7 +270,7 @@ export const TiptapEditor = forwardRef<TiptapEditorHandle, TiptapEditorProps>(fu
             if (isReviewMode || isUpdatingRef.current) return;
 
             // When user types, we extract the new Markdown
-            const newMarkdown = (editor.storage as any).markdown.getMarkdown();
+            const newMarkdown = editor.getMarkdown();
             // Track what we emitted so the content-sync effect can skip the echo
             lastEmittedMarkdownRef.current = newMarkdown;
             if (onUpdate) onUpdate(newMarkdown);
@@ -233,7 +282,7 @@ export const TiptapEditor = forwardRef<TiptapEditorHandle, TiptapEditorProps>(fu
         if (diffContent && editor && !originalMarkdownRef.current) {
             try {
                 // Get the current markdown from the editor BEFORE applying diff
-                const currentMarkdown = (editor.storage as any).markdown.getMarkdown();
+                const currentMarkdown = editor.getMarkdown();
                 const original = currentMarkdown || content;
                 originalMarkdownRef.current = original;
                 setOriginalMarkdown(original); // Update state to trigger useMemo
@@ -270,7 +319,7 @@ export const TiptapEditor = forwardRef<TiptapEditorHandle, TiptapEditorProps>(fu
             // Tiptap's Markdown extension will parse the Markdown and the HTML spans
             // The AdditionMark and DeletionMark extensions will parse the spans into marks
             if (diffMarkdown) {
-                editor.commands.setContent(diffMarkdown);
+                editor.commands.setContent(diffMarkdown, { contentType: 'markdown' });
             }
         } finally {
             // Reset the flag after update completes
@@ -293,7 +342,7 @@ export const TiptapEditor = forwardRef<TiptapEditorHandle, TiptapEditorProps>(fu
         // Get current editor state
         let currentMarkdown = "";
         try {
-            currentMarkdown = (editor.storage as any).markdown.getMarkdown();
+            currentMarkdown = editor.getMarkdown();
         } catch (e) {
             console.warn("Tiptap storage not ready yet");
             return;
@@ -301,9 +350,16 @@ export const TiptapEditor = forwardRef<TiptapEditorHandle, TiptapEditorProps>(fu
 
         // Only apply if the incoming content is genuinely different from what's in the editor
         if (content && content !== currentMarkdown) {
-            editor.commands.setContent(content);
+            editor.commands.setContent(content, { contentType: 'markdown' });
         }
     }, [content, editor, isReviewMode]);
+
+    // Force ProseMirror view to re-render when pinned range changes (so decoration appears/disappears)
+    useEffect(() => {
+        if (!editor) return;
+        const tr = editor.state.tr.setMeta('addToHistory', false);
+        editor.view.dispatch(tr);
+    }, [editor, pinnedSelectionRange]);
 
     // Notify parent when selection changes so we can "pin" it (survives blur when user clicks into chat)
     useEffect(() => {
@@ -320,10 +376,9 @@ export const TiptapEditor = forwardRef<TiptapEditorHandle, TiptapEditorProps>(fu
             let fullMarkdown = '';
             let markdown = '';
             try {
-                const storage = (editor.storage as any).markdown;
-                fullMarkdown = storage?.getMarkdown() ?? '';
+                fullMarkdown = editor.getMarkdown() ?? '';
                 const slice = doc.slice(from, to);
-                markdown = storage?.serializer?.serialize(slice.content) ?? selection;
+                markdown = (editor as any).markdown?.serialize?.({ type: 'doc', content: slice.content.toJSON() }) ?? selection;
             } catch {
                 return null;
             }
@@ -369,10 +424,9 @@ export const TiptapEditor = forwardRef<TiptapEditorHandle, TiptapEditorProps>(fu
                 let fullMarkdown = '';
                 let markdown = '';
                 try {
-                    const storage = (editor.storage as any).markdown;
-                    fullMarkdown = storage?.getMarkdown() ?? '';
+                    fullMarkdown = editor.getMarkdown() ?? '';
                     const slice = doc.slice(from, to);
-                    markdown = storage?.serializer?.serialize(slice.content) ?? selection;
+                    markdown = (editor as any).markdown?.serialize?.({ type: 'doc', content: slice.content.toJSON() }) ?? selection;
                 } catch {
                     return null;
                 }
@@ -388,18 +442,28 @@ export const TiptapEditor = forwardRef<TiptapEditorHandle, TiptapEditorProps>(fu
                 if (!editor || isReviewMode) return;
                 try {
                     editor.chain().focus().setTextSelection({ from: range.from, to: range.to }).deleteSelection().run();
-                    // tiptap-markdown extends commands with insertContentAt(position, markdownString)
-                    const commands = editor.commands as { insertContentAt?: (pos: number, content: string) => boolean };
-                    if (typeof commands.insertContentAt === "function") {
-                        commands.insertContentAt(range.from, newMarkdown);
-                    } else {
-                        editor.commands.insertContent(newMarkdown);
-                    }
+                    editor.commands.insertContentAt(range.from, newMarkdown, { contentType: 'markdown' });
                 } catch (e) {
                     console.warn("replaceRange failed, inserting as plain text", e);
                     editor.chain().focus().setTextSelection({ from: range.from, to: range.to }).deleteSelection().run();
-                    editor.commands.insertContent(newMarkdown);
+                    editor.commands.insertContent(newMarkdown, { contentType: 'markdown' });
                 }
+            },
+            insertAtPosition(pos: number, markdown: string) {
+                if (!editor || isReviewMode) return;
+                try {
+                    editor.commands.insertContentAt(pos, markdown, { contentType: 'markdown' });
+                } catch (e) {
+                    console.warn("insertAtPosition failed:", e);
+                }
+            },
+            getInsertPositionForAnchor(anchor: InsertAnchor) {
+                if (!editor) return null;
+                return getPositionForInsertAnchor(editor, anchor);
+            },
+            getRangeForReplaceSection(heading: string) {
+                if (!editor) return null;
+                return getRangeForReplaceSectionImpl(editor, heading);
             },
             clearSelection() {
                 if (!editor || isReviewMode) return;
@@ -425,7 +489,7 @@ export const TiptapEditor = forwardRef<TiptapEditorHandle, TiptapEditorProps>(fu
             getFullMarkdown() {
                 if (!editor) return '';
                 try {
-                    return (editor.storage as any).markdown.getMarkdown() ?? '';
+                    return editor.getMarkdown() ?? '';
                 } catch {
                     return '';
                 }
@@ -522,25 +586,41 @@ export const TiptapEditor = forwardRef<TiptapEditorHandle, TiptapEditorProps>(fu
                     <DropdownMenu>
                         <DropdownMenuTrigger asChild>
                             <button
-                                className="px-2 border rounded flex items-center gap-1"
+                                className={`px-2 border rounded flex items-center gap-1 ${editor.isActive('heading') ? 'bg-slate-100 border-slate-300' : ''}`}
                                 title="Heading level"
                             >
                                 <HeadingIcon className="w-4 h-4" />
-                                <span>Heading</span>
+                                <span>
+                                    {editor.isActive('heading')
+                                        ? `Heading ${editor.getAttributes('heading').level}`
+                                        : 'Heading'}
+                                </span>
                                 <ChevronDown className="w-3.5 h-3.5 opacity-70" />
                             </button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="start">
-                            <DropdownMenuItem onClick={() => editor.chain().focus().setParagraph().run()}>
+                            <DropdownMenuItem
+                                onClick={() => editor.chain().focus().setParagraph().run()}
+                                className={!editor.isActive('heading') ? 'bg-slate-50 text-slate-600' : ''}
+                            >
                                 Paragraph
                             </DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => editor.chain().focus().toggleHeading({ level: 1 }).run()}>
+                            <DropdownMenuItem
+                                onClick={() => editor.chain().focus().toggleHeading({ level: 1 }).run()}
+                                className={editor.isActive('heading', { level: 1 }) ? 'bg-slate-50 text-slate-600' : ''}
+                            >
                                 Heading 1
                             </DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()}>
+                            <DropdownMenuItem
+                                onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()}
+                                className={editor.isActive('heading', { level: 2 }) ? 'bg-slate-50 text-slate-600' : ''}
+                            >
                                 Heading 2
                             </DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => editor.chain().focus().toggleHeading({ level: 3 }).run()}>
+                            <DropdownMenuItem
+                                onClick={() => editor.chain().focus().toggleHeading({ level: 3 }).run()}
+                                className={editor.isActive('heading', { level: 3 }) ? 'bg-slate-50 text-slate-600' : ''}
+                            >
                                 Heading 3
                             </DropdownMenuItem>
                         </DropdownMenuContent>

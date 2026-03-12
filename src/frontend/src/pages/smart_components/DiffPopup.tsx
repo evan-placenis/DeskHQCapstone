@@ -1,10 +1,14 @@
 "use client";
 
 import { useEffect, useRef, useMemo } from 'react';
-import { diff_match_patch, Diff } from 'diff-match-patch';
+import { diff_match_patch } from 'diff-match-patch';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
+import rehypeRaw from 'rehype-raw';
 import { Button } from '../ui_components/button';
 import { Check, X } from 'lucide-react';
 import type { EditSuggestion } from '../report_editing_components/AIChatSidebar';
+import { computeDiffDocument } from './diffUtils';
 
 interface DiffPopupProps {
   suggestion: EditSuggestion;
@@ -15,10 +19,12 @@ interface DiffPopupProps {
 }
 
 /**
- * DiffPopup - Cursor-style floating overlay for reviewing AI edit suggestions
- * 
- * Uses Google's diff-match-patch library to compute and display diffs.
- * Shows deletions in red with strikethrough, additions in green.
+ * DiffPopup - Floating overlay for reviewing AI edit suggestions
+ *
+ * Uses computeDiffDocument (line-aware, structure-preserving) to produce
+ * markdown with inline diff spans. Renders with ReactMarkdown + rehypeRaw
+ * so markdown is formatted (headings, bold, lists) and diff spans show
+ * red strikethrough (deletions) / green (additions).
  */
 export function DiffPopup({
   suggestion,
@@ -53,72 +59,26 @@ export function DiffPopup({
     };
   }, [onDismiss]);
 
-  // Compute the diff using diff-match-patch
-  const diffs = useMemo(() => {
-    const dmp = new diff_match_patch();
-    const result = dmp.diff_main(suggestion.originalText, suggestion.suggestedText);
-    dmp.diff_cleanupSemantic(result);
-    return result;
-  }, [suggestion.originalText, suggestion.suggestedText]);
+  // Structure-aware diff: markdown with inline spans (same as TiptapEditor diff view)
+  const diffMarkdown = useMemo(
+    () => computeDiffDocument(suggestion.originalText, suggestion.suggestedText),
+    [suggestion.originalText, suggestion.suggestedText]
+  );
 
-  // Calculate stats
+  // Word-count stats for header
   const stats = useMemo(() => {
+    const dmp = new diff_match_patch();
+    const diffs = dmp.diff_main(suggestion.originalText, suggestion.suggestedText);
+    dmp.diff_cleanupSemantic(diffs);
     let added = 0;
     let removed = 0;
-
     for (const [op, text] of diffs) {
       const wordCount = text.split(/\s+/).filter(w => w.length > 0).length;
       if (op === 1) added += wordCount;
       if (op === -1) removed += wordCount;
     }
-
     return { added, removed };
-  }, [diffs]);
-
-  // Render diff with styling
-  const renderDiff = (diffs: Diff[]) => {
-    return diffs.map(([op, text], index) => {
-      // Handle newlines by preserving them
-      const parts = text.split('\n');
-      
-      return parts.map((part, partIndex) => {
-        const isLastPart = partIndex === parts.length - 1;
-        const key = `${index}-${partIndex}`;
-
-        if (op === -1) {
-          // Deletion - red background with strikethrough
-          return (
-            <span key={key}>
-              <del className="bg-red-100 text-red-800 px-0.5 rounded-sm line-through decoration-red-500">
-                {part}
-              </del>
-              {!isLastPart && <br />}
-            </span>
-          );
-        }
-        
-        if (op === 1) {
-          // Addition - green background
-          return (
-            <span key={key}>
-              <ins className="bg-green-100 text-green-800 px-0.5 rounded-sm no-underline">
-                {part}
-              </ins>
-              {!isLastPart && <br />}
-            </span>
-          );
-        }
-        
-        // Unchanged text
-        return (
-          <span key={key}>
-            {part}
-            {!isLastPart && <br />}
-          </span>
-        );
-      });
-    });
-  };
+  }, [suggestion.originalText, suggestion.suggestedText]);
 
   // Default position if not provided (center of viewport)
   const popupStyle: React.CSSProperties = position
@@ -156,7 +116,11 @@ export function DiffPopup({
           <div className="flex items-center justify-between">
             <div>
               <h3 className="font-semibold text-slate-900 text-sm">
-                Suggested Edit
+                {suggestion.insertAnchor && typeof suggestion.insertAnchor === 'object' && 'replaceSection' in suggestion.insertAnchor
+                  ? 'Suggested Edit'
+                  : suggestion.insertAnchor
+                    ? 'Suggested Insertion'
+                    : 'Suggested Edit'}
               </h3>
               <p className="text-xs text-slate-500 mt-0.5">
                 {suggestion.sectionHeading ?? 'Selection'}
@@ -186,10 +150,16 @@ export function DiffPopup({
           </div>
         )}
 
-        {/* Diff Content */}
-        <div className="px-4 py-4 overflow-y-auto max-h-[50vh]">
-          <div className="prose prose-sm max-w-none text-slate-800 leading-relaxed whitespace-pre-wrap font-mono text-xs">
-            {renderDiff(diffs)}
+        {/* Diff content: formatted markdown with diff spans (red strikethrough / green) */}
+        <div className="px-4 py-4 overflow-y-auto max-h-[50vh] diff-popup-content">
+          <div className="prose prose-sm max-w-none text-slate-800 leading-relaxed
+            prose-p:my-2 prose-ul:my-2 prose-li:my-0 prose-ol:my-2
+            prose-headings:font-semibold prose-headings:text-slate-900 prose-headings:mt-4 prose-headings:mb-2
+            prose-strong:text-slate-900 prose-strong:font-semibold
+            prose-pre:bg-slate-100 prose-pre:p-3 prose-pre:rounded-lg prose-pre:text-xs">
+            <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeRaw]}>
+              {diffMarkdown || '(no changes)'}
+            </ReactMarkdown>
           </div>
         </div>
 
