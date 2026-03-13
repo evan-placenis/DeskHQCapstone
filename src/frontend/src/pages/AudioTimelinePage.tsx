@@ -48,6 +48,19 @@ export interface TimelinePhoto {
 export type ProcessingStatus = "idle" | "transcribing" | "matching" | "complete";
 
 // ---------------------------------------------------------------------------
+// API response shape
+// ---------------------------------------------------------------------------
+
+interface AudioTimelineApiResponse {
+  sessionId: string | null;
+  audioUrl: string | null;
+  audioStoragePath: string | null;
+  audioDurationSeconds: number | null;
+  segments: Array<{ text: string; timestampMs: number }>;
+  photos: TimelinePhoto[];
+}
+
+// ---------------------------------------------------------------------------
 // Props
 // ---------------------------------------------------------------------------
 
@@ -55,23 +68,8 @@ interface AudioTimelinePageProps {
   onNavigate: (page: Page) => void;
   onLogout: () => void;
   onBack: () => void;
-  projectName: string;
-  /** Absolute start time of the capture session (used for clock-style timestamps) */
-  sessionStartTime?: Date;
-  /** Transcript segments ordered by time */
-  segments?: TranscriptSegment[];
-  /** Photos taken during the session */
-  photos?: TimelinePhoto[];
-  /** Processing pipeline status — drives left sidebar indicators */
-  processingStatus?: ProcessingStatus;
-  /** How many segments were linked to photos (shown in "complete" badge) */
-  linkedSegmentCount?: number;
-  /** AI-generated descriptions keyed by photo id — fed into report generation later */
-  descriptions?: Record<string | number, string>;
-  /** URL to the real audio file for this session (enables playback) */
-  audioUrl?: string;
-  /** Total duration in seconds from server (instant display before element loads) */
-  audioDurationSeconds?: number | null;
+  projectId: string | null;
+  folderName: string | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -110,22 +108,73 @@ export function AudioTimelinePage({
   onNavigate,
   onLogout,
   onBack,
-  projectName,
-  sessionStartTime,
-  segments,
-  photos,
-  processingStatus,
-  linkedSegmentCount,
-  descriptions,
-  audioUrl,
-  audioDurationSeconds,
+  projectId,
+  folderName,
 }: AudioTimelinePageProps) {
+  const [sessionData, setSessionData] = useState<AudioTimelineApiResponse | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [fetchError, setFetchError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!projectId || !folderName) return;
+
+    let cancelled = false;
+    setLoading(true);
+    setFetchError(null);
+
+    fetch(
+      `/api/project/${encodeURIComponent(projectId)}/audio-timeline?folderName=${encodeURIComponent(folderName)}`
+    )
+      .then(async (res) => {
+        if (!res.ok) {
+          const body = await res.json().catch(() => ({}));
+          throw new Error(body.error || `HTTP ${res.status}`);
+        }
+        return res.json();
+      })
+      .then((data: AudioTimelineApiResponse) => {
+        if (!cancelled) setSessionData(data);
+      })
+      .catch((err) => {
+        if (!cancelled) setFetchError(err.message);
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+
+    return () => { cancelled = true; };
+  }, [projectId, folderName]);
+
+  const projectName = projectId ? `Project #${projectId}` : "Audio Timeline";
+  const audioUrl = sessionData?.audioUrl ?? undefined;
+  const audioDurationSeconds = sessionData?.audioDurationSeconds ?? undefined;
+  const photos = sessionData?.photos;
+  const segments: TranscriptSegment[] | undefined = useMemo(() => {
+    if (!sessionData || sessionData.segments.length === 0) return undefined;
+    const raw = sessionData.segments;
+    const dur = sessionData.audioDurationSeconds;
+    return raw.map((seg, idx) => ({
+      id: `seg-${idx}`,
+      text: seg.text,
+      timestamp: seg.timestampMs / 1000,
+      endTime:
+        (idx < raw.length - 1
+          ? raw[idx + 1].timestampMs
+          : dur != null
+            ? dur * 1000
+            : seg.timestampMs + 10000) / 1000,
+    }));
+  }, [sessionData]);
+  const processingStatus = (segments ? "complete" : undefined) as ProcessingStatus | undefined;
+  const sessionStartTime: Date | undefined = undefined;
+  const linkedSegmentCount = segments?.filter((s) => s.linkedPhotoId != null).length;
+  const descriptions: Record<string | number, string> | undefined = undefined;
+
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
 
-  // Use server duration for instant display as soon as session data loads
   useEffect(() => {
     const secs = audioDurationSeconds != null ? Number(audioDurationSeconds) : NaN;
     if (Number.isFinite(secs) && secs > 0) setDuration(secs);
@@ -234,6 +283,16 @@ export function AudioTimelinePage({
   // -------------------------------------------------------------------
   return (
     <div className="min-h-screen bg-slate-50">
+      {loading && (
+        <div className="fixed top-0 left-0 right-0 z-50 h-1 bg-blue-100">
+          <div className="h-full bg-blue-500 animate-pulse w-1/2" />
+        </div>
+      )}
+      {fetchError && (
+        <div className="bg-red-50 border border-red-200 text-red-700 text-sm px-4 py-2 text-center">
+          Failed to load session data: {fetchError}
+        </div>
+      )}
       {audioUrl && (
         <audio ref={audioRef} src={audioUrl} preload="metadata" className="hidden" />
       )}
@@ -533,7 +592,7 @@ export function AudioTimelinePage({
               <CardHeader className="flex flex-row items-center justify-between">
                 <CardTitle>Report Outline</CardTitle>
                 <p className="text-xs text-slate-500">
-                  Update photos and add notes to create your report.
+                  Update photos to create your report.
                 </p>
               </CardHeader>
               <CardContent>

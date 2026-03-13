@@ -17,6 +17,8 @@ import { EditOrchestrator } from '../AI_Skills/orchestrators/EditOrchestrator';
 import { ReportOrchestrator } from '../AI_Skills/orchestrators/ReportOrchestrator';
 import { CaptureOrchestrator } from '../AI_Skills/orchestrators/CaptureOrchestrator';
 import { CaptureService } from '../Services/CaptureService';
+import { ProjectService } from '../Services/ProjectService';
+import { SupabaseCaptureSessionRepository } from '../infrastructure/repositories/supabase_repository/SupabaseCaptureSessionRepository';
 import { KnowledgeService } from '../Services/KnowledgeServivce';
 import { UserService } from '../Services/UserService';
 import { StorageService } from '../Services/StorageService';
@@ -65,6 +67,8 @@ export class Container {
   private static _reportOrchestrator: ReportOrchestrator;
   private static _captureOrchestrator: CaptureOrchestrator;
   private static _captureService: CaptureService;
+  private static _projectService: ProjectService;
+  private static _captureSessionRepo: SupabaseCaptureSessionRepository;
 
   private static _specAgent: SpecAgent;
   private static _sitePhotoAgent: SitePhotoAgent;
@@ -193,9 +197,32 @@ export class Container {
 
   static get captureService() {
     if (!this._captureService) {
-      this._captureService = new CaptureService(this.captureOrchestrator);
+      this._captureService = new CaptureService(
+        this.captureOrchestrator,
+        this.captureSessionRepo,
+        this.projectService,
+        this.storageService
+      );
     }
     return this._captureService;
+  }
+
+  static get projectService() {
+    if (!this._projectService) {
+      this._projectService = new ProjectService(this.projectRepo);
+    }
+    return this._projectService;
+  }
+
+  static get captureSessionRepo() {
+    if (!this._captureSessionRepo) {
+      this._captureSessionRepo = new SupabaseCaptureSessionRepository();
+    }
+    return this._captureSessionRepo;
+  }
+
+  static get captureSessionService() {
+    return this.captureService;
   }
 
   static get reportService() {
