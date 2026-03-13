@@ -1,14 +1,17 @@
 "use client";
-
+//sinan made this
 import { useState, useRef, useEffect, useCallback } from "react";
 import { Button } from "./ui_components/button";
 import { Input } from "./ui_components/input";
-import { Textarea } from "./ui_components/textarea";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui_components/tabs";
-import { Camera, X, Mic, Square, FileText, Loader2, CheckCircle2, Search, Plus } from "lucide-react";
+import { Camera, X, Mic, Loader2, CheckCircle2, Search, Plus, Check } from "lucide-react";
 import { Project } from "@/frontend/types";
 
 type Step = "capture" | "choose-project" | "uploading" | "success";
+
+interface TranscriptEntry {
+  text: string;
+  timestampMs: number;
+}
 
 interface CapturedPhoto {
   id: number;
@@ -31,10 +34,11 @@ export function CaptureSessionPage({
   const [audioStartTimeMs, setAudioStartTimeMs] = useState<number>(0);
   const [durationSec, setDurationSec] = useState(0);
   const [photos, setPhotos] = useState<CapturedPhoto[]>([]);
-  const [notesText, setNotesText] = useState("");
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [uploadProgress, setUploadProgress] = useState<"idle" | "uploading" | "done" | "error">("idle");
+
+  const [transcriptEntries, setTranscriptEntries] = useState<TranscriptEntry[]>([]);
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -42,6 +46,8 @@ export function CaptureSessionPage({
   const audioChunksRef = useRef<Blob[]>([]);
   const durationIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const photoIdRef = useRef(0);
+  const recognitionRef = useRef<any>(null);
+  const recordingStartMsRef = useRef<number>(0);
 
   const [projects, setProjects] = useState<Project[]>([]);
   const [projectsLoading, setProjectsLoading] = useState(false);
@@ -107,10 +113,41 @@ export function CaptureSessionPage({
     recorder.ondataavailable = (e) => e.data.size && audioChunksRef.current.push(e.data);
     recorder.start(1000);
     mediaRecorderRef.current = recorder;
-    setAudioStartTimeMs(Date.now());
+
+    const startMs = Date.now();
+    recordingStartMsRef.current = startMs;
+    setAudioStartTimeMs(startMs);
     setDurationSec(0);
+    setTranscriptEntries([]);
     durationIntervalRef.current = setInterval(() => setDurationSec((s) => s + 1), 1000);
     setIsRecording(true);
+
+    const SpeechRecognitionCtor =
+      (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (SpeechRecognitionCtor) {
+      const recognition = new SpeechRecognitionCtor();
+      recognition.continuous = true;
+      recognition.interimResults = false;
+      recognition.lang = "en-US";
+      recognition.onresult = (event: any) => {
+        for (let i = event.resultIndex; i < event.results.length; i++) {
+          if (event.results[i].isFinal) {
+            const text = event.results[i][0].transcript.trim();
+            if (text) {
+              setTranscriptEntries((prev) => [
+                ...prev,
+                { text, timestampMs: Date.now() - recordingStartMsRef.current },
+              ]);
+            }
+          }
+        }
+      };
+      recognition.onerror = (e: any) => {
+        if (e.error !== "no-speech") console.warn("SpeechRecognition error:", e.error);
+      };
+      recognition.start();
+      recognitionRef.current = recognition;
+    }
   }, [supportedMimeType]);
 
   const stopRecording = useCallback(() => {
@@ -120,6 +157,8 @@ export function CaptureSessionPage({
     }
     mediaRecorderRef.current?.stop();
     mediaRecorderRef.current = null;
+    recognitionRef.current?.stop();
+    recognitionRef.current = null;
     setIsRecording(false);
   }, []);
 
@@ -167,7 +206,7 @@ export function CaptureSessionPage({
     fetch("/api/project/list")
       .then((r) => r.json())
       .then((data) => (data.projects ? setProjects(data.projects) : null))
-      .catch(() => {})
+      .catch(() => { })
       .finally(() => setProjectsLoading(false));
   }, [stopRecording]);
 
@@ -229,7 +268,9 @@ export function CaptureSessionPage({
         form.append("photos", p.blob, `photo-${i}.jpg`);
         form.append("taken_at_ms", String(p.takenAtMs));
       });
-      if (notesText) form.set("notes_text", notesText);
+      if (transcriptEntries.length > 0) {
+        form.set("transcript_segments", JSON.stringify(transcriptEntries));
+      }
 
       const uploadRes = await fetch(`/api/capture-sessions/${sessionId}/upload`, {
         method: "POST",
@@ -247,7 +288,7 @@ export function CaptureSessionPage({
       setUploadError(e instanceof Error ? e.message : "Upload failed");
       setUploadProgress("error");
     }
-  }, [sessionId, selectedProjectId, photos, notesText, getAudioBlob, onSuccessRedirect]);
+  }, [sessionId, selectedProjectId, photos, transcriptEntries, getAudioBlob, onSuccessRedirect]);
 
   const formatDuration = (s: number) => {
     const m = Math.floor(s / 60);
@@ -330,18 +371,29 @@ export function CaptureSessionPage({
             <div className="flex justify-center py-8"><Loader2 className="w-6 h-6 animate-spin text-slate-400" /></div>
           ) : (
             <div className="space-y-2">
-              {filteredProjects.map((p) => (
-                <button
-                  key={String(p.id)}
-                  onClick={() => setSelectedProjectId(String(p.id))}
-                  className={`w-full p-3 rounded-xl border-2 text-left transition-all ${
-                    selectedProjectId === String(p.id) ? "border-theme-action-primary bg-theme-primary-5" : "border-slate-200 hover:border-slate-300"
-                  }`}
-                >
-                  <span className="font-medium text-slate-900">{p.name}</span>
-                  <span className="block text-xs text-slate-500">{p.status}</span>
-                </button>
-              ))}
+              {filteredProjects.map((p) => {
+                const isSelected = selectedProjectId === String(p.id);
+                return (
+                  <button
+                    key={String(p.id)}
+                    onClick={() => setSelectedProjectId(String(p.id))}
+                    className={`w-full p-3 rounded-xl border-2 text-left transition-all flex items-center justify-between ${isSelected
+                        ? "border-theme-action-primary bg-theme-primary/15 ring-2 ring-theme-action-primary/50 shadow-sm"
+                        : "border-slate-200 hover:border-slate-300"
+                      }`}
+                  >
+                    <div>
+                      <span className="font-medium text-slate-900">{p.name}</span>
+                      <span className="block text-xs text-slate-500">{p.status}</span>
+                    </div>
+                    {isSelected && (
+                      <div className="flex-shrink-0 w-6 h-6 rounded-full bg-theme-action-primary flex items-center justify-center">
+                        <Check className="w-4 h-4 text-white" />
+                      </div>
+                    )}
+                  </button>
+                );
+              })}
             </div>
           )}
         </div>
@@ -414,78 +466,58 @@ export function CaptureSessionPage({
         </div>
       )}
 
-      <Tabs defaultValue="camera" className="flex-1 flex flex-col min-h-0">
-        <TabsList className="w-full grid grid-cols-2 rounded-none border-b border-slate-700 bg-slate-900/95 shrink-0">
-          <TabsTrigger value="camera" className="rounded-none border-b-2 border-transparent data-[state=active]:border-theme-primary data-[state=active]:bg-transparent text-white">
-            <Camera className="w-4 h-4 mr-2" />
-            Camera
-          </TabsTrigger>
-          <TabsTrigger value="notes" className="rounded-none border-b-2 border-transparent data-[state=active]:border-theme-primary data-[state=active]:bg-transparent text-white">
-            <FileText className="w-4 h-4 mr-2" />
-            Notes
-          </TabsTrigger>
-        </TabsList>
-        <TabsContent value="camera" className="flex-1 flex flex-col min-h-0 m-0 p-0">
-          <div className="flex-1 relative bg-black min-h-0">
-            <video
-              ref={videoRef}
-              autoPlay
-              playsInline
-              muted
-              className="w-full h-full object-cover"
-            />
-            {cameraError && (
-              <div className="absolute inset-0 flex items-center justify-center bg-slate-900/90 p-6">
-                <p className="text-slate-300 text-center">{cameraError}</p>
-              </div>
-            )}
-            {!cameraError && (
-              <div className="absolute bottom-6 left-0 right-0 flex justify-center">
-                {!isRecording ? (
-                  <Button
-                    onClick={startRecording}
-                    className="w-14 h-14 rounded-full bg-theme-action-primary hover:bg-theme-action-primary-hover"
-                  >
-                    <Mic className="w-6 h-6" />
-                  </Button>
-                ) : (
-                  <>
-                    <button
-                      onClick={takePhoto}
-                      className="w-16 h-16 rounded-full bg-white border-4 border-slate-300 shadow-xl flex items-center justify-center active:scale-95"
-                    >
-                      <div className="w-14 h-14 rounded-full bg-white" />
-                    </button>
-                  </>
-                )}
-              </div>
-            )}
-          </div>
-          {photos.length > 0 && (
-            <div className="flex gap-2 p-3 bg-slate-900/95 border-t border-slate-700 overflow-x-auto">
-              {photos.map((p) => (
-                <div key={p.id} className="relative flex-shrink-0">
-                  <img src={p.previewUrl} alt="" className="w-16 h-16 object-cover rounded-lg border border-slate-600" />
-                  <button
-                    onClick={() => removePhoto(p.id)}
-                    className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 rounded-full flex items-center justify-center"
-                  >
-                    <X className="w-3 h-3 text-white" />
-                  </button>
-                </div>
-              ))}
+      <div className="flex-1 flex flex-col min-h-0">
+        <div className="flex-1 relative bg-black min-h-0">
+          <video
+            ref={videoRef}
+            autoPlay
+            playsInline
+            muted
+            className="w-full h-full object-cover"
+          />
+          {cameraError && (
+            <div className="absolute inset-0 flex items-center justify-center bg-slate-900/90 p-6">
+              <p className="text-slate-300 text-center">{cameraError}</p>
             </div>
           )}
-        </TabsContent>
-        <TabsContent value="notes" className="flex-1 m-0 p-3 overflow-auto">
-          <Textarea
-            placeholder="Session notes (saved with upload)..."
-            value={notesText}
-            onChange={(e) => setNotesText(e.target.value)}
-            className="min-h-[200px] rounded-lg resize-none"
-          />
-        </TabsContent>
-      </Tabs>
+          {!cameraError && (
+            <div className="absolute bottom-6 left-0 right-0 flex justify-center">
+              {!isRecording ? (
+                <Button
+                  onClick={startRecording}
+                  className="w-14 h-14 rounded-full bg-theme-action-primary hover:bg-theme-action-primary-hover"
+                >
+                  <Mic className="w-6 h-6" />
+                </Button>
+              ) : (
+                <>
+                  <button
+                    onClick={takePhoto}
+                    className="w-16 h-16 rounded-full bg-white border-4 border-slate-300 shadow-xl flex items-center justify-center active:scale-95"
+                  >
+                    <div className="w-14 h-14 rounded-full bg-white" />
+                  </button>
+                </>
+              )}
+            </div>
+          )}
+        </div>
+        {photos.length > 0 && (
+          <div className="flex gap-2 p-3 bg-slate-900/95 border-t border-slate-700 overflow-x-auto">
+            {photos.map((p) => (
+              <div key={p.id} className="relative flex-shrink-0">
+                <img src={p.previewUrl} alt="" className="w-16 h-16 object-cover rounded-lg border border-slate-600" />
+                <button
+                  onClick={() => removePhoto(p.id)}
+                  className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 rounded-full flex items-center justify-center"
+                >
+                  <X className="w-3 h-3 text-white" />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   );
 }

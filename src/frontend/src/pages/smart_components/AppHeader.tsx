@@ -313,7 +313,7 @@ export function AppHeader({ currentPage, currentUser, onNavigate, onLogout, onRo
     <MobileBottomNav
       currentPage={currentPage}
       onNavigate={onNavigate}
-      onRecordClick={onRecordClick ?? (() => onNavigate("capture"))}
+      onRecordClick={onRecordClick ?? (() => onNavigate("capture-session"))}
       currentUser={currentUser ? { role: (currentUser.role === "admin" || currentUser.role === "employee" ? "manager" : currentUser.role) as "manager" | "technician", name: currentUser.name, email: currentUser.email ?? "" } : undefined}
     />
     </>
