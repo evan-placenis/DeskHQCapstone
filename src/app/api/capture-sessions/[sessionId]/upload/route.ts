@@ -21,28 +21,11 @@ export async function POST(
             );
         }
 
-        const { data: session, error: fetchError } = await supabase
-            .from("capture_sessions")
-            .select("id, project_id, folder_name")
-            .eq("id", sessionId)
-            .single();
-
-        if (fetchError || !session) {
-            return NextResponse.json({ error: "Capture session not found" }, { status: 404 });
-        }
-
-        const projectId = session.project_id;
-        if (!projectId) {
-            return NextResponse.json(
-                { error: "Capture session not finalized. Call finalize with projectId or createProject first." },
-                { status: 400 }
-            );
-        }
-
         const formData = await request.formData();
         const audioFile = formData.get("audio") as File | null;
-        const notesEntry = formData.get("notes_text");
-        const notesText = typeof notesEntry === "string" ? notesEntry : null;
+
+        const transcriptRaw = formData.get("transcript_segments");
+        const transcriptSegments = typeof transcriptRaw === "string" ? transcriptRaw : null;
 
         const photosA = formData.getAll("photos").filter((p): p is File => p instanceof File);
         const photosB = formData.getAll("photos[]").filter((p): p is File => p instanceof File);
@@ -56,76 +39,14 @@ export async function POST(
             return Number.isFinite(n) ? n : 0;
         });
 
-        const organizationId = userProfile.organization_id;
-        const folderName = session.folder_name;
-        const uploadedImageRows: unknown[] = [];
-
-        for (let i = 0; i < photos.length; i++) {
-            const file = photos[i];
-            const takenAt = takenAtMs[i] ?? 0;
-            const uploadedImage = await Container.storageService.uploadProjectImage(
-                projectId,
-                organizationId,
-                user.id,
-                file,
-                file.name,
-                folderName,
-                "",
-                supabase
-            );
-
-            await supabase.from("capture_session_images").insert({
-                capture_session_id: sessionId,
-                project_image_id: uploadedImage.id,
-                taken_at_ms: takenAt,
-            });
-            uploadedImageRows.push(uploadedImage);
-        }
-
-        let audioResult: { public_url: string; storage_path: string } | null = null;
-
-        let audioDurationSeconds: number | null = null;
-        if (audioFile && audioFile.size > 0) {
-            const fileName = `session-audio-${sessionId}.webm`;
-            const result = await Container.storageService.uploadProjectAudio(
-                projectId,
-                organizationId,
-                user.id,
-                audioFile,
-                fileName,
-                folderName,
-                supabase
-            );
-
-            await supabase
-                .from("capture_sessions")
-                .update({
-                    audio_storage_path: result.storage_path,
-                    audio_public_url: result.public_url,
-                    audio_duration_seconds: audioDurationSeconds,
-                    notes_text: notesText,
-                    status: "uploaded",
-                })
-                .eq("id", sessionId);
-
-            audioResult = { public_url: result.public_url, storage_path: result.storage_path };
-        } else {
-            await supabase
-                .from("capture_sessions")
-                .update({
-                    notes_text: notesText,
-                    status: "uploaded",
-                })
-                .eq("id", sessionId);
-        }
-
-        return NextResponse.json(
-            {
-                images: uploadedImageRows,
-                audio: audioResult,
-            },
-            { status: 201 }
+        const result = await Container.captureSessionService.uploadAssets(
+            sessionId,
+            { photos, takenAtMs, audioFile, notesText: null, transcriptSegments },
+            user.id,
+            supabase
         );
+
+        return NextResponse.json(result, { status: 201 });
     } catch (err: unknown) {
         console.error("❌ Capture session upload:", err);
         return NextResponse.json(

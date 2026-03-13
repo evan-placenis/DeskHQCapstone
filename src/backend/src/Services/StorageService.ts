@@ -89,6 +89,21 @@ export class StorageService {
         return data || [];
     }
 
+    /**
+     * List images for a project filtered by folder, ordered by created_at ascending.
+     */
+    async getProjectImagesByFolder(projectId: string, folderName: string, client: SupabaseClient): Promise<any[]> {
+        const { data, error } = await client
+            .from('project_images')
+            .select('*')
+            .eq('project_id', projectId)
+            .eq('folder_name', folderName)
+            .order('created_at', { ascending: true });
+
+        if (error) throw new Error(error.message);
+        return data || [];
+    }
+
     async saveSpecImages(images: SpecImageRecord[], client: SupabaseClient): Promise<void> {
         if (images.length === 0) return;
     
