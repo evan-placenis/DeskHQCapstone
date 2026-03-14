@@ -1,6 +1,6 @@
+import { useEffect, useState } from "react";
 import { AppHeader } from "@/frontend/pages/smart_components/AppHeader";
 import { Page } from "@/app/pages/config/routes";
-import { Button } from "@/frontend/pages/ui_components/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/frontend/pages/ui_components/card";
 import { Badge } from "@/frontend/pages/ui_components/badge";
 import { Progress } from "@/frontend/pages/ui_components/progress";
@@ -13,7 +13,7 @@ import {
   MapPin,
   Users,
   CheckCircle2,
-  ArrowRight,
+  Loader2,
 } from "lucide-react";
 
 interface User {
@@ -30,44 +30,25 @@ interface ReviewerForecastPageProps {
   onRoleSwitch?: (role: "manager" | "technician") => void;
 }
 
-// Mock data for forecasting
+interface ActiveSiteWorkItem {
+  id: string;
+  project: string;
+  technician: string;
+  startDate: string;
+  status: "no-reports" | "drafting" | "awaiting-approval" | "completed";
+  daysActive: number;
+  totalReports: number;
+  reportsDraft: number;
+  reportsAwaitingApproval: number;
+  reportsCompleted: number;
+}
+
+// Mock data for forecasting (sections not yet wired to backend)
 const forecastData = {
   currentPending: 3,
   expectedThisWeek: 7,
   expectedNextWeek: 12,
   totalAssignedProjects: 5,
-  ongoingSiteVisits: [
-    {
-      id: 1,
-      project: "Bridge Inspection - Route 95",
-      technician: "John Davis",
-      startDate: "2025-11-18",
-      expectedReports: 3,
-      reportsStarted: 1,
-      status: "in-progress",
-      daysOnSite: 2,
-    },
-    {
-      id: 2,
-      project: "Residential Complex - Phase 2",
-      technician: "Michael Chen",
-      startDate: "2025-11-19",
-      expectedReports: 4,
-      reportsStarted: 0,
-      status: "on-site",
-      daysOnSite: 1,
-    },
-    {
-      id: 3,
-      project: "Highway Expansion Project",
-      technician: "Emily Rodriguez",
-      startDate: "2025-11-15",
-      expectedReports: 2,
-      reportsStarted: 2,
-      status: "draft",
-      daysOnSite: 5,
-    },
-  ],
   upcomingSiteVisits: [
     {
       id: 4,
@@ -118,27 +99,59 @@ export function ReviewerForecastPage({
   onLogout,
   onRoleSwitch,
 }: ReviewerForecastPageProps) {
-  const getStatusBadge = (status: string) => {
+  const [activeSiteWork, setActiveSiteWork] = useState<ActiveSiteWorkItem[]>([]);
+  const [isLoadingSiteWork, setIsLoadingSiteWork] = useState(true);
+
+  useEffect(() => {
+    async function fetchActiveSiteWork() {
+      try {
+        const res = await fetch("/api/project/active-site-work");
+        if (!res.ok) {
+          console.error("Failed to fetch active site work:", res.status);
+          return;
+        }
+        const data = await res.json();
+        console.log("[ActiveSiteWork] API response:", JSON.stringify(data, null, 2));
+        if (Array.isArray(data.activeSiteWork)) {
+          setActiveSiteWork(data.activeSiteWork);
+        }
+      } catch (err) {
+        console.error("Error fetching active site work:", err);
+      } finally {
+        setIsLoadingSiteWork(false);
+      }
+    }
+    fetchActiveSiteWork();
+  }, []);
+
+  const getStatusBadge = (status: ActiveSiteWorkItem["status"]) => {
     switch (status) {
-      case "on-site":
+      case "no-reports":
         return (
-          <Badge className="bg-blue-600 rounded-md">
+          <Badge className="bg-slate-500 rounded-md">
             <MapPin className="w-3 h-3 mr-1" />
-            On Site
+            No Reports
           </Badge>
         );
-      case "in-progress":
+      case "drafting":
         return (
           <Badge className="bg-amber-600 rounded-md">
             <FileText className="w-3 h-3 mr-1" />
-            Writing Reports
+            Drafting
           </Badge>
         );
-      case "draft":
+      case "awaiting-approval":
         return (
-          <Badge className="bg-theme-primary text-white rounded-md">
+          <Badge className="bg-blue-600 rounded-md">
             <Clock className="w-3 h-3 mr-1" />
-            Draft Ready
+            Awaiting Approval
+          </Badge>
+        );
+      case "completed":
+        return (
+          <Badge className="bg-green-600 rounded-md">
+            <CheckCircle2 className="w-3 h-3 mr-1" />
+            Completed
           </Badge>
         );
       default:
@@ -225,7 +238,7 @@ export function ReviewerForecastPage({
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6 mb-6 sm:mb-8">
-          {/* Ongoing Site Visits */}
+          {/* Ongoing Site Visits — wired to real data */}
           <Card className="rounded-xl shadow-sm border-slate-200 lg:col-span-2">
             <CardHeader className="p-4 sm:p-6">
               <CardTitle className="text-lg sm:text-xl">Active Site Work</CardTitle>
@@ -234,65 +247,79 @@ export function ReviewerForecastPage({
               </CardDescription>
             </CardHeader>
             <CardContent className="p-4 sm:p-6 pt-0">
-              <div className="space-y-3">
-                {forecastData.ongoingSiteVisits.map((visit) => (
-                  <div
-                    key={visit.id}
-                    className="p-3 sm:p-4 border-2 border-slate-200 rounded-xl hover:border-blue-300 hover:bg-blue-50/30 transition-all"
-                  >
-                    <div className="flex flex-col sm:flex-row sm:items-start justify-between mb-3 gap-2">
-                      <div className="flex-1">
-                        <h4 className="text-slate-900 mb-1 text-sm sm:text-base">{visit.project}</h4>
-                        <div className="flex items-center gap-2 text-xs sm:text-sm text-slate-600 mb-2">
-                          <Users className="w-3 h-3 sm:w-4 sm:h-4" />
-                          <span>{visit.technician}</span>
+              {isLoadingSiteWork ? (
+                <div className="flex items-center justify-center py-12 text-slate-400">
+                  <Loader2 className="w-5 h-5 animate-spin mr-2" />
+                  <span className="text-sm">Loading active site work…</span>
+                </div>
+              ) : activeSiteWork.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-12 text-slate-400">
+                  <MapPin className="w-8 h-8 mb-2" />
+                  <p className="text-sm">No active site work right now</p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {activeSiteWork.map((visit) => (
+                    <div
+                      key={visit.id}
+                      className="p-3 sm:p-4 border-2 border-slate-200 rounded-xl hover:border-blue-300 hover:bg-blue-50/30 transition-all"
+                    >
+                      <div className="flex flex-col sm:flex-row sm:items-start justify-between mb-3 gap-2">
+                        <div className="flex-1">
+                          <h4 className="text-slate-900 mb-1 text-sm sm:text-base">{visit.project}</h4>
+                          <div className="flex items-center gap-2 text-xs sm:text-sm text-slate-600 mb-2">
+                            <Users className="w-3 h-3 sm:w-4 sm:h-4" />
+                            <span>{visit.technician}</span>
+                          </div>
+                        </div>
+                        {getStatusBadge(visit.status)}
+                      </div>
+
+                      <div className="grid grid-cols-3 gap-2 sm:gap-3 mb-3">
+                        <div className="p-2 bg-slate-50 rounded-lg">
+                          <p className="text-xs text-slate-600">Days Active</p>
+                          <p className="text-slate-900 text-sm sm:text-base">{visit.daysActive}</p>
+                        </div>
+                        <div className="p-2 bg-slate-50 rounded-lg">
+                          <p className="text-xs text-slate-600">Reports</p>
+                          <p className="text-slate-900 text-sm sm:text-base">{visit.totalReports}</p>
+                        </div>
+                        <div className="p-2 bg-slate-50 rounded-lg">
+                          <p className="text-xs text-slate-600">Awaiting Approval</p>
+                          <p className="text-slate-900 text-sm sm:text-base">{visit.reportsAwaitingApproval}</p>
                         </div>
                       </div>
-                      {getStatusBadge(visit.status)}
-                    </div>
 
-                    <div className="grid grid-cols-3 gap-2 sm:gap-3 mb-3">
-                      <div className="p-2 bg-slate-50 rounded-lg">
-                        <p className="text-xs text-slate-600">Days on Site</p>
-                        <p className="text-slate-900 text-sm sm:text-base">{visit.daysOnSite}</p>
-                      </div>
-                      <div className="p-2 bg-slate-50 rounded-lg">
-                        <p className="text-xs text-slate-600">Expected</p>
-                        <p className="text-slate-900 text-sm sm:text-base">{visit.expectedReports} reports</p>
-                      </div>
-                      <div className="p-2 bg-slate-50 rounded-lg">
-                        <p className="text-xs text-slate-600">Started</p>
-                        <p className="text-slate-900 text-sm sm:text-base">{visit.reportsStarted} drafts</p>
-                      </div>
-                    </div>
+                      {visit.totalReports > 0 && (
+                        <div className="space-y-1">
+                          <div className="flex items-center justify-between text-xs">
+                            <span className="text-slate-600">Completed</span>
+                            <span className="text-slate-900">
+                              {visit.reportsCompleted} / {visit.totalReports}
+                            </span>
+                          </div>
+                          <Progress
+                            value={(visit.reportsCompleted / visit.totalReports) * 100}
+                            className="h-2"
+                          />
+                        </div>
+                      )}
 
-                    <div className="space-y-1">
-                      <div className="flex items-center justify-between text-xs">
-                        <span className="text-slate-600">Progress</span>
-                        <span className="text-slate-900">
-                          {visit.reportsStarted} / {visit.expectedReports}
-                        </span>
-                      </div>
-                      <Progress 
-                        value={(visit.reportsStarted / visit.expectedReports) * 100} 
-                        className="h-2"
-                      />
+                      {visit.status === "awaiting-approval" && (
+                        <div className="mt-3 p-2 bg-blue-50 border border-blue-200 rounded-lg flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                          <span className="text-xs text-blue-700">
+                            <AlertCircle className="w-3 h-3 inline mr-1" />
+                            Reports awaiting your approval
+                          </span>
+                          <Badge className="bg-blue-600 text-white rounded-md text-xs w-fit">
+                            {visit.reportsAwaitingApproval} pending
+                          </Badge>
+                        </div>
+                      )}
                     </div>
-
-                    {visit.status === "draft" && (
-                      <div className="mt-3 p-2 bg-theme-primary-lighter border border-theme-primary-30 rounded-lg flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                        <span className="text-xs text-theme-secondary">
-                          <AlertCircle className="w-3 h-3 inline mr-1" />
-                          Reports ready for review soon
-                        </span>
-                        <Badge className="bg-theme-primary text-white rounded-md text-xs w-fit">
-                          ~{visit.expectedReports - visit.reportsStarted} more
-                        </Badge>
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
+                  ))}
+                </div>
+              )}
             </CardContent>
           </Card>
 
