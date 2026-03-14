@@ -8,7 +8,7 @@ import { Project, KnowledgeDocument, PhotoFolder, Photo, Report } from "@/fronte
 import { KnowledgeUploadModal } from "@/frontend/pages/large_modal_components/KnowledgeUploadModal";
 import { PhotoUploadModal } from "@/frontend/pages/large_modal_components/PhotoUploadModal";
 import { PhotoFolderView } from "@/frontend/pages/smart_components/PhotoFolderView";
-import { Page } from "@/app/pages/config/routes";
+import { Page, ROUTES } from "@/app/pages/config/routes";
 import { Button } from "@/frontend/pages/ui_components/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/frontend/pages/ui_components/card";
 import { Badge } from "@/frontend/pages/ui_components/badge";
@@ -58,6 +58,7 @@ import { ReportCard } from "@/frontend/pages/ui_components/ReportCard";
 interface ProjectDetailPageProps {
   project: Project;
   onNavigate: (page: Page) => void;
+  onNavigateToUrl?: (url: string) => void;
   onLogout: () => void;
   onBack: () => void;
   onSelectReport: (reportId: number | string) => void;
@@ -461,6 +462,7 @@ import { UploadProgress } from "@/frontend/pages/ui_components/UploadProgress";
 export function ProjectDetailPage({
   project,
   onNavigate,
+  onNavigateToUrl,
   onLogout,
   onBack,
   onSelectReport
@@ -1006,8 +1008,14 @@ export function ProjectDetailPage({
   };
 
   const handleAudioTimelineClick = (folderId: number) => {
-    // Navigate to audio timeline for this folder
-    onNavigate("audio-timeline");
+    const folder = photoFolders.find(f => f.id === folderId);
+    if (!folder) return;
+    const url = ROUTES.audioTimeline(project.id, folder.name);
+    if (onNavigateToUrl) {
+      onNavigateToUrl(url);
+    } else {
+      onNavigate("audio-timeline");
+    }
   };
 
   // Extract unique users from folder names (initials at the end) - only depends on photoFolders

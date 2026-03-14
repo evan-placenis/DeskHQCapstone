@@ -90,6 +90,7 @@ export default function ProjectDetail() {
     <ProjectDetailPage
       project={project}
       onNavigate={handleNavigate}
+      onNavigateToUrl={(url) => router.push(url)}
       onLogout={handleLogout}
       onBack={handleBack}
       onSelectReport={handleSelectReport}

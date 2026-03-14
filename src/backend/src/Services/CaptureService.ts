@@ -120,7 +120,7 @@ If the user asks for a specific format (e.g. bullet points, report section), str
     orgId: string,
     userId: string,
     client: SupabaseClient
-  ): Promise<{ sessionId: string; projectId: string; folderName: string }> {
+  ): Promise<{ sessionId: string; projectId: string; folderName: string; organizationId: string }> {
     let projectId: string;
 
     if (params.createProject?.name) {
@@ -153,7 +153,7 @@ If the user asks for a specific format (e.g. bullet points, report section), str
       status: "finalized",
     }, client);
 
-    return { sessionId, projectId, folderName: session.folder_name };
+    return { sessionId, projectId, folderName: session.folder_name, organizationId: orgId };
   }
 
   async uploadAssets(
@@ -164,6 +164,8 @@ If the user asks for a specific format (e.g. bullet points, report section), str
       audioFile: File | null;
       notesText: string | null;
       transcriptSegments: string | null;
+      /** When true, audio was uploaded client-side via TUS; path is constructed from session. */
+      audioClientUploaded?: boolean;
     },
     userId: string,
     client: SupabaseClient
@@ -208,7 +210,25 @@ If the user asks for a specific format (e.g. bullet points, report section), str
 
     let audioResult: { public_url: string; storage_path: string } | null = null;
 
-    if (data.audioFile && data.audioFile.size > 0) {
+    if (data.audioClientUploaded) {
+      // Audio was uploaded directly from client via TUS; construct path and update DB
+      const safeFolder = folderName.replace(/\//g, '-');
+      const fileName = `session-audio-${sessionId}.webm`;
+      const storagePath = `${organizationId}/${projectId}/${safeFolder}/${fileName}`;
+      const bucketName = 'project-audio';
+      const { data: { publicUrl } } = client.storage.from(bucketName).getPublicUrl(storagePath);
+
+      await this.captureSessionRepo.update(sessionId, {
+        audio_storage_path: storagePath,
+        audio_public_url: publicUrl,
+        notes_text: data.notesText,
+        transcript_text: data.transcriptSegments,
+        status: "uploaded",
+      }, client);
+
+      audioResult = { public_url: publicUrl, storage_path: storagePath };
+    } else if (data.audioFile && data.audioFile.size > 0) {
+      // Legacy: audio sent in FormData (small files); server uploads via TUS
       const fileName = `session-audio-${sessionId}.webm`;
       const result = await this.storageService.uploadProjectAudio(
         projectId,
