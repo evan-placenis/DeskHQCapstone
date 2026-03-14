@@ -5,6 +5,7 @@ import { reportSkills } from '../skills/report.skills';
 import { chatSkills } from '../skills/chat.skills';
 import { visionSkills } from '../skills/vison.skills';
 import { SupabaseClient } from '@supabase/supabase-js';
+import type { HeliconeContextInput } from '../gateway/HeliconeContextBuilder';
 
 /**
  * Chat Orchestrator using AI-SDK.
@@ -35,8 +36,9 @@ export class ChatOrchestrator {
         activeSectionHeading?: string;
         /** Full report markdown from the live editor (for server-side document tools) */
         fullReportMarkdown?: string;
+        heliconeInput?: HeliconeContextInput;
     }) {
-        const { messages, provider, context, projectId, userId, reportId, selectionEdit, systemMessage, client, onFinish, documentOutline, activeSectionMarkdown, activeSectionHeading, fullReportMarkdown } = params;
+        const { messages, provider, context, projectId, userId, reportId, selectionEdit, systemMessage, client, onFinish, documentOutline, activeSectionMarkdown, activeSectionHeading, fullReportMarkdown, heliconeInput } = params;
 
         // [ChatContext] Debug: log context available to orchestrator
         const hasDocumentTools = !!(fullReportMarkdown?.trim());
@@ -69,7 +71,7 @@ export class ChatOrchestrator {
         const systemPrompt = systemMessage || this.buildSystemPrompt(false, documentOutline, activeSectionMarkdown, activeSectionHeading, fullReportMarkdown);
 
         return streamText({
-            model: ModelStrategy.getModel(provider),
+            model: ModelStrategy.getModel(provider, heliconeInput),
             messages: await convertToModelMessages(messages),
             system: systemPrompt,
             stopWhen: stepCountIs(10),

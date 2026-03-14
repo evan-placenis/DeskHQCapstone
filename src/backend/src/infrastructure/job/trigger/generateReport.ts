@@ -15,6 +15,7 @@ import { getWorkflow } from "../../../AI_Skills/LangGraph/workflow";
 import { HumanMessage, SystemMessage } from "@langchain/core/messages";
 import { StreamingAdapter } from "../../../AI_Skills/LangGraph/utils/streaming-adapter";
 import { getFlattenedTasks } from "../../../AI_Skills/LangGraph/nodes/report/observation/builderNode";
+import { HeliconeContextBuilder, type HeliconeContextInput } from "../../../AI_Skills/gateway/HeliconeContextBuilder";
 
 // Load environment variables - ensure they're available for Trigger.dev workers
 // Try multiple paths to find .env file (relative to where Trigger.dev runs from)
@@ -49,6 +50,8 @@ export interface TriggerPayload {
   userFeedback?: string; // For resume actions
   /** When user approves (possibly after editing), frontend sends the plan to use. Builder uses this directly. */
   modifiedPlan?: { sections: any[]; strategy?: string; reasoning?: string };
+  /** Serialized HeliconeContextInput — worker calls .build() locally to avoid leaking the API key. */
+  heliconeContext?: string;
   input?: {
     reportId?: string;
     title?: string;
@@ -190,6 +193,15 @@ export const generateReportTask = task({
 
       // 7. PREPARE LANGGRAPH STATE
       // Use explicit strings so state never has undefined for systemPrompt/structureInstructions (builder/architect expect them)
+      let heliconeInput: HeliconeContextInput | undefined;
+      if (payload.heliconeContext) {
+        try {
+          heliconeInput = HeliconeContextBuilder.deserializeForTrigger(payload.heliconeContext);
+        } catch (err) {
+          console.warn('[Helicone] Failed to deserialize context in worker, proceeding without tracking:', err);
+        }
+      }
+
       const inputState = {
         messages: [new HumanMessage("Generate the report.")],
         systemPrompt: system_prompt ?? "",
@@ -204,7 +216,8 @@ export const generateReportTask = task({
         photoNotes: "",
         structureInstructions: structureInstructions ?? "",
         currentSection: "init",
-        processingMode: payload.input.processingMode ?? "IMAGE_AND_TEXT", // TEXT_ONLY = no vision tools
+        processingMode: payload.input.processingMode ?? "IMAGE_AND_TEXT",
+        heliconeInput,
       };
 
       // 8. RUN THE GRAPH STREAM

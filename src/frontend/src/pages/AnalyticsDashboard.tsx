@@ -203,7 +203,7 @@ import { ROUTES, getRoute } from "@/app/pages/config/routes";
 
 export function AnalyticsDashboard() {
   const router = useRouter();
-  const [timeRange, setTimeRange] = useState("30");
+  const [timeRange, setTimeRange] = useState("month");
   const [selectedEmployee, setSelectedEmployee] = useState<number | "all">("all");
 
   const currentUser: User = {
