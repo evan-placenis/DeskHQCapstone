@@ -1,6 +1,7 @@
 import { SupabaseClient } from '@supabase/supabase-js';
 import { v4 as uuidv4 } from 'uuid';
 import { SpecImageRecord } from '../domain/storage/spec';
+import * as tus from 'tus-js-client';
 
 export class StorageService {
     /**
@@ -158,9 +159,9 @@ export class StorageService {
     }
 
     /**
-     * Uploads audio to the project-audio bucket (capture session audio).
+     * Uploads audio to the project-audio bucket using TUS resumable protocol.
+     * Splits the file into 6 MB chunks so large recordings don't hit size limits.
      * Does NOT write to DB; caller should update capture_sessions.audio_storage_path etc.
-     * Path format: {organizationId}/{projectId}/{folderName}/{fileName}
      */
     async uploadProjectAudio(
         projectId: string,
@@ -171,26 +172,64 @@ export class StorageService {
         folderName: string,
         client: SupabaseClient
     ): Promise<{ storage_path: string; public_url: string; file_name: string; mime_type: string; size_bytes: number }> {
-        const arrayBuffer = await audioFile.arrayBuffer();
         const safeFolder = folderName.replace(/\//g, '-');
         const filePath = `${organizationId}/${projectId}/${safeFolder}/${fileName}`;
-
         const mimeType = audioFile instanceof File ? audioFile.type : 'audio/webm';
-        const { error: uploadError } = await client
-            .storage
-            .from('project-audio')
-            .upload(filePath, arrayBuffer, {
-                contentType: mimeType || 'audio/webm',
-                upsert: false
+        const fileSize = audioFile.size;
+
+        const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+        if (!supabaseUrl) {
+            throw new Error('Missing NEXT_PUBLIC_SUPABASE_URL for resumable upload');
+        }
+
+        const { data: { session } } = await client.auth.getSession();
+        const token = session?.access_token ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+        if (!token) {
+            throw new Error('No auth token available for resumable upload');
+        }
+
+        const CHUNK_SIZE = 6 * 1024 * 1024; // 6 MB
+        const bucketName = 'project-audio';
+
+        const arrayBuffer = await audioFile.arrayBuffer();
+        const buffer = Buffer.from(arrayBuffer);
+
+        await new Promise<void>((resolve, reject) => {
+            const upload = new tus.Upload(buffer, {
+                endpoint: `${supabaseUrl}/storage/v1/upload/resumable`,
+                retryDelays: [0, 3000, 5000, 10000, 20000],
+                headers: {
+                    authorization: `Bearer ${token}`,
+                    'x-upsert': 'false',
+                },
+                uploadDataDuringCreation: true,
+                removeFingerprintOnSuccess: true,
+                chunkSize: CHUNK_SIZE,
+                metadata: {
+                    bucketName,
+                    objectName: filePath,
+                    contentType: mimeType || 'audio/webm',
+                    cacheControl: '3600',
+                },
+                uploadSize: fileSize,
+                onError(error: Error | tus.DetailedError) {
+                    reject(new Error(`TUS Upload Error (audio): ${error.message}`));
+                },
+                onProgress(bytesUploaded: number, bytesTotal: number) {
+                    const pct = ((bytesUploaded / bytesTotal) * 100).toFixed(1);
+                    console.log(`Audio upload: ${bytesUploaded}/${bytesTotal} (${pct}%)`);
+                },
+                onSuccess() {
+                    resolve();
+                },
             });
 
-        if (uploadError) {
-            throw new Error(`Storage Upload Error (audio): ${uploadError.message}`);
-        }
+            upload.start();
+        });
 
         const { data: { publicUrl } } = client
             .storage
-            .from('project-audio')
+            .from(bucketName)
             .getPublicUrl(filePath);
 
         return {
@@ -198,7 +237,7 @@ export class StorageService {
             public_url: publicUrl,
             file_name: fileName,
             mime_type: mimeType || 'audio/webm',
-            size_bytes: arrayBuffer.byteLength
+            size_bytes: fileSize,
         };
     }
 }

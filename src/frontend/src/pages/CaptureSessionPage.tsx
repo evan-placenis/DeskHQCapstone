@@ -5,6 +5,8 @@ import { Button } from "./ui_components/button";
 import { Input } from "./ui_components/input";
 import { Camera, X, Mic, Loader2, CheckCircle2, Search, Plus, Check } from "lucide-react";
 import { Project } from "@/frontend/types";
+import { supabase } from "@/frontend/lib/supabaseClient";
+import * as tus from "tus-js-client";
 
 type Step = "capture" | "choose-project" | "uploading" | "success";
 
@@ -48,6 +50,7 @@ export function CaptureSessionPage({
   const photoIdRef = useRef(0);
   const recognitionRef = useRef<any>(null);
   const recordingStartMsRef = useRef<number>(0);
+  const isRecordingRef = useRef(false);
 
   const [projects, setProjects] = useState<Project[]>([]);
   const [projectsLoading, setProjectsLoading] = useState(false);
@@ -121,6 +124,7 @@ export function CaptureSessionPage({
     setTranscriptEntries([]);
     durationIntervalRef.current = setInterval(() => setDurationSec((s) => s + 1), 1000);
     setIsRecording(true);
+    isRecordingRef.current = true;
 
     const SpeechRecognitionCtor =
       (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
@@ -129,6 +133,21 @@ export function CaptureSessionPage({
       recognition.continuous = true;
       recognition.interimResults = false;
       recognition.lang = "en-US";
+
+      const fatalErrors = new Set(["not-allowed", "service-not-allowed", "aborted"]);
+      recognition.onerror = (e: any) => {
+        if (fatalErrors.has(e.error)) {
+          isRecordingRef.current = false;
+        }
+        if (e.error !== "no-speech") console.warn("SpeechRecognition error:", e.error);
+      };
+
+      recognition.onend = () => {
+        if (isRecordingRef.current && recognitionRef.current === recognition) {
+          setTimeout(() => recognition.start(), 100);
+        }
+      };
+
       recognition.onresult = (event: any) => {
         for (let i = event.resultIndex; i < event.results.length; i++) {
           if (event.results[i].isFinal) {
@@ -142,15 +161,14 @@ export function CaptureSessionPage({
           }
         }
       };
-      recognition.onerror = (e: any) => {
-        if (e.error !== "no-speech") console.warn("SpeechRecognition error:", e.error);
-      };
+
       recognition.start();
       recognitionRef.current = recognition;
     }
   }, [supportedMimeType]);
 
   const stopRecording = useCallback(() => {
+    isRecordingRef.current = false;
     if (durationIntervalRef.current) {
       clearInterval(durationIntervalRef.current);
       durationIntervalRef.current = null;
@@ -260,10 +278,67 @@ export function CaptureSessionPage({
         const err = await finalizeRes.json().catch(() => ({}));
         throw new Error(err.error || "Finalize failed");
       }
+      const finalizeData = await finalizeRes.json();
+      const { organizationId, folderName: fn } = finalizeData;
+
+      const audioBlob = getAudioBlob();
+      if (audioBlob && audioBlob.size > 0 && (!organizationId || !fn)) {
+        throw new Error("Session setup incomplete. Please try again.");
+      }
+      let audioClientUploaded = false;
+
+      if (audioBlob && audioBlob.size > 0 && (!organizationId || !fn)) {
+        throw new Error("Session setup incomplete. Please try again.");
+      }
+
+      // Always use client-side TUS for audio to support 2–3 hour recordings (bypasses API body limits)
+      if (audioBlob && audioBlob.size > 0 && organizationId && fn) {
+        const { data: { session } } = await supabase.auth.getSession();
+        const token = session?.access_token;
+        if (!token) throw new Error("Not authenticated. Please log in to upload audio.");
+
+        const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+        if (!supabaseUrl) throw new Error("Missing Supabase configuration.");
+
+        const safeFolder = fn.replace(/\//g, "-");
+        const fileName = `session-audio-${sessionId}.webm`;
+        const filePath = `${organizationId}/${projectId}/${safeFolder}/${fileName}`;
+        const CHUNK_SIZE = 6 * 1024 * 1024; // 6 MB
+        const mimeType = audioBlob.type || "audio/webm";
+
+        await new Promise<void>((resolve, reject) => {
+          const upload = new tus.Upload(audioBlob, {
+            endpoint: `${supabaseUrl}/storage/v1/upload/resumable`,
+            retryDelays: [0, 3000, 5000, 10000, 20000],
+            headers: {
+              authorization: `Bearer ${token}`,
+              "x-upsert": "false",
+            },
+            uploadDataDuringCreation: true,
+            removeFingerprintOnSuccess: true,
+            chunkSize: CHUNK_SIZE,
+            metadata: {
+              bucketName: "project-audio",
+              objectName: filePath,
+              contentType: mimeType,
+              cacheControl: "3600",
+            },
+            onError(error: unknown) {
+              reject(new Error(`Audio upload failed: ${error instanceof Error ? error.message : String(error)}`));
+            },
+            onSuccess() {
+              resolve();
+            },
+          });
+          upload.start();
+        });
+        audioClientUploaded = true;
+      }
 
       const form = new FormData();
-      const audioBlob = getAudioBlob();
-      if (audioBlob) form.append("audio", audioBlob, `session-audio-${sessionId}.webm`);
+      if (audioClientUploaded) {
+        form.set("audioClientUploaded", "true");
+      }
       photos.forEach((p, i) => {
         form.append("photos", p.blob, `photo-${i}.jpg`);
         form.append("taken_at_ms", String(p.takenAtMs));

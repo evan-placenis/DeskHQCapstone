@@ -58,6 +58,7 @@ import { ReportCard } from "@/frontend/pages/ui_components/ReportCard";
 interface ProjectDetailPageProps {
   project: Project;
   onNavigate: (page: Page) => void;
+  onNavigateToUrl?: (url: string) => void;
   onLogout: () => void;
   onBack: () => void;
   onSelectReport: (reportId: number | string) => void;
@@ -461,6 +462,7 @@ import { UploadProgress } from "@/frontend/pages/ui_components/UploadProgress";
 export function ProjectDetailPage({
   project,
   onNavigate,
+  onNavigateToUrl,
   onLogout,
   onBack,
   onSelectReport
@@ -1006,9 +1008,14 @@ export function ProjectDetailPage({
   };
 
   const handleAudioTimelineClick = (folderId: number) => {
-    const folder = photoFolders.find((f) => f.id === folderId);
-    const folderName = folder?.name ?? "";
-    window.location.href = ROUTES.audioTimeline(project.id, folderName);
+    const folder = photoFolders.find(f => f.id === folderId);
+    if (!folder) return;
+    const url = ROUTES.audioTimeline(project.id, folder.name);
+    if (onNavigateToUrl) {
+      onNavigateToUrl(url);
+    } else {
+      onNavigate("audio-timeline");
+    }
   };
 
   // Extract unique users from folder names (initials at the end) - only depends on photoFolders
@@ -1472,164 +1479,164 @@ export function ProjectDetailPage({
                   </div>
                 ) : (
                   <>
-                {/* Filter Controls */}
-                {photoFolders.length > 0 && (
-                  <div className="mb-4 space-y-3">
-                    <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
-                      {/* Keyword Search */}
-                      <div className="relative flex-1">
-                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                        <Input
-                          type="text"
-                          placeholder="Search photos..."
-                          value={photoSearchKeyword}
-                          onChange={(e) => setPhotoSearchKeyword(e.target.value)}
-                          className="pl-9 h-9 rounded-lg"
-                        />
-                        {photoSearchKeyword && (
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="absolute right-1 top-1/2 -translate-y-1/2 h-7 w-7"
-                            onClick={() => setPhotoSearchKeyword("")}
-                          >
-                            <X className="w-3.5 h-3.5" />
-                          </Button>
+                    {/* Filter Controls */}
+                    {photoFolders.length > 0 && (
+                      <div className="mb-4 space-y-3">
+                        <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
+                          {/* Keyword Search */}
+                          <div className="relative flex-1">
+                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                            <Input
+                              type="text"
+                              placeholder="Search photos..."
+                              value={photoSearchKeyword}
+                              onChange={(e) => setPhotoSearchKeyword(e.target.value)}
+                              className="pl-9 h-9 rounded-lg"
+                            />
+                            {photoSearchKeyword && (
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="absolute right-1 top-1/2 -translate-y-1/2 h-7 w-7"
+                                onClick={() => setPhotoSearchKeyword("")}
+                              >
+                                <X className="w-3.5 h-3.5" />
+                              </Button>
+                            )}
+                          </div>
+
+                          {/* Date Filter */}
+                          <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
+                            <div className="relative">
+                              <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none z-10" />
+                              <Input
+                                type="date"
+                                value={photoFilterDateStart}
+                                onChange={(e) => setPhotoFilterDateStart(e.target.value)}
+                                placeholder="Start Date"
+                                className="pl-9 h-9 rounded-lg w-full sm:w-[180px]"
+                              />
+                            </div>
+                            <div className="relative">
+                              <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none z-10" />
+                              <Input
+                                type="date"
+                                value={photoFilterDateEnd}
+                                onChange={(e) => setPhotoFilterDateEnd(e.target.value)}
+                                placeholder="End Date"
+                                className="pl-9 h-9 rounded-lg w-full sm:w-[180px]"
+                              />
+                            </div>
+                          </div>
+
+                          {/* User Filter */}
+                          <Select value={photoFilterUser} onValueChange={setPhotoFilterUser}>
+                            <SelectTrigger className="w-full sm:w-[160px] h-9 rounded-lg">
+                              <Filter className="w-4 h-4 mr-2" />
+                              <SelectValue placeholder="All Users" />
+                            </SelectTrigger>
+                            <SelectContent className="rounded-lg">
+                              <SelectItem value="all" className="rounded-md">All Users</SelectItem>
+                              {availableUsers.map(user => (
+                                <SelectItem key={user} value={user} className="rounded-md">
+                                  {user}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+
+                        {/* Active Filters Indicator */}
+                        {hasActiveFilters && (
+                          <div className="flex items-center gap-2 text-sm text-slate-600">
+                            <span>Showing {filteredPhotos.length} of {totalPhotos} photos</span>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => {
+                                setPhotoSearchKeyword("");
+                                setPhotoFilterDateStart("");
+                                setPhotoFilterDateEnd("");
+                                setPhotoFilterUser("all");
+                              }}
+                              className="h-7 text-xs text-theme-primary hover:text-theme-primary-hover"
+                            >
+                              <X className="w-3 h-3 mr-1" />
+                              Clear filters
+                            </Button>
+                          </div>
                         )}
-                      </div>
 
-                      {/* Date Filter */}
-                      <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
-                        <div className="relative">
-                          <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none z-10" />
-                          <Input
-                            type="date"
-                            value={photoFilterDateStart}
-                            onChange={(e) => setPhotoFilterDateStart(e.target.value)}
-                            placeholder="Start Date"
-                            className="pl-9 h-9 rounded-lg w-full sm:w-[180px]"
-                          />
+                        {/* Photo Size Controls */}
+                        <div className="flex items-center justify-end gap-2">
+                          <span className="text-xs text-slate-600">Photo Size:</span>
+                          <div className="flex items-center gap-1 bg-slate-100 rounded-lg p-0.5">
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-7 w-7 rounded-md"
+                              onClick={() => setPhotoGridSize(Math.max(0, photoGridSize - 1))}
+                              disabled={photoGridSize === 0}
+                            >
+                              <span className="text-base">−</span>
+                            </Button>
+                            <span className="text-xs text-slate-700 px-2 min-w-[40px] text-center">
+                              {photoGridSize === 0 && "XS"}
+                              {photoGridSize === 1 && "S"}
+                              {photoGridSize === 2 && "M"}
+                              {photoGridSize === 3 && "L"}
+                            </span>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-7 w-7 rounded-md"
+                              onClick={() => setPhotoGridSize(Math.min(3, photoGridSize + 1))}
+                              disabled={photoGridSize === 3}
+                            >
+                              <span className="text-base">+</span>
+                            </Button>
+                          </div>
                         </div>
-                        <div className="relative">
-                          <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none z-10" />
-                          <Input
-                            type="date"
-                            value={photoFilterDateEnd}
-                            onChange={(e) => setPhotoFilterDateEnd(e.target.value)}
-                            placeholder="End Date"
-                            className="pl-9 h-9 rounded-lg w-full sm:w-[180px]"
-                          />
-                        </div>
-                      </div>
-
-                      {/* User Filter */}
-                      <Select value={photoFilterUser} onValueChange={setPhotoFilterUser}>
-                        <SelectTrigger className="w-full sm:w-[160px] h-9 rounded-lg">
-                          <Filter className="w-4 h-4 mr-2" />
-                          <SelectValue placeholder="All Users" />
-                        </SelectTrigger>
-                        <SelectContent className="rounded-lg">
-                          <SelectItem value="all" className="rounded-md">All Users</SelectItem>
-                          {availableUsers.map(user => (
-                            <SelectItem key={user} value={user} className="rounded-md">
-                              {user}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-
-                    {/* Active Filters Indicator */}
-                    {hasActiveFilters && (
-                      <div className="flex items-center gap-2 text-sm text-slate-600">
-                        <span>Showing {filteredPhotos.length} of {totalPhotos} photos</span>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => {
-                            setPhotoSearchKeyword("");
-                            setPhotoFilterDateStart("");
-                            setPhotoFilterDateEnd("");
-                            setPhotoFilterUser("all");
-                          }}
-                          className="h-7 text-xs text-theme-primary hover:text-theme-primary-hover"
-                        >
-                          <X className="w-3 h-3 mr-1" />
-                          Clear filters
-                        </Button>
                       </div>
                     )}
 
-                    {/* Photo Size Controls */}
-                    <div className="flex items-center justify-end gap-2">
-                      <span className="text-xs text-slate-600">Photo Size:</span>
-                      <div className="flex items-center gap-1 bg-slate-100 rounded-lg p-0.5">
+                    {/* Upload Progress Indicator */}
+                    <UploadProgress
+                      progress={uploadProgress}
+                      label="Uploading photos..."
+                      isUploading={isUploading}
+                    />
+
+                    {photoFolders.length > 0 ? (
+                      <PhotoFolderView
+                        folders={filteredFolders}
+                        photos={filteredPhotos}
+                        mode="view"
+                        onPhotoClick={handlePhotoClick}
+                        onDeletePhoto={handleDeletePhoto}
+                        onDeleteFolder={handleDeleteFolder}
+                        onAudioTimelineClick={handleAudioTimelineClick}
+                        gridSize={photoGridSize}
+                        onGridSizeChange={setPhotoGridSize}
+                      />
+                    ) : (
+                      <div className="text-center py-12">
+                        <div className="w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                          <Camera className="w-8 h-8 text-slate-400" />
+                        </div>
+                        <h3 className="text-slate-900 mb-2">No Photos Yet</h3>
+                        <p className="text-slate-600 mb-4 max-w-md mx-auto">
+                          Upload photos organized by site visits to keep your project documentation organized
+                        </p>
                         <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-7 w-7 rounded-md"
-                          onClick={() => setPhotoGridSize(Math.max(0, photoGridSize - 1))}
-                          disabled={photoGridSize === 0}
+                          className="bg-theme-action-primary hover:bg-theme-action-primary-hover text-white rounded-lg"
+                          onClick={() => setIsPhotoUploadModalOpen(true)}
                         >
-                          <span className="text-base">−</span>
-                        </Button>
-                        <span className="text-xs text-slate-700 px-2 min-w-[40px] text-center">
-                          {photoGridSize === 0 && "XS"}
-                          {photoGridSize === 1 && "S"}
-                          {photoGridSize === 2 && "M"}
-                          {photoGridSize === 3 && "L"}
-                        </span>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-7 w-7 rounded-md"
-                          onClick={() => setPhotoGridSize(Math.min(3, photoGridSize + 1))}
-                          disabled={photoGridSize === 3}
-                        >
-                          <span className="text-base">+</span>
+                          <Plus className="w-4 h-4 mr-2" />
+                          Upload First Photos
                         </Button>
                       </div>
-                    </div>
-                  </div>
-                )}
-
-                {/* Upload Progress Indicator */}
-                <UploadProgress
-                  progress={uploadProgress}
-                  label="Uploading photos..."
-                  isUploading={isUploading}
-                />
-
-                {photoFolders.length > 0 ? (
-                  <PhotoFolderView
-                    folders={filteredFolders}
-                    photos={filteredPhotos}
-                    mode="view"
-                    onPhotoClick={handlePhotoClick}
-                    onDeletePhoto={handleDeletePhoto}
-                    onDeleteFolder={handleDeleteFolder}
-                    onAudioTimelineClick={handleAudioTimelineClick}
-                    gridSize={photoGridSize}
-                    onGridSizeChange={setPhotoGridSize}
-                  />
-                ) : (
-                  <div className="text-center py-12">
-                    <div className="w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                      <Camera className="w-8 h-8 text-slate-400" />
-                    </div>
-                    <h3 className="text-slate-900 mb-2">No Photos Yet</h3>
-                    <p className="text-slate-600 mb-4 max-w-md mx-auto">
-                      Upload photos organized by site visits to keep your project documentation organized
-                    </p>
-                    <Button
-                      className="bg-theme-action-primary hover:bg-theme-action-primary-hover text-white rounded-lg"
-                      onClick={() => setIsPhotoUploadModalOpen(true)}
-                    >
-                      <Plus className="w-4 h-4 mr-2" />
-                      Upload First Photos
-                    </Button>
-                  </div>
-                )}
+                    )}
                   </>
                 )}
               </CardContent>
