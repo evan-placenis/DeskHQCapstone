@@ -23,6 +23,7 @@ export async function POST(
 
         const formData = await request.formData();
         const audioFile = formData.get("audio") as File | null;
+        const audioClientUploaded = formData.get("audioClientUploaded") === "true";
 
         const transcriptRaw = formData.get("transcript_segments");
         const transcriptSegments = typeof transcriptRaw === "string" ? transcriptRaw : null;
@@ -41,7 +42,7 @@ export async function POST(
 
         const result = await Container.captureSessionService.uploadAssets(
             sessionId,
-            { photos, takenAtMs, audioFile, notesText: null, transcriptSegments },
+            { photos, takenAtMs, audioFile, notesText: null, transcriptSegments, audioClientUploaded },
             user.id,
             supabase
         );

@@ -10,7 +10,10 @@ const withPWA = withPWAInit({
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   /* config options here */
-  turbopack: {}
+  turbopack: {},
+  experimental: {
+    serverActions: { bodySizeLimit: "50mb" },
+  },
 };
 
 export default withPWA(nextConfig);
