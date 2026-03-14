@@ -1334,15 +1334,24 @@ export function ProjectDetailPage({
         {/* Tabs for Reports and Photos */}
         <Tabs defaultValue="reports" className="space-y-6">
           <TabsList className="bg-white border border-slate-200 rounded-lg p-1">
-            <TabsTrigger value="reports" className="rounded-md">
+            <TabsTrigger
+              value="reports"
+              className="rounded-md data-[state=active]:bg-theme-primary-10 data-[state=active]:text-theme-primary data-[state=active]:border data-[state=active]:border-theme-primary-30 data-[state=active]:shadow-sm"
+            >
               <FileText className="w-4 h-4 mr-2" />
               Reports
             </TabsTrigger>
-            <TabsTrigger value="photos" className="rounded-md">
+            <TabsTrigger
+              value="photos"
+              className="rounded-md data-[state=active]:bg-theme-primary-10 data-[state=active]:text-theme-primary data-[state=active]:border data-[state=active]:border-theme-primary-30 data-[state=active]:shadow-sm"
+            >
               <Camera className="w-4 h-4 mr-2" />
               Photos
             </TabsTrigger>
-            <TabsTrigger value="knowledge" className="rounded-md">
+            <TabsTrigger
+              value="knowledge"
+              className="rounded-md data-[state=active]:bg-theme-primary-10 data-[state=active]:text-theme-primary data-[state=active]:border data-[state=active]:border-theme-primary-30 data-[state=active]:shadow-sm"
+            >
               <BookOpen className="w-4 h-4 mr-2" />
               Knowledge Base
             </TabsTrigger>
