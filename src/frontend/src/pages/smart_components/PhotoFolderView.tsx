@@ -56,13 +56,12 @@ function PhotoCard({
 }) {
   return (
     <div
-      className={`group rounded-lg overflow-hidden border transition-all relative ${
-        mode === "select"
-          ? selectedPhotoIds.includes(photo.id)
-            ? "border-2 border-theme-action-primary bg-theme-focus-ring-light"
-            : "border-slate-200 hover:border-theme-hover-border cursor-pointer"
-          : "border-slate-200 hover:border-theme-hover-border"
-      }`}
+      className={`group rounded-lg overflow-hidden border transition-all relative ${mode === "select"
+        ? selectedPhotoIds.includes(photo.id)
+          ? "border-2 border-theme-action-primary bg-theme-focus-ring-light"
+          : "border-slate-200 hover:border-theme-hover-border cursor-pointer"
+        : "border-slate-200 hover:border-theme-hover-border"
+        }`}
       onClick={() => mode === "select" && onTogglePhoto?.(photo.id)}
     >
       <div
@@ -77,9 +76,8 @@ function PhotoCard({
         />
         {mode === "select" && (
           <div className="absolute top-1.5 right-1.5">
-            <div className={`w-5 h-5 rounded-full flex items-center justify-center ${
-              selectedPhotoIds.includes(photo.id) ? "bg-theme-action-primary" : "bg-white border-2 border-slate-300"
-            }`}>
+            <div className={`w-5 h-5 rounded-full flex items-center justify-center ${selectedPhotoIds.includes(photo.id) ? "bg-theme-action-primary" : "bg-white border-2 border-slate-300"
+              }`}>
               {selectedPhotoIds.includes(photo.id) && <Check className="w-3.5 h-3.5 text-white" />}
             </div>
           </div>
@@ -96,7 +94,7 @@ function PhotoCard({
               <Button
                 variant="ghost"
                 size="icon"
-                className="absolute top-1.5 right-1.5 h-6 w-6 bg-red-600/90 hover:bg-red-700 opacity-0 group-hover:opacity-100 transition-opacity rounded-md"
+                className="absolute top-1.5 right-1.5 h-6 w-6 bg-slate-500 hover:!bg-red-600/90 opacity-0 group-hover:opacity-100 transition-opacity rounded-md"
                 onClick={(e) => {
                   e.stopPropagation();
                   if (confirm(`Delete photo "${photo.name}"?`)) onDeletePhoto(photo.id);
