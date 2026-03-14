@@ -33,7 +33,8 @@ export async function POST(
         const response = await Container.editService.streamSelectionEdit(
             reportId,
             { selection, surroundingContext, instruction, provider },
-            supabase
+            supabase,
+            user.id,
         );
         return response;
     } catch (error) {

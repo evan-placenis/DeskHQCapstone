@@ -10,7 +10,8 @@ export async function reviewerNode(state: typeof ObservationState.State) {
     reportPlan, 
     structureInstructions, 
     systemPrompt, 
-    provider 
+    provider,
+    heliconeInput,
   } = state;
 
   console.log("🧐 [Reviewer] Starting holistic audit (Single Pass)...");
@@ -97,7 +98,7 @@ export async function reviewerNode(state: typeof ObservationState.State) {
   `;
 
   // 4. INVOKE MODEL (With Tools)
-  const baseModel = ModelStrategy.getModel(provider || 'gemini-cheap');
+  const baseModel = ModelStrategy.getModel(provider || 'gemini-cheap', heliconeInput);
     if (typeof baseModel.bindTools !== 'function') {
     throw new Error("Model does not support tools");
  }

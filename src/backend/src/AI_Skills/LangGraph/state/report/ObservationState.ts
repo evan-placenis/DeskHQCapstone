@@ -1,6 +1,7 @@
 import { BaseMessage } from "@langchain/core/messages";
 import { Annotation } from "@langchain/langgraph";
 import { ReportPlan, ImageContext  } from "@/app/shared/types/report-schemas";
+import type { HeliconeContextInput } from "../../../gateway/HeliconeContextBuilder";
  
 
 /**
@@ -122,6 +123,12 @@ export const ObservationState = Annotation.Root({
 
   // 9. Supabase Client (non-serializable but needed for tools)
   client: Annotation<any>(),
+
+  // 9a. Helicone tracking context (passed through from Trigger payload)
+  heliconeInput: Annotation<HeliconeContextInput | undefined>({
+    reducer: (x, y) => y ?? x,
+    default: () => undefined,
+  }),
 
   // 9b. Circuit breaker: count search tool invocations per section to avoid infinite loops
   searchAttemptCount: Annotation<number>({

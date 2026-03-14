@@ -20,7 +20,8 @@ export async function architectNode(state: typeof ObservationState.State) {
     reportPlan: inputPlan, // <--- Rename to avoid confusion
     userFeedback,
     draftReportId,
-    client
+    client,
+    heliconeInput,
   } = state;
 
 
@@ -150,7 +151,7 @@ Example Output:
 `;
 
   // 3. RUN MODEL
-  const baseModel = ModelStrategy.getModel(provider || 'gemini-cheap');
+  const baseModel = ModelStrategy.getModel(provider || 'gemini-cheap', heliconeInput);
   
   // 📝 Log the INPUT (The prompt + any RAG history it is carrying)
   const taskName = `Architect_Plan_1`;

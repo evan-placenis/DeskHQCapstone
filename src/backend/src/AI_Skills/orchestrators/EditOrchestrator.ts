@@ -1,5 +1,6 @@
 import { streamText } from 'ai';
 import { ModelStrategy } from '../Models/model-strategy';
+import type { HeliconeContextInput } from '../gateway/HeliconeContextBuilder';
 
 /**
  * Edit Orchestrator – selection-based editing only.
@@ -30,8 +31,9 @@ IMPORTANT:
         instruction: string;
         provider?: 'grok' | 'gemini-pro' | 'claude' | 'gemini-cheap';
         projectId: string;
+        heliconeInput?: HeliconeContextInput;
     }) {
-        const { selection, surroundingContext, instruction, provider = 'gemini-cheap' } = params;
+        const { selection, surroundingContext, instruction, provider = 'gemini-cheap', heliconeInput } = params;
 
         const userPrompt = surroundingContext
             ? `## Selected Markdown (edit this):
@@ -53,7 +55,7 @@ ${instruction}
 Return only the edited replacement Markdown (no code fence, no preamble).`;
 
         return streamText({
-            model: ModelStrategy.getModel(provider),
+            model: ModelStrategy.getModel(provider, heliconeInput),
             system: EditOrchestrator.SYSTEM_PROMPT,
             prompt: userPrompt,
         });

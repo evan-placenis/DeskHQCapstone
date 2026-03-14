@@ -4,7 +4,7 @@ import { SystemMessage } from "@langchain/core/messages";
 
 // This is a "Worker" in your factory
 export async function researcherNode(state: any) {
-  const { context, messages, currentSection, provider, userId, projectId, client } = state;
+  const { context, messages, currentSection, provider, userId, projectId, client, heliconeInput } = state;
   const systemPrompt = `
  
     ---
@@ -17,7 +17,7 @@ export async function researcherNode(state: any) {
 
   // Bind Tools to Model
   // Native LangChain models accept the tool array directly
-  const baseModel = ModelStrategy.getModel(provider || 'gemini-cheap');
+  const baseModel = ModelStrategy.getModel(provider || 'gemini-cheap', heliconeInput);
   const model = typeof baseModel.bindTools === 'function'
     ? baseModel.bindTools(tools)
     : baseModel;
