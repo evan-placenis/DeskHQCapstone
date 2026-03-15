@@ -2,7 +2,7 @@ import { SystemMessage, HumanMessage, ToolMessage, AIMessage } from "@langchain/
 import { ModelStrategy } from "../../../models/modelStrategy";
 import { tool } from "@langchain/core/tools";
 import { z } from "zod";
-import { ObservationState } from "../../../state/report/ObservationState";
+import { ObservationState } from "../../../state/Pretium/ObservationState";
 
 export async function reviewerNode(state: typeof ObservationState.State) {
   const { 

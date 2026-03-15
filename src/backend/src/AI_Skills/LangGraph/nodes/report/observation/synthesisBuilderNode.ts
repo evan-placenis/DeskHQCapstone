@@ -1,6 +1,6 @@
 import { SystemMessage, HumanMessage } from "@langchain/core/messages";
 import { ModelStrategy } from "../../../models/modelStrategy";
-import { ObservationState } from "../../../state/report/ObservationState";
+import { ObservationState } from "../../../state/Pretium/ObservationState";
 import { Container } from "../../../../../config/container";
 import { dumpAgentContext } from "../../../utils/agent-logger";
 export async function synthesisBuilderNode(state: typeof ObservationState.State) {

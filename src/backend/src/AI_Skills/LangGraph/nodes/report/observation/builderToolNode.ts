@@ -1,7 +1,7 @@
 import { ToolMessage, AIMessage} from "@langchain/core/messages";
-import { reportSkills } from "../../../../LangGraph_skills/report.skills";
-import { researchSkills } from "../../../../LangGraph_skills/research.skills"; 
-import { ObservationState } from "../../../state/report/ObservationState";
+import { reportTools } from "../../../tools/report.tools";
+import { researchTools } from "../../../tools/research.tools"; 
+import { ObservationState } from "../../../state/Pretium/ObservationState";
 import { Container } from "../../../../../config/container";
 
 const SEARCH_TOOL_NAMES = ['searchInternalKnowledge', 'searchWeb'] as const;
@@ -29,8 +29,8 @@ export async function builderToolsNode(state: typeof ObservationState.State) {
   // ⚠️ CRITICAL: This list MUST be identical to the list in 'builderNode.ts'
   // We removed visionSkills because the AI now has native eyes (Multimodal).
   const builderTools = [
-      ...reportSkills(freshClient),
-      ...researchSkills(projectId)
+      ...reportTools(freshClient),
+      ...researchTools(projectId)
   ];
 
   // 2. Create Lookup Map
@@ -189,62 +189,3 @@ export async function builderToolsNode(state: typeof ObservationState.State) {
   // 4. Return Results + updated state (circuit breaker count; reset after writeSection is already applied above)
   return { messages: results, searchAttemptCount };
 }
-
-
-// import { ToolMessage } from "@langchain/core/messages";
-// import { reportSkills } from "../../../../LangGraph_skills/report.skills";
-// import { visionSkillsWithReport } from "../../../../LangGraph_skills/vision.skills";
-// import { researchSkills } from "../../../../LangGraph_skills/research.skills";
-// import { Container } from "@/backend/config/container";
-// export async function builderToolsNode(state: any) {
-//   const { messages, projectId, userId, selectedImageIds, draftReportId, processingMode } = state;
-//   const lastMessage = messages[messages.length - 1];
-
-//   const freshClient = Container.adminClient;
-//   const includeVision = processingMode !== 'TEXT_ONLY';
-
-//   const builderTools = [
-//      ...reportSkills(projectId, userId, freshClient, selectedImageIds),
-//      ...(includeVision ? visionSkillsWithReport(draftReportId, freshClient) : []),
-//      ...researchSkills(projectId)
-//   ];
-
-//   // 2. Map them
-//   const toolsMap: Record<string, any> = {};
-//   builderTools.forEach(tool => { toolsMap[tool.name] = tool; });
-
-//   const results: ToolMessage[] = [];
-
-//   // 3. Execute
-//   if (lastMessage.tool_calls?.length) {
-//     for (const call of lastMessage.tool_calls) {
-//       const tool = toolsMap[call.name];
-
-//       if (tool) {
-//         console.log(`🏗️ Builder Tool: Executing ${call.name}`);
-//         try {
-//             const output = await tool.invoke(call.args);
-//             // ... (standard output handling)
-//              results.push(new ToolMessage({
-//                 tool_call_id: call.id,
-//                 name: call.name,
-//                 content: JSON.stringify(output)
-//             }));
-//         } catch (e: any) {
-//              // ... error handling
-//         }
-//       } else {
-//         // 🛑 THIS IS THE FIX 🛑
-//         // If the AI tries to use 'searchWeb' (monkey see, monkey do), 
-//         // this node will reject it because it didn't load researchSkills!
-//         console.error(`⛔ Security Block: Builder tried to use unauthorized tool '${call.name}'`);
-//         results.push(new ToolMessage({
-//             tool_call_id: call.id,
-//             name: call.name,
-//             content: "ERROR: You do not have access to this tool. Focus on WRITING the report."
-//         }));
-//       }
-//     }
-//   }
-//   return { messages: results };
-// }

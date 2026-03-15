@@ -1,10 +1,10 @@
 import { tool } from '@langchain/core/tools';
 import { z } from 'zod';
-import { Container } from '../../config/container';
+import { Container } from '../../../config/container';
 import { SupabaseClient } from '@supabase/supabase-js';
 
 // Factory function to inject context (like projectId) into tools
-export const reportSkills = ( client: SupabaseClient) => [
+export const reportTools = ( client: SupabaseClient) => [
 //using both "client" and "adminClient" is sus?
 
 // // 🛡️ SECURITY CHECK:

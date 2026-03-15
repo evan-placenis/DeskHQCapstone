@@ -1,6 +1,6 @@
 import { tool } from '@langchain/core/tools';
 import { z } from 'zod';
-import { Container } from '../../config/container'; // Assuming your container is here
+import { Container } from '../../../config/container'; // Assuming your container is here
 function sanitizeQuery(rawQuery: string): string {
   // Matches standard UUIDv4 formats
   const uuidRegex = /[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}/g;
@@ -9,7 +9,7 @@ function sanitizeQuery(rawQuery: string): string {
   return rawQuery.replace(uuidRegex, '').replace(/\s+/g, ' ').trim();
 }
 
-export const researchSkills = (
+export const researchTools = (
   projectId: string, 
 ) => [
 

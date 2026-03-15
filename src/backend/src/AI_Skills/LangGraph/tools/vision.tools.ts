@@ -1,6 +1,6 @@
 import { tool } from '@langchain/core/tools';
 import { z } from 'zod';
-import { Container } from '../../config/container';
+import { Container } from '../../../config/container';
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 /**
@@ -8,7 +8,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
  * AI descriptions from batch analysis are persisted to report_images.ai_description.
  * Requires: ALTER TABLE report_images ADD COLUMN IF NOT EXISTS ai_description TEXT;
  */
-export function visionSkillsWithReport(reportId?: string, client?: SupabaseClient) {
+export function visionToolsWithReport(reportId?: string, client?: SupabaseClient) {
   return [
     tool(
     async ({ images, focus }) => {
@@ -81,4 +81,4 @@ export function visionSkillsWithReport(reportId?: string, client?: SupabaseClien
 }
 
 /** Default for use where report context is not available (e.g. chat). */
-export const visionSkills = visionSkillsWithReport();
+export const visionTools = visionToolsWithReport();

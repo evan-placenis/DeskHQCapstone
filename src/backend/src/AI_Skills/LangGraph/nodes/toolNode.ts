@@ -1,7 +1,7 @@
 import { ToolMessage, AIMessage} from "@langchain/core/messages";
-import { reportSkills } from "../../LangGraph_skills/report.skills";
-import { researchSkills } from "../../LangGraph_skills/research.skills"; 
-import { visionSkills } from "../../LangGraph_skills/vision.skills";
+import { reportTools } from "../tools/report.tools";
+import { researchTools } from "../tools/research.tools"; 
+import { visionTools } from "../tools/vision.tools";
 
 export async function toolNode(state: any) {
   const { messages, projectId, userId, client, selectedImageIds } = state;
@@ -14,15 +14,14 @@ export async function toolNode(state: any) {
 
   // 2. Re-Instantiate Tools
   // We need the *same* tools that the Writer used
-  const reportTools = reportSkills(client);
-  const researchTools= researchSkills(projectId);
-  const visionTools = visionSkills;
+  const reportToolsArray = reportTools(client);
+  const researchToolsArray = researchTools(projectId);
 
   // 3. MERGE THEM
   // This creates one big object: { updateSection: Tool, searchWeb: Tool, ... }
   const allToolsMap: Record<string, any> = {};
 
-  [...reportTools, ...researchTools, ...visionTools].forEach(tool => {
+  [...reportToolsArray, ...researchToolsArray, ...visionTools].forEach((tool) => {
     allToolsMap[tool.name] = tool;
   });
 

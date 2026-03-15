@@ -2,7 +2,7 @@ import { tool } from '@langchain/core/tools';
 import { z } from 'zod';
 import { SupabaseClient } from '@supabase/supabase-js';
 
-export const referenceSkills = (client: SupabaseClient) => [
+export const referenceTools = (client: SupabaseClient) => [
   
   // 🧠 The "Smart" Tool: Allows the agent to look up how to write well
   tool(

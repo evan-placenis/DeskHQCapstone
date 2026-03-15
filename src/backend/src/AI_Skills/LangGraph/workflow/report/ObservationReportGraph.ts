@@ -1,6 +1,6 @@
 import { StateGraph, END, START} from "@langchain/langgraph";
 import { ToolMessage } from "@langchain/core/messages";
-import { ObservationState } from "../../state/report/ObservationState";
+import { ObservationState } from "../../state/Pretium/ObservationState";
 import { architectNode } from "../../nodes/report/observation/architectNode";
 import { humanApprovalNode } from "../../nodes/report/observation/humanApprovalNode";
 import { researcherNode } from "../../nodes/researcherNode";
