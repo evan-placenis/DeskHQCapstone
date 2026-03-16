@@ -27,7 +27,7 @@ export const planningTools = () => [
         // }).describe("Maximum 400 words total across all fields. Use clear language. Do not use hedging phrases like 'it seems'."),
         reasoning: z.string().describe('Analyze the raw data and user request. Note any critical defects that require their own dedicated sections, and determine the logical flow of the report."'),
         sections: z.array(z.object({
-          purpose: z.string().optional().describe('Provide hyper-specific instructions for the next agent. Do not just say "Summarize the roof".'),
+          purpose: z.string().optional().describe('The ONLY instruction the agent executing this section will see.Provide hyper-specific instructions for the next agent. Do not just say "Summarize the roof".'),
           sectionId: z.string().describe('Unique ID for section (e.g., "exec-summary", "observations")'),
           title: z.string().describe('Section title (e.g., "Executive Summary", "Observations")'),
           reportOrder: z.number().describe('The position this section should appear in the FINAL report (e.g. Executive Summary = 1, Recommendations = 2, Observations = 3)'),
@@ -37,7 +37,7 @@ export const planningTools = () => [
           
           // Optional: Nested subsections
           subsections: z.array(z.object({
-            purpose: z.string().optional().describe('Provide hyper-specific instructions for the next agent. Do not just say "Summarize the roof".'),
+            purpose: z.string().optional().describe('The ONLY instruction the agent executing this section will see. Provide hyper-specific instructions for the next agent. Do not just say "Summarize the roof".'),
             subSectionId: z.string(),
             title: z.string(),
             assignedImageIds: z.array(z.string()).optional(),
