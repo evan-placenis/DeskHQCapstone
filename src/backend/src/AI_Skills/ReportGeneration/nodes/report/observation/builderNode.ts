@@ -11,6 +11,7 @@ import * as path from 'path';
 export async function builderNode(state: typeof ObservationState.State) {
   const { 
     reportPlan,
+    userClarification,
     imageList,
     currentSectionIndex, 
     draftReportId,
@@ -95,13 +96,16 @@ export async function builderNode(state: typeof ObservationState.State) {
   const skillPath = path.join(process.cwd(), 'skills', 'technical-observations.md');
   const technicalObservationSkill = fs.readFileSync(skillPath, 'utf-8');
 
-
+  //IMPORTANT: DEPENDING ON THE TYPE OF QUESTIONS WE SEE, WE MAY WANT TO MAKE THE SYSTEM SMARTER AND ONLY SHOW CLARIFICATION ON THE TASK THE QUESTION IS REFERING TO.
   const combinedSystemPrompt = `
     
     ${systemPrompt}
     ---
     GLOBAL REPORT STRUCTURE (For Context Only):
     ${structureInstructions}
+
+    USER CLARIFICATIONS & VERIFIED FACTS:
+    ${userClarification || "No additional user clarifications provided."}
     
     Technical Observation Skills:
     ${technicalObservationSkill}

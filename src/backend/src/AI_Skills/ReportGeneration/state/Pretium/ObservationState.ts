@@ -85,6 +85,12 @@ export const ObservationState = Annotation.Root({
     default: () => "",
   }),
 
+  /** User answers to architect's clarification questions (index matches user_questions in reportPlan) */
+  userClarification: Annotation<string[]>({
+    reducer: (x, y) => y ?? x,
+    default: () => [],
+  }),
+
   // 5. Phase 3: Builder Outputs
   sectionDrafts: Annotation<Record<string, string>>({
     reducer: (x, y) => ({ ...x, ...y }), // Merge new sections into existing

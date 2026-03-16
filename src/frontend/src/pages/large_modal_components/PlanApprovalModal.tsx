@@ -3,6 +3,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../ui_componen
 import { Button } from '../ui_components/button';
 import { Label } from '../ui_components/label';
 import { Badge } from '../ui_components/badge';
+import { Textarea } from '../ui_components/textarea';
 import { ReportPlan } from '@/app/shared/types/report-schemas';
 import { 
   ReportStructureEditor, 
@@ -37,6 +38,7 @@ export default function PlanApprovalModal({
   const [sections, setSections] = useState<any[]>([]);
   const [activeTab, setActiveTab] = useState<'preview' | 'edit'>('preview');
   const [additionalInstructions, setAdditionalInstructions] = useState('');
+  const [userClarification, setUserClarification] = useState<string[]>([]);
 
   useEffect(() => {
     if (reportPlan?.sections) {
@@ -47,6 +49,11 @@ export default function PlanApprovalModal({
       setSections(convertedSections);
     }
   }, [reportPlan]);
+
+  useEffect(() => {
+    const questions = reportPlan?.user_questions ?? [];
+    setUserClarification(questions.map(() => ''));
+  }, [reportPlan?.user_questions]);
 
   
 
@@ -110,6 +117,7 @@ export default function PlanApprovalModal({
         body: JSON.stringify({
           approvalStatus: 'APPROVED',
           userFeedback: additionalInstructions || '',
+          userClarification: userClarification,
           modifiedPlan: updatedPlan,
         }),
       });
@@ -189,6 +197,37 @@ export default function PlanApprovalModal({
                 </div>
               )}
 
+              {reportPlan.user_questions && reportPlan.user_questions.length > 0 && (
+                <div className="bg-amber-50/80 border border-amber-200 rounded-lg p-4 mb-6">
+                  <Label className="text-xs font-bold text-amber-800 uppercase tracking-wide mb-3 block">
+                    Clarification Questions
+                  </Label>
+                  <p className="text-sm text-slate-600 mb-4">
+                    Please answer these questions to help improve the report accuracy:
+                  </p>
+                  <div className="space-y-4">
+                    {reportPlan.user_questions.map((question, index) => (
+                      <div key={index} className="space-y-2">
+                        <Label className="text-sm font-medium text-slate-700">
+                          {index + 1}. {question}
+                        </Label>
+                        <Textarea
+                          placeholder="Your answer..."
+                          value={userClarification[index] ?? ''}
+                          onChange={(e) => {
+                            const next = [...userClarification];
+                            next[index] = e.target.value;
+                            setUserClarification(next);
+                          }}
+                          className="min-h-[60px] resize-y"
+                          rows={2}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               <div className="space-y-4 max-w-5xl mx-auto">
                 {syncPreviewSections.map((section, index) => (
                   <div key={section.id || index} className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
@@ -230,7 +269,37 @@ export default function PlanApprovalModal({
             </TabsContent>
 
             <TabsContent value="edit" className="flex-1 overflow-hidden">
-               <div className="p-6 h-full overflow-y-auto">
+               <div className="p-6 h-full overflow-y-auto space-y-6">
+                  {reportPlan.user_questions && reportPlan.user_questions.length > 0 && (
+                    <div className="bg-amber-50/80 border border-amber-200 rounded-lg p-4">
+                      <Label className="text-xs font-bold text-amber-800 uppercase tracking-wide mb-3 block">
+                        Clarification Questions
+                      </Label>
+                      <p className="text-sm text-slate-600 mb-4">
+                        Please answer these questions to help improve the report accuracy:
+                      </p>
+                      <div className="space-y-4">
+                        {reportPlan.user_questions.map((question, index) => (
+                          <div key={index} className="space-y-2">
+                            <Label className="text-sm font-medium text-slate-700">
+                              {index + 1}. {question}
+                            </Label>
+                            <Textarea
+                              placeholder="Your answer..."
+                              value={userClarification[index] ?? ''}
+                              onChange={(e) => {
+                                const next = [...userClarification];
+                                next[index] = e.target.value;
+                                setUserClarification(next);
+                              }}
+                              className="min-h-[60px] resize-y"
+                              rows={2}
+                            />
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                   <ReportStructureEditor
                     sections={sections}
                     onSectionsChange={setSections}

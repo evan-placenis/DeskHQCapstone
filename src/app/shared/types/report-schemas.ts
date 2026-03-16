@@ -33,7 +33,8 @@ export const ReportSectionSchema = z.object({
 export const ReportPlanSchema = z.object({
   sections: z.array(ReportSectionSchema),
   strategy: z.string(),
-  reasoning: z.string().optional()
+  reasoning: z.string().optional(),
+  user_questions: z.array(z.string()).optional().describe('Questions for the user to clarify contradictions or missing facts'),
 });
 
 export interface ImageContext {

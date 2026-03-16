@@ -107,7 +107,8 @@ export async function architectNode(state: typeof ObservationState.State) {
       reportPlan = {
         sections: call.args.sections,
         strategy: call.args.strategy,
-        reasoning: call.args.reasoning
+        reasoning: call.args.reasoning,
+        user_questions: call.args.user_questions ?? [],
       };
     }
   }

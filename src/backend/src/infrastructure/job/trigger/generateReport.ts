@@ -48,6 +48,8 @@ export interface TriggerPayload {
   action?: "start" | "resume"; // Action type
   approvalStatus?: "APPROVED" | "REJECTED"; // For resume actions
   userFeedback?: string; // For resume actions
+  /** User answers to architect's clarification questions (index matches user_questions in reportPlan) */
+  userClarification?: string[];
   /** When user approves (possibly after editing), frontend sends the plan to use. Builder uses this directly. */
   modifiedPlan?: { sections: any[]; strategy?: string; reasoning?: string };
   /** Serialized HeliconeContextInput — worker calls .build() locally to avoid leaking the API key. */
@@ -524,7 +526,7 @@ async function handleResumeAction(
   payload: TriggerPayload,
   supabase: SupabaseClient
 ): Promise<any> {
-  const { reportId, approvalStatus, userFeedback } = payload;
+  const { reportId, approvalStatus, userFeedback, userClarification } = payload;
 
   if (!reportId) {
     throw new Error("reportId is required for resume action");
@@ -555,6 +557,7 @@ async function handleResumeAction(
     const stateUpdate: Record<string, unknown> = {
       approvalStatus,
       userFeedback: userFeedback || '',
+      userClarification: userClarification ?? [],
       next_step: approvalStatus === 'REJECTED' ? 'architect' : 'builder',
       draftReportId: existingDraftReportId, // CRITICAL: Preserve reportId so builder can write sections
     };

@@ -23,7 +23,7 @@ export async function POST(
   try {
     const { reportId } = await params;
     const body = await request.json();
-    const { approvalStatus, userFeedback, modifiedPlan } = body;
+    const { approvalStatus, userFeedback, modifiedPlan, userClarification } = body;
 
     // 1. Validation
     if (!reportId) {
@@ -76,6 +76,7 @@ export async function POST(
       action: "resume",
       approvalStatus: approvalStatus as "APPROVED" | "REJECTED",
       userFeedback: userFeedback || "",
+      userClarification: userClarification ?? undefined, // User answers to architect's clarification questions
       modifiedPlan: modifiedPlan ?? undefined, // Plan from PlanApprovalModal (possibly user-edited)
     });
 
