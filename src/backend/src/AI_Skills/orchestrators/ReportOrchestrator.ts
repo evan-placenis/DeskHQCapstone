@@ -1,8 +1,8 @@
 
 import { HumanMessage, AIMessage } from "@langchain/core/messages";
 import { Container } from '../../config/container'; // Your generic Supabase server client
-import { getWorkflow } from '../LangGraph/workflow'; // Dynamic workflow selector
-import { CustomLangChainAdapter } from '../LangGraph/utils/custom-adapter';
+import { getWorkflow } from '../ReportGeneration/workflow'; // Dynamic workflow selector
+import { CustomLangChainAdapter } from '../ReportGeneration/utils/custom-adapter';
 
 import { SupabaseClient } from "@supabase/supabase-js";
 // import { imageGeneration } from "@langchain/openai/dist/tools/imageGeneration.cjs";
@@ -13,7 +13,7 @@ interface GenerateParams {
   projectId: string;
   userId: string;
   reportType?: string;
-  provider?: 'grok' | 'gemini-pro' | 'claude'| 'gemini-cheap';
+  provider?: 'claude' | 'gemini' | 'grok' | 'openai';
   draftReportId: string, 
   selectedImageIds?: string[];
   workflowType?: string;
@@ -90,7 +90,7 @@ export class ReportOrchestrator {
       projectId,
       userId,
       reportType: reportType || "standard",
-      provider: provider || "gemini-cheap",
+      provider: provider || "gemini",
       selectedImageIds: selectedImageIds || [],
       imageList: [],
       currentSection: "init",
@@ -108,40 +108,7 @@ export class ReportOrchestrator {
     // 🛡️ WRAP IT: Add the logger here!
     const loggedStream = wrapStreamForLogging(stream);
 
-    //FOR STREAMING TO FRONTEND:
-    // import { StreamData } from 'ai'; // Ensure you have the 'ai' package installed
-    // const data = new StreamData(); // 1. Create Data Container
-
-    // // 2. Custom Processor
-    // async function* processStream(stream: AsyncGenerator<any>) {
-    //     for await (const event of stream) {
-    //         // A. Log to Server Console
-    //         if (event.event === 'on_chain_start' && event.name !== "LangGraph") {
-    //              console.log(`🟢 [Server] Node: ${event.name}`);
-                 
-    //              // B. Send to Frontend (as JSON data)
-    //              // This will appear in the 'data' array on the client useChat hook
-    //              data.append({
-    //                  type: 'log',
-    //                  message: `Entering node: ${event.name}`,
-    //                  timestamp: Date.now()
-    //              });
-    //         }
-    //         // ... handle other events ...
-
-    //         yield event;
-    //     }
-        
-    //     // C. Close Data Stream when done
-    //     data.close();
-    // }
-
-    // // const processedStream = processStream(stream);
-
-    // // 3. Pass 'data' to the Adapter
-    // return CustomLangChainAdapter.toDataStreamResponse(processedStream, data);
-
-    // 5. Adapt & Return
+    // 5.Adapt & Return
     // We return the raw Response here so the Route just passes it through
     return CustomLangChainAdapter.toDataStreamResponse(loggedStream);
   }

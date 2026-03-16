@@ -42,7 +42,7 @@ export const ObservationState = Annotation.Root({
   reportType: Annotation<string>(),
   provider: Annotation<string>({
     reducer: (x, y) => y ?? x,
-    default: () => "gemini-cheap",
+    default: () => "gemini",
   }),
 
   /** 'TEXT_ONLY' = no vision tools; 'IMAGE_AND_TEXT' = include analyze_batch_images etc. (from NewReportModal) */

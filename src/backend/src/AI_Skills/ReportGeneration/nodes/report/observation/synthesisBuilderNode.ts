@@ -3,6 +3,8 @@ import { ModelStrategy } from "../../../models/modelStrategy";
 import { ObservationState } from "../../../state/Pretium/ObservationState";
 import { Container } from "../../../../../config/container";
 import { dumpAgentContext } from "../../../utils/agent-logger";
+import * as fs from 'fs';
+import * as path from 'path';
 export async function synthesisBuilderNode(state: typeof ObservationState.State) {
   const { 
     reportPlan, 
@@ -13,16 +15,15 @@ export async function synthesisBuilderNode(state: typeof ObservationState.State)
     provider,
     heliconeInput,
   } = state;
-
-  console.log("🧩 [Synthesis] Checking for missing report sections...");
-
-  // 1. IDENTIFY GAPS
-  // We look at the Master Plan and see what the Builder didn't write.
-  const existingTitles = new Set(Object.keys(sectionDrafts || {}));
   if(!reportPlan) {
     console.error("❌ [Synthesis] No report plan found!");
     return { next_step: "FINISH" };
   }
+  console.log("🧩 [Synthesis] Checking for missing report sections...");
+
+
+  // 1. IDENTIFY GAPS: We look at the Master Plan and see what the Builder didn't write.
+  const existingTitles = new Set(Object.keys(sectionDrafts || {}));
   const sectionsToWrite = reportPlan.sections.filter(section => 
     !existingTitles.has(section.title)
   );
@@ -34,60 +35,67 @@ export async function synthesisBuilderNode(state: typeof ObservationState.State)
 
   console.log(`📝 [Synthesis] Generating: ${sectionsToWrite.map(s => s.title).join(", ")}`);
 
-  // 2. PREPARE CONTEXT (The Evidence)
-  // The LLM needs to read the DETAILED observations to write the high-level summary.
-  // ⚠️ CRITICAL: This reads from MEMORY (State). 
-  // If sectionDrafts is empty here, the Summary will be bad.
-  const observationsContext = Object.entries(sectionDrafts || {})
+  // 2. PREPARE CONTEXT: The LLM needs to read the DETAILED observations to write the high-level summary.
+  // CRITICAL: This reads from MEMORY (State). If sectionDrafts is empty here, the Summary will be bad.
+  const reportContext = Object.entries(sectionDrafts || {})
     .map(([title, content]) => `
-    === EVIDENCE FROM ${title} ===
+    === ${title} ===
     ${content}
     `)
     .join("\n\n");
 
   const newContent: Record<string, string> = {};
-  const model = ModelStrategy.getModel(provider || 'gemini-pro', heliconeInput); 
+  const model = ModelStrategy.getModel(provider || 'gemini', 'lightweight', heliconeInput); 
   const freshClient = Container.adminClient;
+
+
+  // LOAD SYNTHESIS SKILLS (OUTSIDE THE LOOP)
+  const skillPath = path.join(process.cwd(), 'skills', 'summarize.md');
+  let summarizeSkill = fs.readFileSync(skillPath, 'utf-8');
+  
+  // Build the massive cached prompt ONCE so it will be cached by Gemini.
+  const combinedSystemPrompt = `
+  ${systemPrompt}
+  ---
+  ${summarizeSkill}
+
+  ---
+  INPUT DATA (The Report Findings needed for Context):
+  ${reportContext}
+
+  ---
+  GLOBAL REPORT STRUCTURE (For Context Only):
+  ${structureInstructions}
+  `;
+
+  // Build this ONCE so Gemini can implicitly cache it across all loop iterations
+  const systemBlock = new SystemMessage(combinedSystemPrompt);
 
   // 3. GENERATE MISSING SECTIONS
   for (const section of sectionsToWrite) {
     let success = false;
     let attempts = 0;
     const MAX_RETRIES = 3;
+    
+    // Keep this tiny and specific to the current loop iteration!
     const prompt = `
-        ROLE: Senior Principal Engineer.
+        TASK: Write the section "**${section.title}**" for the structural inspection report.
         
-        TASK: 
-        Write the section "**${section.title}**" for a structural inspection report.
-        
-        PURPOSE OF THIS SECTION (From Plan):
-        ${section.purpose || "Provide a high-level overview and actionable next steps."}
+        PURPOSE OF THIS SECTION:
+        ${section.purpose}
+    `;
 
-        INPUT DATA (The Reprot Findings needed for Context Only):
-        ${observationsContext}
-
-        ---
-        GLOBAL REPORT STRUCTURE (For Context Only):
-        The following is the structure for the ENTIRE report. Use this to understand where your section fits in, but DO NOT write the other sections.
-        ${structureInstructions}
-
-        CRITICAL EXECUTION RULES 
-        1. You are currently executing ONLY the "${section.title}" task.
-        2. DO NOT generate the entire report.
-        3. DO NOT output headers, content, or placeholders for any other sections.
-      `;
-
-    // 🔄 RETRY LOOP
+    // RETRY LOOP FOR CURRENT SECTION
     while (!success && attempts < MAX_RETRIES) {
       attempts++;
       console.log(`✍️ [Synthesis] Writing "${section.title}"...`);
       try {
         // 📝 Log the INPUT (The prompt + any RAG history it is carrying)
         const taskName = `SynthesisBuilder_Task_${section.title}`;
-        dumpAgentContext(draftReportId || "", taskName, [new SystemMessage(systemPrompt || "You are an expert technical writer."), new HumanMessage(prompt)], 'INPUT');
+        dumpAgentContext(draftReportId || "", taskName, [systemBlock, new HumanMessage(prompt)], 'INPUT');
 
         const response = await model.invoke([
-          new SystemMessage(systemPrompt || "You are an expert technical writer."),
+          systemBlock,
           new HumanMessage(prompt)
         ]);
 
@@ -95,16 +103,10 @@ export async function synthesisBuilderNode(state: typeof ObservationState.State)
         dumpAgentContext(draftReportId || "", taskName, [response], 'OUTPUT');
 
         const rawText = typeof response.content === 'string' ? response.content : JSON.stringify(response.content);
-
-        // leaving only the pure report text.
-        const cleanReportText = rawText.replace(/<thinking>[\s\S]*?<\/thinking>/gi, '').trim();
-        newContent[section.title] = cleanReportText;
-
-        // 2. MARK SUCCESS HERE (The AI did its job)
+        newContent[section.title] = rawText;
         success = true;
 
-        // 💾 SAVE TO DATABASE (Critical Fix)
-        // We must persist this immediately so the final compiler sees it.
+        // SAVE TO DATABASE (Critical Fix): We must persist this immediately so the final compiler sees it.
         if (draftReportId) {
           try {
               const safeOrder = Math.floor(Number(section.reportOrder));
@@ -112,7 +114,7 @@ export async function synthesisBuilderNode(state: typeof ObservationState.State)
                   draftReportId,
                   section.sectionId,
                   section.title,
-                  cleanReportText,
+                  rawText,
                   safeOrder, // Use the correct order from the plan
                   freshClient
               );
@@ -136,13 +138,12 @@ export async function synthesisBuilderNode(state: typeof ObservationState.State)
       }
     }
   }
-  // 4. MERGE & SORT
-  // Combine the drafts
+  // 4. MERGE & SORT:Combine the drafts
   const unsortedDrafts = { ...sectionDrafts, ...newContent };
 
   // Re-order them according to the Original Plan
   const sortedDrafts: Record<string, string> = {};
-  
+
   reportPlan.sections.forEach(section => {
     // If we have content for this plan item, add it to the new object in order
     if (unsortedDrafts[section.title]) {
@@ -152,7 +153,7 @@ export async function synthesisBuilderNode(state: typeof ObservationState.State)
 
   console.log("✅ [Synthesis] Report assembled in correct order.");
 
-  // 4. FINISH
+  // FINISH
   // Merge the new sections into the main draft list and end the graph.
   return {
     sectionDrafts: sortedDrafts,

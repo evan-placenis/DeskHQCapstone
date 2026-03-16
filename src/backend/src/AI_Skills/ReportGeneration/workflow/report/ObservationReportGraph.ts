@@ -3,8 +3,9 @@ import { ToolMessage } from "@langchain/core/messages";
 import { ObservationState } from "../../state/Pretium/ObservationState";
 import { architectNode } from "../../nodes/report/observation/architectNode";
 import { humanApprovalNode } from "../../nodes/report/observation/humanApprovalNode";
-import { researcherNode } from "../../nodes/researcherNode";
-import { builderNode, builderContinueNode } from "../../nodes/report/observation/builderNode";
+
+import { builderNode } from "../../nodes/report/observation/builderNode";
+import { builderContinueNode } from "../../nodes/report/observation/builderContinueNode";
 import { reviewerNode } from "../../nodes/report/observation/reviewerNode";
 import { synthesisBuilderNode} from "../../nodes/report/observation/synthesisBuilderNode";
 import { toolNode } from "../../nodes/toolNode";

@@ -98,7 +98,7 @@ export class ReportService {
         };
         // Filter out any messages with empty/undefined content
         // 3. Call AI-SDK Orchestrator
-        const provider = (normalizedInput.modelName?.toLowerCase())|| 'gemini-cheap';
+        const provider = (normalizedInput.modelName?.toLowerCase()) || 'gemini';
 
         const streamResult = await this.reportOrchestrator.generateStream({
             messages: [userMessage],

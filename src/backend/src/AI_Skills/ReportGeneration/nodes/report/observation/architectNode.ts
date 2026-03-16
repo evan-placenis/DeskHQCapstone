@@ -1,7 +1,5 @@
 import { SystemMessage, AIMessage, ToolMessage } from "@langchain/core/messages";
 import { ModelStrategy } from "../../../models/modelStrategy";
-import { tool } from '@langchain/core/tools';
-import { z } from 'zod';
 import { Container } from "@/backend/config/container";
 import { ObservationState } from "../../../state/Pretium/ObservationState";
 import { dumpAgentContext } from "../../../utils/agent-logger";
@@ -34,12 +32,13 @@ export async function architectNode(state: typeof ObservationState.State) {
   // We use the "Compressed Manifest" pattern: Metadata only, no 2000-token descriptions.
   const photoContext = imageList && imageList.length > 0 
     ? imageList.map((img, index) => {
-        // Build a concise summary line
+        // Build a concise summary line (DB: description=user caption, ai_description=AI analysis)
         const tags = img.tags && img.tags.length > 0 ? `[Tags: ${img.tags.join(', ')}]` : '';
-        const note = img.userNote ? ` | User Note: "${img.userNote}"` : '';
+        const userDesc = img.userNote ? ` | User: "${img.userNote}"` : '';
+        const aiDesc = img.aiDescription ? ` | AI: ${img.aiDescription.slice(0, 350)}${img.aiDescription.length > 350 ? '...' : ''}` : '';
         const severity = img.severity ? ` | Severity: ${img.severity}` : '';
         
-        return `[ID: ${img.id}] Photo ${index + 1}: ${tags}${severity}${note}`;
+        return `[ID: ${img.id}] Photo ${index + 1}: ${tags}${severity}${userDesc}${aiDesc}`;
       }).join('\n')
     : "No photos selected.";
 
@@ -72,7 +71,7 @@ export async function architectNode(state: typeof ObservationState.State) {
   const promptContext = `${systemPrompt}\n${architectSkill}\n${dynamicInputs}`;
 
   // 4 RUN MODEL
-  const baseModel = ModelStrategy.getModel(provider || 'gemini-cheap', heliconeInput);
+  const baseModel = ModelStrategy.getModel(provider || 'gemini', 'heavyweight', heliconeInput);
   
   // 📝 Log the INPUT (The prompt + any RAG history it is carrying)
   const taskName = `Architect_Plan_1`;
@@ -81,8 +80,6 @@ export async function architectNode(state: typeof ObservationState.State) {
   const model = baseModel?.bindTools?.([planningTools], {
     tool_choice: "submitReportPlan" 
   });
-
-
 
   const response = await model?.invoke?.([
     new SystemMessage(promptContext),

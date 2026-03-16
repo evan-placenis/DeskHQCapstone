@@ -98,7 +98,7 @@ export async function reviewerNode(state: typeof ObservationState.State) {
   `;
 
   // 4. INVOKE MODEL (With Tools)
-  const baseModel = ModelStrategy.getModel(provider || 'gemini-cheap', heliconeInput);
+  const baseModel = ModelStrategy.getModel(provider || 'gemini', 'heavyweight', heliconeInput);
     if (typeof baseModel.bindTools !== 'function') {
     throw new Error("Model does not support tools");
  }

@@ -11,10 +11,10 @@ import { createClient } from "@supabase/supabase-js";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 // 👇 IMPORT WORKFLOW REGISTRY
-import { getWorkflow } from "../../../AI_Skills/LangGraph/workflow";
+import { getWorkflow } from "../../../AI_Skills/ReportGeneration/workflow";
 import { HumanMessage, SystemMessage } from "@langchain/core/messages";
-import { StreamingAdapter } from "../../../AI_Skills/LangGraph/utils/streaming-adapter";
-import { getFlattenedTasks } from "../../../AI_Skills/LangGraph/nodes/report/observation/builderNode";
+import { StreamingAdapter } from "../../../AI_Skills/ReportGeneration/utils/streaming-adapter";
+import { getFlattenedTasks } from "../../../AI_Skills/ReportGeneration/nodes/report/observation/builderNode";
 import { HeliconeContextBuilder, type HeliconeContextInput } from "../../../AI_Skills/gateway/HeliconeContextBuilder";
 
 // Load environment variables - ensure they're available for Trigger.dev workers

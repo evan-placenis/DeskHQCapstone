@@ -550,7 +550,7 @@ export function ProjectDetailPage({
         selectedImageIds: reportData.photoIds,
         sections: reportData.sections,
         style: reportData.style,
-        modelName: reportData.modelName || 'gemini-cheap',
+        modelName: reportData.modelName || 'gemini',
         reportType: reportData.reportType,
         workflowType: reportData.workflowType,
       };
