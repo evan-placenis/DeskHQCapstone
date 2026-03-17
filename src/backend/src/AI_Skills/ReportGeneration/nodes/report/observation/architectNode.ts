@@ -4,6 +4,8 @@ import { Container } from "@/backend/config/container";
 import { ObservationState } from "../../../state/Pretium/ObservationState";
 import { dumpAgentContext } from "../../../utils/agent-logger";
 import { planningTools } from "../../../tools/planning.tool";
+import { extractTextContent } from "../../../utils/streaming-adapter";
+import { createNodeBroadcaster } from "../../../utils/node-broadcast";
 import path from 'path';
 import fs from 'fs';
 /**
@@ -26,8 +28,12 @@ export async function architectNode(state: typeof ObservationState.State) {
   } = state;
   // 1. LOAD THE STATIC SKILLS
   // Trigger.dev runs with cwd=capstone/src/backend, so path is relative to that
-  const skillPath = path.join(process.cwd(), 'src/AI_Skills/ReportGeneration/skills/architect-planning.md');
-  const architectSkill = fs.readFileSync(skillPath, 'utf-8');
+  const skillPathBase = path.join(process.cwd(), 'src/AI_Skills/ReportGeneration/skills/architect-planning.md');
+  const skillPathThinking = path.join(process.cwd(), 'src/AI_Skills/ReportGeneration/skills/architect-planning(thinking).md');
+  const skillPathExecution = path.join(process.cwd(), 'src/AI_Skills/ReportGeneration/skills/architect-planning(execution).md');
+  const architectBaseSkill = fs.readFileSync(skillPathBase, 'utf-8');
+  const architectThinkingSkill = fs.readFileSync(skillPathThinking, 'utf-8');
+  const architectExecutionSkill = fs.readFileSync(skillPathExecution, 'utf-8');
   const exampleReport = fs.readFileSync(path.join(process.cwd(), 'src/AI_Skills/ReportGeneration/skills/example-report.md'), 'utf-8');
 
   // 2 GENERATE CONTEXT STRING
@@ -70,36 +76,78 @@ export async function architectNode(state: typeof ObservationState.State) {
 
   // 3. COMBINE AND CONSTRUCT PROMPT
   // Stick the static rules and the dynamic data together
-  const promptContext = `
+  const promptContextPhase1 = `
   ${systemPrompt}\n
-  ---
-  ${architectSkill}\n
   ---
   EXAMPLE REPORT TO USE AS REFERENCE:
   ${exampleReport}\n
-  ---
+  --- 
+  ${architectBaseSkill}\n
+  
+  ${architectThinkingSkill}\n
+
   ${dynamicInputs}`;
 
-  // 4 RUN MODEL
-  const baseModel = ModelStrategy.getModel(provider || 'gemini', 'heavyweight', heliconeInput);
-  
-  // 📝 Log the INPUT (The prompt + any RAG history it is carrying)
+  // 4. RUN MODEL — 2-call architecture
+  //
+  // Phase 1 (streaming, no tools): The model writes its full analysis as plain text.
+  //   Tokens are broadcast in real-time so the user sees the reasoning as it happens.
+  //   A streaming=true model is used; because no tools are bound, Gemini only outputs
+  //   text chunks — zero risk of "Failed to parse stream".
+  //
+  // Phase 2 (non-streaming, forced tool call): A streaming=false model is used to
+  //   produce the structured submitReportPlan JSON. Non-streaming means the Google SDK
+  //   never tries to parse partial SSE tool-call chunks, so it can't crash.
+
   const taskName = `Architect_Plan_1`;
-  dumpAgentContext(taskName, [new SystemMessage(promptContext), ...state.messages], 'INPUT', reportTitle || "", undefined);
+  const broadcaster = createNodeBroadcaster(state.projectId);
 
-  // No tool_choice forced — the model writes its reasoning as plain text first,
-  // then calls submitReportPlan when ready. This gives us clean streaming on all providers.
-  const model = baseModel?.bindTools?.(planningTools());
+  // ── Phase 1: Stream reasoning ──────────────────────────────────────────────
+  const streamingModel = ModelStrategy.getModel(provider || 'gemini', 'heavyweight', heliconeInput, true);
+  const phase1Messages = [new SystemMessage(promptContextPhase1), ...state.messages];
 
-  const response = await model?.invoke?.([
-    new SystemMessage(promptContext),
-    ...state.messages
+  dumpAgentContext(taskName, phase1Messages, 'INPUT', reportTitle || "", undefined);
+
+  let reasoningText = '';
+  const reasoningStream = await streamingModel.stream(phase1Messages);
+
+  for await (const chunk of reasoningStream) {
+    const text = extractTextContent(chunk);
+    if (text) {
+      reasoningText += text;
+      await broadcaster.push(text);
+    }
+  }
+  await broadcaster.flush();
+
+  // ── Phase 2: Structured plan (non-streaming, forced tool call) ─────────────
+  // Embed the completed reasoning in the system prompt so the model can reference
+  // it when structuring the plan, then force the tool call.
+  const promptContextPhase2 = `
+  ${systemPrompt}\n
+  ---
+  EXAMPLE REPORT TO USE AS REFERENCE:
+  ${exampleReport}\n
+  --- 
+  ${architectBaseSkill}\n
+  
+  ${architectExecutionSkill}\n
+
+  ${dynamicInputs}`;
+
+  const phase2Prompt = `${promptContextPhase2}\n\n---\n**YOUR COMPLETED ANALYSIS:**\n${reasoningText}\n\nYou have finished your analysis. Now you MUST call \`submitReportPlan\` with the complete structured plan.`;
+
+  const nonStreamingModel = ModelStrategy.getModel(provider || 'gemini', 'heavyweight', heliconeInput, false);
+  const planModel = nonStreamingModel.bindTools!(planningTools(), { tool_choice: "submitReportPlan" });
+
+  const response = await planModel.invoke([
+    new SystemMessage(phase2Prompt),
+    ...state.messages,
   ]);
 
-  // 📝 Log the OUTPUT (What the AI just generated / The tools it wants to call)
   dumpAgentContext(taskName, [response], 'OUTPUT', reportTitle || "", undefined);
 
-  // 4. PARSE TOOL CALL
+  // 5. PARSE TOOL CALL
   let reportPlan = null;
   let toolResultMsg = null;
   const aiMsg = response as AIMessage;
@@ -122,7 +170,7 @@ export async function architectNode(state: typeof ObservationState.State) {
     }
   }
 
-  // 5. UPDATE DB (For UI Feedback)
+  // 6. UPDATE DB (For UI Feedback)
   if (draftReportId && client) {
     try {
       await Container.reportService.updateReportStatus(draftReportId, {

@@ -16,8 +16,12 @@
  *   on_tool_start         → streamingAdapter.getFriendlyStatus(toolName, input)
  */
 
-/** Plain text content from an AIMessageChunk, handling both string and array-of-parts forms. */
-function extractTextContent(chunk: any): string {
+/**
+ * Extracts plain text from an AIMessageChunk, handling both the string form
+ * (Claude / OpenAI) and the array-of-parts form (Gemini).
+ * Exported so individual nodes can use it in their own streaming loops.
+ */
+export function extractTextContent(chunk: any): string {
   if (!chunk) return '';
   const content = chunk.content;
   if (typeof content === 'string') return content;
@@ -38,7 +42,7 @@ export class StreamingAdapter {
   onNodeStart(nodeName: string): string | null {
     switch (nodeName) {
       case 'synthesis_builder':
-        return 'Writing summary sections...';
+        return 'Finalizing report...';
       case 'builder':
         return 'Analyzing evidence...';
       case 'architect':
@@ -46,30 +50,6 @@ export class StreamingAdapter {
       default:
         return null;
     }
-  }
-
-  /**
-   * Feed one AIMessageChunk from an `on_chat_model_stream` event.
-   *
-   * • `architect` and `builder` — the model writes free-form reasoning as plain text
-   *   content BEFORE calling a tool. We stream that text directly.
-   *   We skip `tool_call_chunks.args` (structured JSON, not for the user).
-   *
-   * • `synthesis_builder` — writes the final polished report sections directly.
-   *   We deliberately skip this: the output is finished content, not a thinking
-   *   process, and should not appear in the reasoning panel.
-   *
-   * @param chunk    - The chunk from `event.data.chunk`
-   * @param nodeName - The LangGraph node (from `event.metadata?.langgraph_node`)
-   * @returns New text to append to the broadcast buffer. Empty string if nothing to show.
-   */
-  feedModelChunk(chunk: any, nodeName: string): string {
-    if (nodeName === 'synthesis_builder') {
-      // Final report content — don't show in the reasoning panel.
-      return '';
-    }
-    // All other nodes: stream plain text content tokens only.
-    return extractTextContent(chunk);
   }
 
   /**

@@ -43,14 +43,18 @@ export type ModelSize = 'lightweight' | 'heavyweight';
 export class ModelStrategy {
     /**
      * Get a model by provider and size.
-     * @param provider - Frontend value: 'claude' | 'gemini' | 'grok' | 'openai' (or registry key)
-     * @param size - 'lightweight' (fast/cheap) or 'heavyweight' (strong reasoning). Default: lightweight
+     * @param provider   - Frontend value: 'claude' | 'gemini' | 'grok' | 'openai' (or registry key)
+     * @param size       - 'lightweight' (fast/cheap) or 'heavyweight' (strong reasoning). Default: lightweight
      * @param heliconeInput - Optional Helicone context for observability
+     * @param streaming  - Whether the model should stream tokens. Default: true.
+     *                     Pass false for Phase 2 (tool-calling) invocations to avoid Gemini's
+     *                     "Failed to parse stream" error when streaming complex JSON tool arguments.
      */
     static getModel(
         provider: string,
         size: ModelSize = 'lightweight',
         heliconeInput?: HeliconeContextInput,
+        streaming: boolean = true,
     ): BaseChatModel {
         const helicone = heliconeInput
             ? HeliconeContextBuilder.build(heliconeInput)
@@ -65,6 +69,7 @@ export class ModelStrategy {
                 return new ChatAnthropic({
                     model: modelName,
                     apiKey: process.env.ANTHROPIC_API_KEY,
+                    streaming,
                     ...(helicone && {
                         clientOptions: {
                             baseURL: `${helicone.baseURL}/v1`,
@@ -77,11 +82,12 @@ export class ModelStrategy {
                 });
 
             case 'google':
-                return createGoogleModel(modelName, helicone);
+                return createGoogleModel(modelName, helicone, streaming);
 
             case 'openai':
                 return new ChatOpenAI({
                     modelName,
+                    streaming,
                     apiKey: process.env.OPENAI_API_KEY,
                     configuration: {
                         baseURL: helicone ? `${helicone.baseURL}/v1` : undefined,
@@ -94,6 +100,7 @@ export class ModelStrategy {
             case 'grok':
                 return new ChatOpenAI({
                     modelName,
+                    streaming,
                     configuration: {
                         baseURL: helicone
                             ? `${helicone.baseURL}/v1`
@@ -106,7 +113,7 @@ export class ModelStrategy {
                 });
 
             default:
-                return createGoogleModel(MODEL_REGISTRY.google.lightweight, helicone);
+                return createGoogleModel(MODEL_REGISTRY.google.lightweight, helicone, streaming);
         }
     }
 }
@@ -114,11 +121,13 @@ export class ModelStrategy {
 function createGoogleModel(
     modelName: string,
     helicone: HeliconeContext | null,
+    streaming: boolean = true,
 ): ChatGoogleGenerativeAI {
     if (!helicone) {
         return new ChatGoogleGenerativeAI({
             model: modelName,
             apiKey: process.env.GOOGLE_API_KEY,
+            streaming,
         });
     }
 
@@ -130,6 +139,7 @@ function createGoogleModel(
     return new ChatGoogleGenerativeAI({
         model: modelName,
         apiKey: process.env.GOOGLE_API_KEY,
+        streaming,
         baseUrl: helicone.baseURL,
         customHeaders: googleHeaders,
     });

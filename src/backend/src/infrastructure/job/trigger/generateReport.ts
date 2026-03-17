@@ -98,10 +98,6 @@ export const generateReportTask = task({
     // 3. Otherwise, this is a START action (new report generation)
     console.log(`🚀 START ACTION: Beginning new report generation`);
 
-    // 4. Setup Buffers
-    let textBuffer = "";
-    let lastUpdate = Date.now();
-    const UPDATE_INTERVAL = 200; // Shorter interval so scratchpad/reasoning appears sooner
     let finalMessage = "Report generation complete!";
 
     
@@ -241,27 +237,16 @@ export const generateReportTask = task({
       await broadcast(supabase, payload.projectId!, 'status', { chunk: 'Starting report generation...' });
       console.log(`✅ Initial status broadcast sent`);
       
-      // 10. THE NEW LOOP (Adapting LangGraph events to your logic)
+      // 10. EVENT LOOP
+      // Nodes now broadcast their own reasoning tokens directly via createNodeBroadcaster.
+      // This loop only handles structural events: node starts, tool status, completion.
       for await (const event of eventStream) {
-        textBuffer = await processStreamEvent({
+        await processStreamEvent({
           event,
           supabase,
           projectId: payload.projectId!,
-          textBuffer,
-          streamingAdapter
+          streamingAdapter,
         });
-        // Debounced broadcast — prevents flooding the channel with tiny packets
-        if (textBuffer.length > 0 && Date.now() - lastUpdate > UPDATE_INTERVAL) {
-          await broadcast(supabase, payload.projectId!, 'agent_thought', { chunk: textBuffer });
-          textBuffer = "";
-          lastUpdate = Date.now();
-        }
-      }
-
-      // Flush any remaining text in the buffer after the stream ends
-      if (textBuffer.length > 0) {
-        await broadcast(supabase, payload.projectId!, 'agent_thought', { chunk: textBuffer });
-        textBuffer = "";
       }
 
       // 11. CHECK IF GRAPH PAUSED (Human-in-the-Loop)
@@ -391,26 +376,28 @@ async function addFinalMessageToChatSession(
 // --- REPLACEMENT HELPER ---
 
 /**
- * Robustly extracts text and status from LangGraph events.
- * Returns the *newly accumulated* text buffer (not just the chunk).
+ * Handles a single LangGraph stream event, broadcasting status and tool
+ * notifications to the frontend.
+ *
+ * Token-level streaming (`agent_thought`) is no longer handled here —
+ * each node broadcasts its own reasoning tokens directly via
+ * `createNodeBroadcaster` as part of its Phase 1 streaming loop.
+ * This avoids the Gemini "Failed to parse stream" error caused by
+ * LangGraph's `streamEvents` forcing tool-call JSON through the SSE parser.
  */
 async function processStreamEvent({
   event,
   supabase,
   projectId,
-  textBuffer,
   streamingAdapter,
 }: {
   event: any;
   supabase: SupabaseClient;
   projectId: string;
-  textBuffer: string;
   streamingAdapter: StreamingAdapter;
-}): Promise<string> {
-  let updatedBuffer = textBuffer;
-  
+}): Promise<void> {
   // ─────────────────────────────────────────────────────────────────────────
-  // 1. NODE START — reset node-specific state, broadcast for debug UI
+  // 1. NODE START — broadcast a friendly status message
   // ─────────────────────────────────────────────────────────────────────────
   if (event.event === "on_chain_start" && event.name && event.name !== "LangGraph") {
     const nodeStatus = streamingAdapter.onNodeStart(event.name);
@@ -421,23 +408,7 @@ async function processStreamEvent({
   }
 
   // ─────────────────────────────────────────────────────────────────────────
-  // 2. REAL-TIME TOKEN STREAMING
-  //    All nodes write free-form reasoning as plain text (chunk.content) before
-  //    calling any tool. We capture that text here and accumulate it into the
-  //    buffer which gets debounce-broadcast as agent_thought.
-  //    tool_call_chunks.args (structured JSON) is deliberately ignored.
-  // ─────────────────────────────────────────────────────────────────────────
-  else if (event.event === "on_chat_model_stream") {
-    const chunk = event.data?.chunk;
-    const nodeName: string = event.metadata?.langgraph_node ?? '';
-    const newText = streamingAdapter.feedModelChunk(chunk, nodeName);
-    if (newText) updatedBuffer += newText;
-  }
-
-  // ─────────────────────────────────────────────────────────────────────────
-  // 3. TOOL START — status bar update
-  //    Reasoning was already streamed live in step 2, so we only update the
-  //    status indicator here (no duplicate agent_thought broadcast).
+  // 2. TOOL START — status bar update
   // ─────────────────────────────────────────────────────────────────────────
   else if (event.event === "on_tool_start") {
     const toolName = event.name;
@@ -456,17 +427,15 @@ async function processStreamEvent({
   }
 
   // ─────────────────────────────────────────────────────────────────────────
-  // 4. TOOL END — status bar completion messages
+  // 3. TOOL END — status bar completion messages
   // ─────────────────────────────────────────────────────────────────────────
   else if (event.event === "on_tool_end") {
     if (event.name === 'searchInternalKnowledge') {
-      await broadcast(supabase, projectId, 'status', { chunk: "Search complete. Agent is analyzing results..." });
+      await broadcast(supabase, projectId, 'status', { chunk: "Search complete. Analyzing results..." });
     } else if (event.name === 'writeSection') {
       await broadcast(supabase, projectId, 'status', { chunk: "Section saved successfully." });
     }
   }
-
-  return updatedBuffer;
 }
 
 
@@ -579,31 +548,16 @@ async function handleResumeAction(
 
     console.log(`🚀 Graph resumed for thread ${reportId}`);
 
-    // 6. Stream events and broadcast (same as initial generation)
-    let textBuffer = "";
-    let lastUpdate = Date.now();
-    const UPDATE_INTERVAL = 200;
+    // 6. Stream events — nodes broadcast their own reasoning tokens directly
     const streamingAdapter = new StreamingAdapter();
 
     for await (const event of eventStream) {
-      textBuffer = await processStreamEvent({
+      await processStreamEvent({
         event,
         supabase,
         projectId: projectId!,
-        textBuffer,
-        streamingAdapter
+        streamingAdapter,
       });
-      // Debounced reasoning broadcast (so text flows smoothly)
-      if (textBuffer.length > 0 && projectId && Date.now() - lastUpdate > UPDATE_INTERVAL) {
-        await broadcast(supabase, projectId, 'agent_thought', { chunk: textBuffer });
-        textBuffer = "";
-        lastUpdate = Date.now();
-      }
-    }
-
-    // 7. Flush remaining buffer
-    if (textBuffer.length > 0 && projectId) {
-      await broadcast(supabase, projectId, 'agent_thought', { chunk: textBuffer });
     }
 
     // 8. Check if we paused again (rejection cycle)

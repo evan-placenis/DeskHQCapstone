@@ -1,10 +1,12 @@
 import { SystemMessage, AIMessage, ToolMessage, HumanMessage, BaseMessage } from "@langchain/core/messages";
 import { ModelStrategy } from "../../../models/modelStrategy";
 import { reportTools } from "../../../tools/report.tools";
-import { researchTools } from "../../../tools/research.tools"; // Keep research, drop vision
+import { researchTools } from "../../../tools/research.tools";
 import { Container } from "@/backend/config/container";
 import { ObservationState } from "../../../state/Pretium/ObservationState";
 import { dumpAgentContext } from "../../../utils/agent-logger";
+import { extractTextContent } from "../../../utils/streaming-adapter";
+import { createNodeBroadcaster } from "../../../utils/node-broadcast";
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -94,8 +96,12 @@ export async function builderNode(state: typeof ObservationState.State) {
   // ==========================================
 
   // LOAD THE STATIC SKILL (Trigger.dev cwd=capstone/src/backend)
-  const skillPath = path.join(process.cwd(), 'src/AI_Skills/ReportGeneration/skills/technical-observations.md');
-  const technicalObservationSkill = fs.readFileSync(skillPath, 'utf-8');
+  const skillPathBase = path.join(process.cwd(), 'src/AI_Skills/ReportGeneration/skills/technical-observations.md');
+  const skillPathThinking = path.join(process.cwd(), 'src/AI_Skills/ReportGeneration/skills/technical-observations(thinking).md');
+  const skillPathExecution = path.join(process.cwd(), 'src/AI_Skills/ReportGeneration/skills/technical-observations(execution).md');
+  const technicalObservationBaseSkill = fs.readFileSync(skillPathBase, 'utf-8');
+  const technicalObservationThinkingSkill = fs.readFileSync(skillPathThinking, 'utf-8');
+  const technicalObservationExecutionSkill = fs.readFileSync(skillPathExecution, 'utf-8');
   const exampleReport = fs.readFileSync(path.join(process.cwd(), 'src/AI_Skills/ReportGeneration/skills/example-report.md'), 'utf-8');
 
   // Build Q&A pairs from architect's questions + user answers (index-matched)
@@ -105,51 +111,125 @@ export async function builderNode(state: typeof ObservationState.State) {
     ? questions.map((q, i) => `Q: ${q}\nA: ${answers[i] ?? 'No answer provided'}`).join('\n\n')
     : 'No additional user clarifications provided.';
 
-  //IMPORTANT: DEPENDING ON THE TYPE OF QUESTIONS WE SEE, WE MAY WANT TO MAKE THE SYSTEM SMARTER AND ONLY SHOW CLARIFICATION ON THE TASK THE QUESTION IS REFERING TO.
-  const combinedSystemPrompt = `
+  const combinedSystemPromptPhase1 = `
     
     ${systemPrompt}
     ---
     GLOBAL REPORT STRUCTURE (For Context Only):
     ${structureInstructions}
     ---
-    USER CLARIFICATIONS & VERIFIED FACTS (Question-Answer Pairs):
-    ${clarificationBlock}
-    ---
-    Technical Observation Skills:
-    ${technicalObservationSkill}
-    ---
     EXAMPLE REPORT TO USE AS REFERENCE:
     ${exampleReport}
     ---
+    Technical Observation Skills:
+    ${technicalObservationBaseSkill}
+    ---
+    ${technicalObservationThinkingSkill}
+
+    USER CLARIFICATIONS & VERIFIED FACTS (Question-Answer Pairs):
+    ${clarificationBlock}
+    ---
+
   `;
 
-  const systemBlock = new SystemMessage(combinedSystemPrompt);
+  // Phase 1 system block — used only for the streaming reasoning call on new tasks
+  const systemBlockPhase1 = new SystemMessage(combinedSystemPromptPhase1);
 
-  // Assemble the isolated context window
-  const promptMessages = buildTaskContext(messages, systemBlock, taskPrompt);
+  // Assemble the Phase 1 context window (used by Phase 1 stream, and kept as a
+  // reference so buildTaskContext has the right system block if needed)
+  const promptMessages = buildTaskContext(messages, systemBlockPhase1, taskPrompt);
 
 
 
   // ==========================================
-  // 4. Select Tools & Invoke Model
+  // 4. Select Tools & Build Model Instances
   // ==========================================
   const tools = [
-    ...reportTools(freshClient), // Contains writeSection
-    ...researchTools(projectId) // Keep research for building codes, etc.
+    ...reportTools(freshClient),
+    ...researchTools(projectId),
   ];
 
-  const baseModel = ModelStrategy.getModel(provider || 'gemini', 'lightweight', heliconeInput);
-    if (typeof baseModel.bindTools !== 'function') {
-    throw new Error("Model does not support tools");
- }
   const taskName = `Builder_Task_${currentSectionIndex + 1}`;
-  dumpAgentContext(taskName, promptMessages, 'INPUT',reportTitle || '', isNewTask);
 
-  const model = baseModel.bindTools(tools);
-  const response= await model.invoke(promptMessages);
-  dumpAgentContext(taskName, [response], 'OUTPUT', reportTitle || '', undefined );
+  // ──────────────────────────────────────────────────────────────────────────
+  // 2-call architecture
+  //
+  // Phase 1 (streaming, no tools) — only on NEW tasks:
+  //   The model writes its analytical chain of thought as plain text first.
+  //   Tokens are broadcast to the frontend in real-time.
+  //   No tools are bound, so Gemini only emits text chunks → no parse errors.
+  //
+  // Phase 2 (non-streaming, with tools):
+  //   A streaming=false model instance calls the actual tools (writeSection,
+  //   research). Non-streaming means the Google SDK uses the REST endpoint and
+  //   returns a complete JSON response, completely bypassing the SSE parser.
+  // ──────────────────────────────────────────────────────────────────────────
 
+  let reasoningText = '';
+
+  if (isNewTask) {
+    // ── Phase 1: Stream chain-of-thought reasoning ──────────────────────────
+    const streamingModel = ModelStrategy.getModel(provider || 'gemini', 'lightweight', heliconeInput, true);
+    const broadcaster = createNodeBroadcaster(projectId);
+
+    dumpAgentContext(taskName, promptMessages, 'INPUT', reportTitle || '', isNewTask);
+
+    // Phase 1 uses promptMessages which was built with systemBlockPhase1
+    const reasoningStream = await streamingModel.stream(promptMessages);
+    for await (const chunk of reasoningStream) {
+      const text = extractTextContent(chunk);
+      if (text) {
+        reasoningText += text;
+        await broadcaster.push(text);
+      }
+    }
+    await broadcaster.flush();
+  }
+
+  // ── Phase 2: Tool execution (non-streaming) ────────────────────────────────
+  // Embed the completed reasoning into the system prompt for Phase 2 so the
+  // model can reference its own analysis when deciding which tool to call.
+
+  const combinedSystemPromptPhase2 = `
+    
+  ${systemPrompt}
+  ---
+  GLOBAL REPORT STRUCTURE (For Context Only):
+  ${structureInstructions}
+  ---
+  EXAMPLE REPORT TO USE AS REFERENCE:
+  ${exampleReport}
+  ---
+  Technical Observation Skills:
+  ${technicalObservationBaseSkill}
+  ---
+  ${technicalObservationExecutionSkill}
+
+  USER CLARIFICATIONS & VERIFIED FACTS (Question-Answer Pairs):
+  ${clarificationBlock}
+  ---
+  `;
+
+  // Phase 2 always uses the execution system block.
+  // On a new task: inject the Phase 1 reasoning so the model knows what it decided.
+  // On resume:     rebuild the context window with the execution block (not Phase 1's
+  //                thinking block) so the model receives the correct instructions
+  //                when continuing after a tool result.
+  const phase2SystemContent = isNewTask && reasoningText
+    ? `${combinedSystemPromptPhase2}\n\n---\n**YOUR COMPLETED ANALYSIS:**\n${reasoningText}\n\nYou have finished your analysis. Now execute it: call the appropriate tool (research or writeSection).`
+    : combinedSystemPromptPhase2;
+
+  const systemBlockPhase2 = new SystemMessage(phase2SystemContent);
+  const phase2Messages = buildTaskContext(messages, systemBlockPhase2, taskPrompt);
+
+  const nonStreamingModel = ModelStrategy.getModel(provider || 'gemini', 'lightweight', heliconeInput, false);
+  if (typeof nonStreamingModel.bindTools !== 'function') {
+    throw new Error("Model does not support tools");
+  }
+  const model = nonStreamingModel.bindTools(tools);
+
+  const response = await model.invoke(phase2Messages);
+  dumpAgentContext(taskName, [response], 'OUTPUT', reportTitle || '', undefined);
 
   // ==========================================
   // 5. Save State
@@ -157,15 +237,15 @@ export async function builderNode(state: typeof ObservationState.State) {
   const aiMsg = response as AIMessage;
   const hasToolCalls = aiMsg.tool_calls && aiMsg.tool_calls.length > 0;
 
-// If new task: Anchor the new prompt and response into the global state
-  // If resuming: Just append the new response
-  const messagesToSave = isToolReturn 
-    ? [response]                  // Just the answer
-    : [taskPrompt, response];     // The Prompt + The Answer
+  // New task: save taskPrompt + response (reasoning was broadcast-only, not stored in state)
+  // Resume:   save only the new response
+  const messagesToSave = isToolReturn
+    ? [response]
+    : [taskPrompt, response];
 
   return {
-    messages: messagesToSave, // In LangGraph, returning a list APPENDS to state
-    next_step: hasToolCalls ? 'tools' : 'builder_continue'
+    messages: messagesToSave,
+    next_step: hasToolCalls ? 'tools' : 'builder_continue',
   };
 }
 
