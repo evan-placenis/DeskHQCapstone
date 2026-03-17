@@ -1,21 +1,8 @@
-/**
- * Chat Skills – for the conversational Chat agent (ChatOrchestrator).
- *
- * The chat agent's role: when the user asks a question (about the report or
- * anything else), respond in the chat. Research skills (searchInternalKnowledge,
- * searchWeb) are added alongside so the chatbot can research when necessary to
- * answer the user's query. Report section writing and report-content editing
- * live in report.skills and the Edit flow, not here.
- *
- * The two document-reading tools below execute server-side using the full
- * report markdown sent from the frontend in the request body. This avoids
- * client-side tool round-trips which don't work cleanly with assistant-ui.
- */
 import { tool } from 'ai';
 import { z } from 'zod/v3';
 
 /**
- * Parse a markdown string into a map of heading → section content.
+ * Parse a markdown string into a map of heading -> section content.
  * Handles # / ## / ### headings. Each section spans from its heading
  * to the next heading of the same or higher level (or EOF).
  */
@@ -23,7 +10,6 @@ function parseMarkdownSections(markdown: string): Map<string, string> {
   const lines = markdown.split('\n');
   const sections = new Map<string, string>();
   let currentHeading = '';
-  let currentLevel = 0;
   let currentLines: string[] = [];
 
   const flush = () => {
@@ -36,7 +22,6 @@ function parseMarkdownSections(markdown: string): Map<string, string> {
     const match = line.match(/^(#{1,6})\s+(.+)/);
     if (match) {
       flush();
-      currentLevel = match[1].length;
       currentHeading = match[2].trim();
       currentLines = [line];
     } else {
@@ -49,11 +34,10 @@ function parseMarkdownSections(markdown: string): Map<string, string> {
 }
 
 /**
- * Factory: returns chat tools that close over the live report markdown
- * sent from the frontend. When no markdown is available, returns an
- * empty object so no broken tools are registered.
+ * Returns chat-document tools that close over the live report markdown.
+ * When no markdown is available, returns an empty object.
  */
-export function chatSkills(fullReportMarkdown?: string) {
+export function chatContextTools(fullReportMarkdown?: string) {
   if (!fullReportMarkdown?.trim()) return {};
 
   const sectionMap = parseMarkdownSections(fullReportMarkdown);
@@ -81,7 +65,6 @@ export function chatSkills(fullReportMarkdown?: string) {
             }
           }
           if (!result[requested]) {
-            // Try partial match
             for (const [heading, content] of sectionMap) {
               if (heading.toLowerCase().includes(normalized) || normalized.includes(heading.toLowerCase())) {
                 result[heading] = content;
@@ -91,7 +74,10 @@ export function chatSkills(fullReportMarkdown?: string) {
           }
         }
         if (Object.keys(result).length === 0) {
-          return { status: 'NOT_FOUND', message: `No sections found matching: ${sections.join(', ')}. Available sections: ${[...sectionMap.keys()].join(', ')}` };
+          return {
+            status: 'NOT_FOUND',
+            message: `No sections found matching: ${sections.join(', ')}. Available sections: ${[...sectionMap.keys()].join(', ')}`,
+          };
         }
         return { status: 'SUCCESS', sections: result };
       },
@@ -103,10 +89,7 @@ export function chatSkills(fullReportMarkdown?: string) {
         'Only use this for global questions like holistic summaries, full-document consistency checks, ' +
         'or when the user explicitly asks about the whole report.',
       inputSchema: z.object({
-        reason: z
-          .string()
-          .optional()
-          .describe('Brief reason for reading the full report'),
+        reason: z.string().optional().describe('Brief reason for reading the full report'),
       }),
       execute: async () => {
         console.log('[ChatContext] read_full_report called, returning', fullReportMarkdown.length, 'chars');
@@ -114,55 +97,36 @@ export function chatSkills(fullReportMarkdown?: string) {
       },
     }),
 
-    /**
-     * Propose inserting new content at a structural location in the report.
-     * Use when the user asks to WRITE something (conclusion, executive summary, intro, etc.)
-     * WITHOUT highlighting a specific place. The insertion location is inferred from report
-     * structure and standard conventions (e.g. conclusion goes at end).
-     */
     propose_structure_insertion: tool({
       description:
         'Propose adding or modifying content to the report at a structural location. ' +
         'WRITE (new content): Use insertLocation start_of_report, end_of_report, or after_heading. ' +
         'EDIT (modify existing section): Use insertLocation replace_section with targetHeading set to the section name (e.g. "Conclusion"). This REPLACES the section content. ' +
-        'For edits like "make the conclusion more concise", "rewrite the intro", "shorten the executive summary" — use replace_section, NOT after_heading. ' +
-        'First call read_specific_sections to get the current section content, then generate the revised content and call this tool with replace_section. ',
-      
+        'For edits like "make the conclusion more concise", "rewrite the intro", "shorten the executive summary" - use replace_section, NOT after_heading. ' +
+        'First call read_specific_sections to get the current section content, then generate the revised content and call this tool with replace_section.',
       inputSchema: z.object({
-        // 1. Keep content first to ensure safe streaming
         content: z
           .string()
           .describe('Full markdown to insert, including heading (e.g. ## Conclusion) and body. Use same heading level as neighboring sections.'),
-        
-        // 2. FLATTENED SCHEMA: Replace z.union with a simple enum
         insertLocation: z
           .enum(['start_of_report', 'end_of_report', 'after_heading', 'replace_section'])
-          .describe('Where to insert/replace: start_of_report (intro, overview), end_of_report (conclusion, appendix), after_heading (insert between sections), replace_section (REPLACE existing section content - use for edits like "make the conclusion more concise")'),
-          
-        // 3. Optional string instead of a nested object
+          .describe('Where to insert/replace: start_of_report, end_of_report, after_heading, or replace_section'),
         targetHeading: z
           .string()
           .optional()
           .describe('Required when insertLocation is after_heading or replace_section: the exact heading name from the report outline.'),
-          
-        reason: z
-          .string()
-          .optional()
-          .describe('Brief reason for this insertion'),
+        reason: z.string().optional().describe('Brief reason for this insertion'),
       }),
-      
       execute: async ({ content, insertLocation, targetHeading, reason }) => {
-        // Reconstruct the anchor object here so your React frontend 
-        // doesn't break when it reads `structureInsertCall.result.anchor`
-        const anchor = insertLocation === 'end_of_report'
-          ? 'end_of_report'
-          : insertLocation === 'start_of_report'
-            ? 'start_of_report'
-            : insertLocation === 'replace_section'
-              ? { replaceSection: targetHeading || '' }
-              : { afterHeading: targetHeading || '' };
+        const anchor =
+          insertLocation === 'end_of_report'
+            ? 'end_of_report'
+            : insertLocation === 'start_of_report'
+              ? 'start_of_report'
+              : insertLocation === 'replace_section'
+                ? { replaceSection: targetHeading || '' }
+                : { afterHeading: targetHeading || '' };
 
-        // For replace_section, include original content so the diff popup can show before/after
         let originalContent: string | undefined;
         if (insertLocation === 'replace_section' && targetHeading) {
           const normalized = targetHeading.trim().toLowerCase();
@@ -175,11 +139,11 @@ export function chatSkills(fullReportMarkdown?: string) {
         }
 
         console.log('[ChatContext] propose_structure_insertion:', { anchor, contentLen: content.length, reason });
-        
-        return { 
-          status: 'SUCCESS', 
-          anchor, 
-          content, 
+
+        return {
+          status: 'SUCCESS',
+          anchor,
+          content,
           reason: reason ?? 'AI proposed insertion',
           ...(originalContent !== undefined && { originalContent }),
         };

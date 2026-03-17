@@ -1,9 +1,10 @@
 import { streamText, convertToModelMessages, stepCountIs } from 'ai';
 import { ModelStrategy } from '../Models/model-strategy';
-import { researchSkills } from '../skills/research.skills';
-import { reportSkills } from '../skills/report.skills';
-import { chatSkills } from '../skills/chat.skills';
-import { visionSkills } from '../skills/vison.skills';
+import { researchTools } from '../chatbot-skills/tools/research.tools';
+import { reportTools } from '../chatbot-skills/tools/report.tools';
+import { chatContextTools } from '../chatbot-skills/tools/chat-context.tools';
+import { visionTools } from '../chatbot-skills/tools/vision.tools';
+import { buildSkillPrompt } from '../chatbot-skills/agent-skills/skill-loader';
 import { SupabaseClient } from '@supabase/supabase-js';
 import type { HeliconeContextInput } from '../gateway/HeliconeContextBuilder';
 
@@ -55,20 +56,20 @@ export class ChatOrchestrator {
 
         // Build tools - include report skills if we have context
         const tools: any = {
-            ...researchSkills(projectId ?? ''),
-            ...chatSkills(fullReportMarkdown),
-            ...visionSkills
+            ...researchTools(projectId ?? ''),
+            ...chatContextTools(fullReportMarkdown),
+            ...visionTools
         };
 
         // If we have report context and IDs, add report editing skills
         if (context && projectId && userId) {
-            Object.assign(tools, reportSkills(projectId, userId, client));
+            Object.assign(tools, reportTools(projectId, userId, client));
         }
 
         // Edit flow is selection-only and handled by EditOrchestrator via ai-edit route; Chat has no edit tools.
 
         // Build system prompt - use custom systemMessage if provided (e.g. selection-edit ack), otherwise default
-        const systemPrompt = systemMessage || this.buildSystemPrompt(false, documentOutline, activeSectionMarkdown, activeSectionHeading, fullReportMarkdown);
+        const systemPrompt = systemMessage || this.buildSystemPrompt(documentOutline, activeSectionMarkdown, activeSectionHeading, fullReportMarkdown);
 
         return streamText({
             model: ModelStrategy.getModel(provider, heliconeInput),
@@ -82,10 +83,9 @@ export class ChatOrchestrator {
 
     /**
      * Build the system prompt with Map & Lens context when available.
-     * Use report-aware prompt whenever document tools exist (fullReportMarkdown) — even if outline is empty.
+     * Loads Skill markdown instructions and appends runtime report context.
      */
     private buildSystemPrompt(
-        _hasReportContext: boolean,
         documentOutline?: string,
         activeSectionMarkdown?: string,
         activeSectionHeading?: string,
@@ -93,8 +93,10 @@ export class ChatOrchestrator {
     ): string {
         const hasDocumentTools = !!(fullReportMarkdown?.trim());
         const hasMapLens = !!(documentOutline?.trim());
+        const baseSkillPrompt = buildSkillPrompt(['chat-core', 'research', 'vision']);
 
         if (hasDocumentTools) {
+            const reportSkillPrompt = buildSkillPrompt(['report-aware-chat']);
             const outlineBlock = hasMapLens
                 ? `DOCUMENT OUTLINE (Table of Contents):\n${documentOutline}\n\n`
                 : '';
@@ -105,38 +107,13 @@ ${activeSectionMarkdown || '(empty section)'}
 --- End Active Section ---\n\n`
                 : '';
 
-            return `You are an expert report editor. The user is actively editing a report.
+            return `${baseSkillPrompt}
 
-CRITICAL RULE: When the user refers to "this report", "the report", "the document", or asks about ANY content that could be in the report (e.g. "metal stairs", "executive summary", "what does it say about X"), you MUST use read_full_report or read_specific_sections FIRST. NEVER use searchInternalKnowledge or searchWeb for report content. Research tools are ONLY for external facts (standards, regulations, best practices) that would NOT be in the report.
+${reportSkillPrompt}
 
-${outlineBlock}${activeSectionBlock}HOW TO ANSWER (follow strictly):
-1. For "summarize the report", "overview of the report", "entire report" — ALWAYS call read_full_report first. Do not rely on the Active Section alone; it is only the section where the cursor is. Give equal weight to all sections in your summary.
-2. For questions about specific sections: call read_specific_sections with the heading names from the outline above.
-3. For other report content questions: call read_full_report (or read_specific_sections if you know the section).
-4. ONLY use searchInternalKnowledge or searchWeb when the user explicitly asks for external information (e.g. "what does OSHA say about...", "industry best practices for...").
-
-STRUCTURE-BASED WRITING/EDITING (when user asks to WRITE something or EDIT something without selecting text):
-5. When the user asks to write content (e.g. "write a conclusion", "add an executive summary", "write an intro", "can you add a recommendations section") — FIRST call read_full_report to understand the report, then call propose_structure_insertion with:
-   - insertLocation: "start_of_report" for introductions, overviews, or any content that belongs at the beginning. "end_of_report" for conclusions, summaries, appendices, or content at the end. "after_heading" only when inserting between existing sections.
-   - targetHeading: When insertLocation is "after_heading", provide the exact heading name from the report outline. Otherwise omit.
-   - content: Full markdown including the heading (e.g. ## Conclusion) and body. Match heading levels to neighboring sections.
-6. When the user asks to edit content (e.g. "edit the conclusion", "make the conclusion more concise", "rewrite the intro") — FIRST call read_specific_sections to get the current section content, then call propose_structure_insertion with:
-   - insertLocation: "replace_section" (this REPLACES the section; do NOT use "after_heading" which would add a duplicate).
-   - targetHeading: The exact heading name of the section to replace (e.g. "Conclusion").
-   - content: Full markdown including the heading (e.g. # Conclusion) and the revised body. Match heading levels to neighboring sections.
-7. Section scope: A section spans from its heading to the next heading of the same or higher level. "Rewrite the Building Inspection Report" (a # heading) replaces that heading and all its subsections until the next #. "Rewrite the Executive Summary" (a ## heading) replaces only that section, not Site Observations or following sections, etc. for lower level headings.
-8. The user's cursor position does NOT matter — infer the correct location from report structure and conventions.
-
-Respond concisely.`;
+${outlineBlock}${activeSectionBlock}`.trim();
         }
 
-        return `You are a helpful assistant for engineering report writing and research.
-
-YOUR ROLE: When the user asks a question (about the report or anything else), respond in the chat. Use your research tools when you need to look something up to answer accurately.
-
-RESEARCH TOOLS (use when the user's question needs facts, standards, or external context):
-1. Use 'searchInternalKnowledge' first for project-specific or internal information.
-2. If the answer is missing or you need current/external info, use 'searchWeb'.
-3. Base your answer on the tool outputs; cite or summarize what you found.`;
+        return baseSkillPrompt;
     }
 }
