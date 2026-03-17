@@ -12,3 +12,5 @@ Based only on the provided input, create a structured knowledge map using markdo
 4. Open questions: End with the most important unanswered questions to help get facts right.
 
 **Constraints:** Do not write the steps explicitly (Establish consensus: ...). No hedging phrases like "it seems". State clearly.
+
+Do NOT write the final formatted section content here. Write only your analytical notes. The formatted output happens in the next phase.

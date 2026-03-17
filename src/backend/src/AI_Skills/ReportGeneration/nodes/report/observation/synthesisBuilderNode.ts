@@ -46,7 +46,11 @@ export async function synthesisBuilderNode(state: typeof ObservationState.State)
     .join("\n\n");
 
   const newContent: Record<string, string> = {};
-  const model = ModelStrategy.getModel(provider || 'gemini', 'lightweight', heliconeInput); 
+  // streaming:false — synthesis writes complete sections in one invoke call.
+  // Keeping streaming:true here causes LangGraph's streamEvents to emit
+  // on_chat_model_stream events for the synthesis output, which can appear
+  // in the frontend reasoning panel unexpectedly.
+  const model = ModelStrategy.getModel(provider || 'gemini', 'lightweight', heliconeInput, false);
   const freshClient = Container.adminClient;
 
 
@@ -108,7 +112,14 @@ export async function synthesisBuilderNode(state: typeof ObservationState.State)
         dumpAgentContext(taskName, [response], 'OUTPUT', reportTitle || "", undefined);
 
         const rawText = typeof response.content === 'string' ? response.content : JSON.stringify(response.content);
-        newContent[section.title] = rawText;
+
+        // Strip any leading markdown heading the model included (e.g. "# GENERAL\n\n")
+        // The heading is already stored separately via section.title — rendering it twice
+        // creates a double-heading in the final report.
+        const headingRegex = /^#+\s+[^\n]+\n+/;
+        const cleanContent = headingRegex.test(rawText) ? rawText.replace(headingRegex, '').trim() : rawText.trim();
+
+        newContent[section.title] = cleanContent;
         success = true;
 
         // SAVE TO DATABASE (Critical Fix): We must persist this immediately so the final compiler sees it.
@@ -119,7 +130,7 @@ export async function synthesisBuilderNode(state: typeof ObservationState.State)
                   draftReportId,
                   section.sectionId,
                   section.title,
-                  rawText,
+                  cleanContent,
                   safeOrder, // Use the correct order from the plan
                   freshClient
               );

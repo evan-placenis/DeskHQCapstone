@@ -60,6 +60,13 @@ export async function dumpAgentContext(
       output += `🤖 NEW [Agent]: [${agentName}] for report ${reportTitle.substring(0,8)}\n`;
     }
 
+    if (!Array.isArray(messages)) {
+      output += `[ERROR: messages argument is not an array — got ${typeof messages}]\n`;
+      await fs.writeFile(filepath, output);
+      await fs.appendFile(filepath2, output);
+      return;
+    }
+
     messages.forEach((msg, index) => {
       const role = msg._getType ? msg._getType().toUpperCase() : (msg.type || 'UNKNOWN').toUpperCase();
       output += `[MESSAGE ${index + 1}] Role: ${role} --------------------------------\n\n`;
@@ -78,7 +85,7 @@ export async function dumpAgentContext(
       }
 
       // Explicitly highlight Tool Calls in the OUTPUT
-      if (msg.tool_calls && msg.tool_calls.length > 0 && Array.isArray(msg.tool_calls)) {
+      if (msg.tool_calls && Array.isArray(msg.tool_calls) && msg.tool_calls.length > 0) {
          output += `\n🛠️ AI IS CALLING THESE TOOLS:\n`;
          msg.tool_calls.forEach((tool: any) => {
              output += `   -> Tool: ${tool.name}\n`;
@@ -88,7 +95,7 @@ export async function dumpAgentContext(
 
       // 👇 --- NEW REASONING EXTRACTOR BLOCK --- 👇
         // Only extract on OUTPUT so we don't duplicate historical reasoning from the INPUT context
-        if (stage === 'OUTPUT') {
+        if (stage === 'OUTPUT' && Array.isArray(msg.tool_calls)) {
         let extractedReasoning = "";
         
         msg.tool_calls.forEach((tool: any) => {

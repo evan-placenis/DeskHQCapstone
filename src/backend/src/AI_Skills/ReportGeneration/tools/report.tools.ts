@@ -57,7 +57,7 @@ export const reportTools = ( client: SupabaseClient) => [
           sectionId,
           heading,
           content,
-          order ?? 0,
+          Math.floor(order ?? 0), // ensure integer — DB column is INTEGER
           client,
           metadata
         );

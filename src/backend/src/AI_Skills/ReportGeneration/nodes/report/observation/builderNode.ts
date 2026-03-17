@@ -65,7 +65,7 @@ export async function builderNode(state: typeof ObservationState.State) {
     // A. Add Task Text
     contentParts.push({ 
       type: "text", 
-      text: `CURRENT TASK: ${currentTask.title}\nPURPOSE: ${currentTask.purpose}\nREPORT ID: ${draftReportId}\n\n` 
+      text: `CURRENT TASK: ${currentTask.title}\nPURPOSE: ${currentTask.purpose}\nREPORT ID: ${draftReportId}\nSECTION ORDER: ${currentTask.reportOrder ?? 0}\n\n` 
     });
 
     // B. Resolve Photos
@@ -135,9 +135,13 @@ export async function builderNode(state: typeof ObservationState.State) {
   // Phase 1 system block — used only for the streaming reasoning call on new tasks
   const systemBlockPhase1 = new SystemMessage(combinedSystemPromptPhase1);
 
-  // Assemble the Phase 1 context window (used by Phase 1 stream, and kept as a
-  // reference so buildTaskContext has the right system block if needed)
-  const promptMessages = buildTaskContext(messages, systemBlockPhase1, taskPrompt);
+  // buildTaskContext is only used on mid-task resumes (after a research tool result).
+  // For new tasks it must NOT be used: the previous task's writeSection ToolMessage
+  // still sits at the tail of state.messages, and buildTaskContext would walk back
+  // and include that task's evidence and AI response, giving the model wrong context.
+  const promptMessages = isNewTask
+    ? [systemBlockPhase1, taskPrompt]
+    : buildTaskContext(messages, systemBlockPhase1, taskPrompt);
 
 
 
@@ -184,6 +188,25 @@ export async function builderNode(state: typeof ObservationState.State) {
       }
     }
     await broadcaster.flush();
+
+    // Persist Phase 1 reasoning to log file for post-run inspection
+    if (reasoningText) {
+      try {
+        const safeTitle = (reportTitle || 'untitled').replace(/[^a-z0-9-]/gi, '_');
+        const logsDir = path.join(process.cwd(), '.logs', `Report_${safeTitle}`);
+        const reasoningDir = path.join(logsDir, 'reasoning');
+        await fs.promises.mkdir(reasoningDir, { recursive: true });
+        const entry =
+          `====================================================\n` +
+          `NODE: ${taskName} | PHASE: 1 (streaming reasoning)\n` +
+          `TIME: ${new Date().toLocaleString()}\n` +
+          `====================================================\n` +
+          `${reasoningText}\n\n\n`;
+        await fs.promises.appendFile(path.join(reasoningDir, 'all_reasoning.txt'), entry);
+      } catch (logErr) {
+        console.warn('[Builder] Could not write Phase 1 reasoning log:', logErr);
+      }
+    }
   }
 
   // ── Phase 2: Tool execution (non-streaming) ────────────────────────────────
@@ -220,7 +243,15 @@ export async function builderNode(state: typeof ObservationState.State) {
     : combinedSystemPromptPhase2;
 
   const systemBlockPhase2 = new SystemMessage(phase2SystemContent);
-  const phase2Messages = buildTaskContext(messages, systemBlockPhase2, taskPrompt);
+
+  // New tasks always get a clean [system, taskPrompt] context — no prior task history.
+  // buildTaskContext is only used on resume (after a mid-task research tool result)
+  // because state.messages may still have the PREVIOUS task's writeSection ToolMessage
+  // at its tail, which would cause buildTaskContext to walk back and inject the wrong
+  // task's evidence and sectionId into the current task's context.
+  const phase2Messages = isNewTask
+    ? [systemBlockPhase2, taskPrompt]
+    : buildTaskContext(messages, systemBlockPhase2, taskPrompt);
 
   const nonStreamingModel = ModelStrategy.getModel(provider || 'gemini', 'lightweight', heliconeInput, false);
   if (typeof nonStreamingModel.bindTools !== 'function') {
@@ -273,13 +304,16 @@ export function getFlattenedTasks(sections: any[]) {
   const tasks: any[] = [];
   sortedSections.forEach(section => {
     if (section.subsections && section.subsections.length > 0) {
-      section.subsections.forEach((sub: any) => {
+      section.subsections.forEach((sub: any, subIdx: number) => {
+        // Use integer order: parent's reportOrder * 100 + subIndex + 1
+        // e.g. parent order 3 → subsections get 301, 302 ...
+        const subOrder = Math.floor(Number(section.reportOrder)) * 100 + subIdx + 1;
         tasks.push({
           type: 'subsection',
           id: sub.subSectionId,
           title: `${section.title}: ${sub.title}`,
           purpose: sub.purpose,
-          // Extract IDs from the tuple structure
+          reportOrder: subOrder,
           photoIds: (sub.photoContext || []).map((p: any) => p.photoId),
           parentId: section.sectionId
         });
@@ -290,6 +324,7 @@ export function getFlattenedTasks(sections: any[]) {
         id: section.sectionId,
         title: section.title,
         purpose: section.purpose,
+        reportOrder: section.reportOrder,
         photoIds: (section.photoContext || []).map((p: any) => p.photoId),
       });
     }

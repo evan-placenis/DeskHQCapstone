@@ -25,7 +25,7 @@ export async function builderContinueNode(state: any) {
   
     console.log(`🔍 [BuilderContinue] Analyzing result for Task ${currentSectionIndex + 1}: "${currentTask.title}"...`);
     const taskName = `BuilderContinue_Task_${currentSectionIndex + 1}`;
-    dumpAgentContext(draftReportId, taskName, messages, 'INPUT', undefined, reportTitle);
+    dumpAgentContext(taskName, messages, 'INPUT', reportTitle || '');
   
     let success = false;
     let newDraftContent = "";
@@ -175,7 +175,7 @@ export async function builderContinueNode(state: any) {
         You MUST call the "writeSection" tool with reportId: "${draftReportId}".`
       });
       // 📝 INJECT LOGGER 2: Log the feedback we are about to send back to the AI
-      dumpAgentContext(draftReportId, taskName, [feedbackMessage], 'OUTPUT', undefined, reportTitle);
+      dumpAgentContext(taskName, [feedbackMessage], 'OUTPUT', reportTitle || '');
   
       return { 
           builderRetries: retryCount + 1, 
