@@ -2,10 +2,10 @@ import { PostgresSaver } from "@langchain/langgraph-checkpoint-postgres";
 import { Pool } from "pg";
 
 // 1. Setup the connection pool using PostgreSQL connection string
-const connectionString = process.env.DATABASE_URL
+const connectionString = process.env.DATABASE_SESSION_URL
 
 console.log('🔌 Checkpointer: Initializing...');
-console.log('   DATABASE_URL:', process.env.DATABASE_URL ? '✅ Found' : '❌ Not set');
+console.log('   DATABASE_SESSION_URL:', process.env.DATABASE_SESSION_URL ? '✅ Found' : '❌ Not set');
 if (!connectionString) {
   console.error('❌ CRITICAL: No PostgreSQL connection string found!');
   console.error('   Add to .env.local: DATABASE_URL=postgresql://postgres...');

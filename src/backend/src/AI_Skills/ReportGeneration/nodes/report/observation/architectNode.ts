@@ -20,13 +20,15 @@ export async function architectNode(state: typeof ObservationState.State) {
     reportPlan: inputPlan, // <--- Rename to avoid confusion
     userFeedback,
     draftReportId,
+    reportTitle,
     client,
     heliconeInput,
   } = state;
   // 1. LOAD THE STATIC SKILLS
-  // Read the markdown file from your file system
-  const skillPath = path.join(process.cwd(), 'skills', 'architect-planning.md');
+  // Trigger.dev runs with cwd=capstone/src/backend, so path is relative to that
+  const skillPath = path.join(process.cwd(), 'src/AI_Skills/ReportGeneration/skills/architect-planning.md');
   const architectSkill = fs.readFileSync(skillPath, 'utf-8');
+  const exampleReport = fs.readFileSync(path.join(process.cwd(), 'src/AI_Skills/ReportGeneration/skills/example-report.md'), 'utf-8');
 
   // 2 GENERATE CONTEXT STRING
   // We use the "Compressed Manifest" pattern: Metadata only, no 2000-token descriptions.
@@ -68,18 +70,26 @@ export async function architectNode(state: typeof ObservationState.State) {
 
   // 3. COMBINE AND CONSTRUCT PROMPT
   // Stick the static rules and the dynamic data together
-  const promptContext = `${systemPrompt}\n${architectSkill}\n${dynamicInputs}`;
+  const promptContext = `
+  ${systemPrompt}\n
+  ---
+  ${architectSkill}\n
+  ---
+  EXAMPLE REPORT TO USE AS REFERENCE:
+  ${exampleReport}\n
+  ---
+  ${dynamicInputs}`;
 
   // 4 RUN MODEL
   const baseModel = ModelStrategy.getModel(provider || 'gemini', 'heavyweight', heliconeInput);
   
   // 📝 Log the INPUT (The prompt + any RAG history it is carrying)
   const taskName = `Architect_Plan_1`;
-  dumpAgentContext(draftReportId || "", taskName, [new SystemMessage(promptContext), ...state.messages], 'INPUT');
+  dumpAgentContext(taskName, [new SystemMessage(promptContext), ...state.messages], 'INPUT', reportTitle || "", undefined);
 
-  const model = baseModel?.bindTools?.([planningTools], {
-    tool_choice: "submitReportPlan" 
-  });
+  // No tool_choice forced — the model writes its reasoning as plain text first,
+  // then calls submitReportPlan when ready. This gives us clean streaming on all providers.
+  const model = baseModel?.bindTools?.(planningTools());
 
   const response = await model?.invoke?.([
     new SystemMessage(promptContext),
@@ -87,7 +97,7 @@ export async function architectNode(state: typeof ObservationState.State) {
   ]);
 
   // 📝 Log the OUTPUT (What the AI just generated / The tools it wants to call)
-  dumpAgentContext(draftReportId || "", taskName, [response], 'OUTPUT');
+  dumpAgentContext(taskName, [response], 'OUTPUT', reportTitle || "", undefined);
 
   // 4. PARSE TOOL CALL
   let reportPlan = null;
@@ -107,7 +117,6 @@ export async function architectNode(state: typeof ObservationState.State) {
       reportPlan = {
         sections: call.args.sections,
         strategy: call.args.strategy,
-        reasoning: call.args.reasoning,
         user_questions: call.args.user_questions ?? [],
       };
     }

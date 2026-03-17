@@ -11,6 +11,7 @@ export async function synthesisBuilderNode(state: typeof ObservationState.State)
     sectionDrafts, 
     structureInstructions, 
     draftReportId,
+    reportTitle,
     systemPrompt, 
     provider,
     heliconeInput,
@@ -50,22 +51,26 @@ export async function synthesisBuilderNode(state: typeof ObservationState.State)
 
 
   // LOAD SYNTHESIS SKILLS (OUTSIDE THE LOOP)
-  const skillPath = path.join(process.cwd(), 'skills', 'summarize.md');
+  const skillPath = path.join(process.cwd(), 'src/AI_Skills/ReportGeneration/skills/summarize.md');
   let summarizeSkill = fs.readFileSync(skillPath, 'utf-8');
+  const exampleReport = fs.readFileSync(path.join(process.cwd(), 'src/AI_Skills/ReportGeneration/skills/example-report.md'), 'utf-8');
   
   // Build the massive cached prompt ONCE so it will be cached by Gemini.
   const combinedSystemPrompt = `
   ${systemPrompt}
   ---
+  GLOBAL REPORT STRUCTURE (For Context Only):
+  ${structureInstructions}
+  ---
   ${summarizeSkill}
+  ---
+  ${exampleReport}
 
   ---
   INPUT DATA (The Report Findings needed for Context):
   ${reportContext}
 
-  ---
-  GLOBAL REPORT STRUCTURE (For Context Only):
-  ${structureInstructions}
+
   `;
 
   // Build this ONCE so Gemini can implicitly cache it across all loop iterations
@@ -92,7 +97,7 @@ export async function synthesisBuilderNode(state: typeof ObservationState.State)
       try {
         // 📝 Log the INPUT (The prompt + any RAG history it is carrying)
         const taskName = `SynthesisBuilder_Task_${section.title}`;
-        dumpAgentContext(draftReportId || "", taskName, [systemBlock, new HumanMessage(prompt)], 'INPUT');
+        dumpAgentContext(taskName, [systemBlock, new HumanMessage(prompt)], 'INPUT', reportTitle || "", undefined);
 
         const response = await model.invoke([
           systemBlock,
@@ -100,7 +105,7 @@ export async function synthesisBuilderNode(state: typeof ObservationState.State)
         ]);
 
         // 📝 Log the OUTPUT (What the AI just generated / The tools it wants to call)
-        dumpAgentContext(draftReportId || "", taskName, [response], 'OUTPUT');
+        dumpAgentContext(taskName, [response], 'OUTPUT', reportTitle || "", undefined);
 
         const rawText = typeof response.content === 'string' ? response.content : JSON.stringify(response.content);
         newContent[section.title] = rawText;

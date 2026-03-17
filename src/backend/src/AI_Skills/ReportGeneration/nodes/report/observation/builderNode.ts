@@ -15,6 +15,7 @@ export async function builderNode(state: typeof ObservationState.State) {
     imageList,
     currentSectionIndex, 
     draftReportId,
+    reportTitle,
     provider,
     projectId,
     userId,
@@ -92,9 +93,17 @@ export async function builderNode(state: typeof ObservationState.State) {
   // 3. CONSTRUCT SYSTEM MESSAGE & CONTEXT
   // ==========================================
 
-  // LOAD THE STATIC SKILL
-  const skillPath = path.join(process.cwd(), 'skills', 'technical-observations.md');
+  // LOAD THE STATIC SKILL (Trigger.dev cwd=capstone/src/backend)
+  const skillPath = path.join(process.cwd(), 'src/AI_Skills/ReportGeneration/skills/technical-observations.md');
   const technicalObservationSkill = fs.readFileSync(skillPath, 'utf-8');
+  const exampleReport = fs.readFileSync(path.join(process.cwd(), 'src/AI_Skills/ReportGeneration/skills/example-report.md'), 'utf-8');
+
+  // Build Q&A pairs from architect's questions + user answers (index-matched)
+  const questions = reportPlan.user_questions ?? [];
+  const answers = userClarification ?? [];
+  const clarificationBlock = questions.length > 0
+    ? questions.map((q, i) => `Q: ${q}\nA: ${answers[i] ?? 'No answer provided'}`).join('\n\n')
+    : 'No additional user clarifications provided.';
 
   //IMPORTANT: DEPENDING ON THE TYPE OF QUESTIONS WE SEE, WE MAY WANT TO MAKE THE SYSTEM SMARTER AND ONLY SHOW CLARIFICATION ON THE TASK THE QUESTION IS REFERING TO.
   const combinedSystemPrompt = `
@@ -103,12 +112,16 @@ export async function builderNode(state: typeof ObservationState.State) {
     ---
     GLOBAL REPORT STRUCTURE (For Context Only):
     ${structureInstructions}
-
-    USER CLARIFICATIONS & VERIFIED FACTS:
-    ${userClarification || "No additional user clarifications provided."}
-    
+    ---
+    USER CLARIFICATIONS & VERIFIED FACTS (Question-Answer Pairs):
+    ${clarificationBlock}
+    ---
     Technical Observation Skills:
     ${technicalObservationSkill}
+    ---
+    EXAMPLE REPORT TO USE AS REFERENCE:
+    ${exampleReport}
+    ---
   `;
 
   const systemBlock = new SystemMessage(combinedSystemPrompt);
@@ -131,11 +144,11 @@ export async function builderNode(state: typeof ObservationState.State) {
     throw new Error("Model does not support tools");
  }
   const taskName = `Builder_Task_${currentSectionIndex + 1}`;
-  dumpAgentContext(draftReportId || "", taskName, promptMessages, 'INPUT', isNewTask);
+  dumpAgentContext(taskName, promptMessages, 'INPUT',reportTitle || '', isNewTask);
 
   const model = baseModel.bindTools(tools);
   const response= await model.invoke(promptMessages);
-  dumpAgentContext(draftReportId || "", taskName, [response], 'OUTPUT');
+  dumpAgentContext(taskName, [response], 'OUTPUT', reportTitle || '', undefined );
 
 
   // ==========================================

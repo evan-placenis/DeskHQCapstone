@@ -67,6 +67,7 @@ export const reportTools = ( client: SupabaseClient) => [
           reportId,
           sectionId,
           heading,
+          content,
           message: `Section "${heading}" written and saved to database.`,
           _written: true,
           order: order ?? 0
@@ -83,14 +84,6 @@ export const reportTools = ( client: SupabaseClient) => [
       name: 'writeSection',
       description: 'Write or update a report section with markdown content. Use this to build sections incrementally as you write the report. The section will be saved to the database immediately so you can reference it later. You can call this multiple times for different sections.',
       schema: z.object({
-        reasoning: z.string().describe(
-          "You must use this field FIRST as your analytical chain of thought scratchpad. " +
-          "You should explicitly answer the following questions in your chain of thought: " +
-          "1. EVIDENCE: What exact data/photos am I looking at? " +
-          "2. RELEVANCE FILTER: Does this observation meet the threshold for reporting? If it is a trivial, acceptable, or out-of-scope issue, explicitly state that you will drop it or modify it. " +
-          "3. STANDARD: What is the specific project requirement/spec for this? " +
-          "4. LIABILITY: How will I frame this observation to limit liability? " 
-        ),
         reportId: z.string().describe('The report ID (provided in context)'),
         sectionId: z.string().describe('Unique ID for this section (e.g., "executive-summary", "observations-1")'),
         heading: z.string().describe('The section heading/title'),

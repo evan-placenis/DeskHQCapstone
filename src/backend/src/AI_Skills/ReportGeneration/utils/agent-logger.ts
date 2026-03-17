@@ -16,25 +16,25 @@ function cleanupOldAgents() {
 
 // Ensure the function is async
 export async function dumpAgentContext(
-  reportId: string, 
   agentName: string, 
   messages: any[],
   stage: 'INPUT' | 'OUTPUT' = 'INPUT',
+  reportTitle: string,
   isNewTask?: boolean
 ) {
   try {
     // Run memory cleanup occasionally (roughly 10% of the time to save CPU)
     if (Math.random() < 0.1) cleanupOldAgents();
 
-    const agentKey = `${reportId}_${agentName}`;
+    const agentKey = `${reportTitle}_${agentName}`;
     const isNewAgent = !activeAgents.has(agentKey) && stage === 'INPUT';
     
     // 1. Create a clean, sortable timestamp FIRST
     const now = new Date();
     
     // 2. Create the dedicated folder
-    const safeReportId = reportId.replace(/[^a-z0-9-]/gi, '_');
-    const logsDir = path.join(process.cwd(), '.logs', `Report_${safeReportId}`);
+    const safeReportName = reportTitle.replace(/[^a-z0-9-]/gi, '_');
+    const logsDir = path.join(process.cwd(), '.logs', `Report_${safeReportName}`);
 
     // fs.promises.mkdir with recursive: true replaces fs.existsSync safely
     await fs.mkdir(logsDir, { recursive: true });
@@ -42,6 +42,7 @@ export async function dumpAgentContext(
     // 3. Create filename: Timestamp FIRST for perfect chronological sorting in your OS
     const filename = `${agentName}_${stage}.txt`;
     const filepath = path.join(logsDir, filename);
+    const filepath2 = path.join(logsDir,"All_messages.txt");
 
     // 4. Format the Context Dump
     let output = `====================================================\n`;
@@ -56,7 +57,7 @@ export async function dumpAgentContext(
 
     if (isNewAgent) {
       activeAgents.set(agentKey, Date.now()); // Store with timestamp
-      output += `🤖 NEW [Agent]: [${agentName}] for report ${reportId.substring(0,8)}\n`;
+      output += `🤖 NEW [Agent]: [${agentName}] for report ${reportTitle.substring(0,8)}\n`;
     }
 
     messages.forEach((msg, index) => {
@@ -122,6 +123,7 @@ export async function dumpAgentContext(
 
     // 5. Write to disk ASYNCHRONOUSLY
     await fs.writeFile(filepath, output);
+    await fs.appendFile(filepath2, output);
 
   } catch (error) {
     console.error(`❌ [Debug Logger] Failed to dump context:`, error);

@@ -126,6 +126,10 @@ export const ObservationState = Annotation.Root({
 
   // 8. Report Artifacts
   draftReportId: Annotation<string | undefined>(),
+  reportTitle: Annotation<string | undefined>({
+    reducer: (x, y) => y ?? x,
+    default: () => undefined,
+  }),
 
   // 9. Supabase Client (non-serializable but needed for tools)
   client: Annotation<any>(),

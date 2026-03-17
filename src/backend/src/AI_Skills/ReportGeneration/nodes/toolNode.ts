@@ -2,6 +2,7 @@ import { ToolMessage, AIMessage} from "@langchain/core/messages";
 import { reportTools } from "../tools/report.tools";
 import { researchTools } from "../tools/research.tools"; 
 import { visionTools } from "../tools/vision.tools";
+import { planningTools } from "../tools/planning.tool";
 
 export async function toolNode(state: any) {
   const { messages, projectId, userId, client, selectedImageIds } = state;
@@ -16,12 +17,13 @@ export async function toolNode(state: any) {
   // We need the *same* tools that the Writer used
   const reportToolsArray = reportTools(client);
   const researchToolsArray = researchTools(projectId);
+  const planningToolsArray = planningTools();
 
   // 3. MERGE THEM
   // This creates one big object: { updateSection: Tool, searchWeb: Tool, ... }
   const allToolsMap: Record<string, any> = {};
 
-  [...reportToolsArray, ...researchToolsArray, ...visionTools].forEach((tool) => {
+  [...reportToolsArray, ...researchToolsArray, ...visionTools, ...planningToolsArray].forEach((tool) => {
     allToolsMap[tool.name] = tool;
   });
 

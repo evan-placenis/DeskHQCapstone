@@ -210,7 +210,7 @@ export const generateReportTask = task({
         projectId: payload.projectId,
         userId: payload.userId,
         reportType: payload.input.reportType,
-        title: payload.input.title,
+        reportTitle: title,
         provider: payload.input.modelName,
         selectedImageIds: payload.input.selectedImageIds,
         draftReportId: draftReportId,
@@ -250,13 +250,18 @@ export const generateReportTask = task({
           textBuffer,
           streamingAdapter
         });
-        // Debounced reasoning broadcast (so text flows smoothly)
+        // Debounced broadcast — prevents flooding the channel with tiny packets
         if (textBuffer.length > 0 && Date.now() - lastUpdate > UPDATE_INTERVAL) {
-          // ✅ CHANGED 'reasoning' to 'agent_thought'
           await broadcast(supabase, payload.projectId!, 'agent_thought', { chunk: textBuffer });
-          textBuffer = ""; // Clears the buffer so we don't send duplicate text!
+          textBuffer = "";
           lastUpdate = Date.now();
         }
+      }
+
+      // Flush any remaining text in the buffer after the stream ends
+      if (textBuffer.length > 0) {
+        await broadcast(supabase, payload.projectId!, 'agent_thought', { chunk: textBuffer });
+        textBuffer = "";
       }
 
       // 11. CHECK IF GRAPH PAUSED (Human-in-the-Loop)
@@ -404,114 +409,61 @@ async function processStreamEvent({
 }): Promise<string> {
   let updatedBuffer = textBuffer;
   
-  // ---------------------------------------------------------
-  // 1. LLM TOKEN STREAMING (The "Typewriter" Effect)
-  // ---------------------------------------------------------
-  if (event.event === "on_chat_model_stream") {
-    // const chunk = event.data?.chunk;
-    
-    // // A. Standard Text Stream (If the model speaks normally)
-    // if (typeof chunk === "string") {
-    //   updatedBuffer += chunk;
-    // } else if (chunk?.content && typeof chunk.content === "string") {
-    //   updatedBuffer += chunk.content;
-    // }
-
-    // // B. Tool Call Argument Stream (Schema-Driven CoT!)
-    // // When the LLM builds a tool call, it streams the raw JSON string piece by piece here.
-    // if (chunk?.tool_call_chunks && chunk.tool_call_chunks.length > 0) {
-    //   // 🕵️ X-RAY LOG 1: What does the raw tool chunk look like?
-    //   console.log("🔍 RAW STREAMING TOOL CHUNK:", JSON.stringify(chunk.tool_call_chunks[0], null, 2));
-    //   const tcChunk = chunk.tool_call_chunks[0];
-
-    //   if (tcChunk.args) {
-    //     let rawChunk = tcChunk.args;
-
-    //     // 🕵️ X-RAY LOG 2: What text are we actually trying to process?
-    //     console.log("📝 STREAMING PROCESSING STRING:", rawChunk);
-
-    //     // 🧹 CLEANUP THE JSON SYNTAX
-    //     // We strip out the JSON keys so the UI just sees the English reasoning.
-    //     rawChunk = rawChunk.replace(/^{\s*"reasoning"\s*:\s*"/, ""); // Opening key
-    //     rawChunk = rawChunk.replace(/^{\s*"query"\s*:\s*"/, "");     // Query key (if it searches first)
-    //     rawChunk = rawChunk.replace(/\\n/g, "\n"); 
-    //     rawChunk = rawChunk.replace(/\\"/g, '"');
-
-    //     // 🛑 THE CUT-OFF SWITCH
-    //     // As soon as the AI finishes "reasoning" and starts typing the next field 
-    //     // (like "reportId" or "content"), we stop adding to the buffer.
-    //     if (rawChunk.includes('", "') || rawChunk.includes('","')) {
-    //       rawChunk = rawChunk.split('",')[0]; 
-    //    }
-        
-    //     // Only add to the buffer if it's actual text and not structural JSON keys
-    //     if (rawChunk.length > 0 && !rawChunk.includes('reportId') && !rawChunk.includes('content')) {
-    //       updatedBuffer += rawChunk;
-          
-    //       // // 🚀 BROADCAST TO UI (Typewriter effect!)
-    //       console.log("📤 BROADCASTING TO UI:", updatedBuffer);
-    //       await broadcast(supabase, projectId, 'agent_thought', { chunk: updatedBuffer });
-    //     }
-    //   }
-    // }
+  // ─────────────────────────────────────────────────────────────────────────
+  // 1. NODE START — reset node-specific state, broadcast for debug UI
+  // ─────────────────────────────────────────────────────────────────────────
+  if (event.event === "on_chain_start" && event.name && event.name !== "LangGraph") {
+    const nodeStatus = streamingAdapter.onNodeStart(event.name);
+    if (nodeStatus) {
+      await broadcast(supabase, projectId, 'status', { chunk: nodeStatus });
+    }
+    await broadcast(supabase, projectId, 'debug_node', { node: event.name });
   }
 
-  // ---------------------------------------------------------
-  // 2. TOOL START (Capture Intent & Reasoning)
-  // ---------------------------------------------------------
-  else if (event.event === "on_tool_start") {
-    // ☢️ NUCLEAR X-RAY LOG: What exactly is LangChain handing us?
-    // console.log("==========================================");
-    // console.log(`🚀 ON_TOOL_START: ${event.name}`);
-    // console.dir(event.data?.input, { depth: null, colors: true });
-    // console.log("==========================================");
+  // ─────────────────────────────────────────────────────────────────────────
+  // 2. REAL-TIME TOKEN STREAMING
+  //    All nodes write free-form reasoning as plain text (chunk.content) before
+  //    calling any tool. We capture that text here and accumulate it into the
+  //    buffer which gets debounce-broadcast as agent_thought.
+  //    tool_call_chunks.args (structured JSON) is deliberately ignored.
+  // ─────────────────────────────────────────────────────────────────────────
+  else if (event.event === "on_chat_model_stream") {
+    const chunk = event.data?.chunk;
+    const nodeName: string = event.metadata?.langgraph_node ?? '';
+    const newText = streamingAdapter.feedModelChunk(chunk, nodeName);
+    if (newText) updatedBuffer += newText;
+  }
 
+  // ─────────────────────────────────────────────────────────────────────────
+  // 3. TOOL START — status bar update
+  //    Reasoning was already streamed live in step 2, so we only update the
+  //    status indicator here (no duplicate agent_thought broadcast).
+  // ─────────────────────────────────────────────────────────────────────────
+  else if (event.event === "on_tool_start") {
     const toolName = event.name;
     let toolInput = event.data?.input;
 
-    // 🚀 UNIVERSAL CAPTURE: Works for Gemini, OpenAI, Claude, etc.
-    if (toolInput && toolInput.input) toolInput = toolInput.input;
+    // Normalize nested or stringified inputs (Gemini / OpenAI / Claude differences)
+    if (toolInput?.input) toolInput = toolInput.input;
     if (typeof toolInput === 'string') {
-      try { toolInput = JSON.parse(toolInput); } catch (e) {}
-    }
-    if (toolInput && typeof toolInput.reasoning === 'string') {
-      // Send the perfectly formatted string to the UI
-      await broadcast(supabase, projectId, 'agent_thought', { chunk: toolInput.reasoning + "\n\n" });
-    } else {
-       console.log(`⚠️ [Debug] Tool started but no re asoning found. Input was:`, toolInput);
+      try { toolInput = JSON.parse(toolInput); } catch { /* use as-is */ }
     }
 
-    // Get the formatted header + reasoning string
     const statusMessage = streamingAdapter.getFriendlyStatus(toolName, toolInput);
     if (statusMessage) {
-        // Broadcast to UI
-        await broadcast(supabase, projectId, 'status', { 
-            chunk: `${statusMessage}`
-        });
+      await broadcast(supabase, projectId, 'status', { chunk: statusMessage });
     }
   }
-  
-/// ---------------------------------------------------------
-// 3. TOOL END (Capture Results - Hidden from AI thought stream)
-// ---------------------------------------------------------
-else if (event.event === "on_tool_end") {
-  const toolName = event.name;
 
-  // We update the 'status' bar to say "Search Complete", but we DO NOT 
-  // inject the raw results into the updatedBuffer/reasoning stream.
-  if (toolName === 'searchInternalKnowledge') {
-    await broadcast(supabase, projectId, 'status', { chunk: "Search complete. Agent is analyzing results..." });
-  } else if (toolName === 'writeSection') {
-    await broadcast(supabase, projectId, 'status', { chunk: "Section saved successfully." });
-  }
-}
-  
-  // ---------------------------------------------------------
-  // 4. NODE TRANSITIONS
-  // ---------------------------------------------------------
-  else if (event.event === "on_chain_start" && event.name && event.name !== "LangGraph") {
-     // You can broadcast this too if you want granular UI updates
-     await broadcast(supabase, projectId, 'debug_node', { node: event.name });
+  // ─────────────────────────────────────────────────────────────────────────
+  // 4. TOOL END — status bar completion messages
+  // ─────────────────────────────────────────────────────────────────────────
+  else if (event.event === "on_tool_end") {
+    if (event.name === 'searchInternalKnowledge') {
+      await broadcast(supabase, projectId, 'status', { chunk: "Search complete. Agent is analyzing results..." });
+    } else if (event.name === 'writeSection') {
+      await broadcast(supabase, projectId, 'status', { chunk: "Section saved successfully." });
+    }
   }
 
   return updatedBuffer;

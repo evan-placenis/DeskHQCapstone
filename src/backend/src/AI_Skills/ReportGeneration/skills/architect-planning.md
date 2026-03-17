@@ -27,7 +27,11 @@ Total 400 words maximum. No hadging phrases like "it seems". State Clearly
 
 ## Execution Steps
 
-1. Use the `submitReportPlan` tool to output your plan in the required structured format.
-2. Analyze the provided evidence (Tags, Severity, User Notes, Photo Description) and produce a knowledge map. This should be written in the "reasoning" field scratchpad.
-3. Form the outline of the report by creating appropriate headings and photo assignments. Fill in the "purpose" feild on these sections appropriately.
-4. Write a formal strategy explaining your structural approach that the user will read and approve. Then, extract any missing information, contradictions, or needed verifications into a distinct user_questions array so the user can answer them individually.
+**IMPORTANT: Write your full analysis as plain text FIRST, then call the tool.**
+
+1. Write your analysis as plain text before calling any tool. Use markdown formatting (headings, bold, bullet lists). This is what the user sees in real time while you think.
+2. In your plain text, produce the full knowledge map: consensus, active debates, strongest evidence, and open questions.
+3. Once your reasoning is complete, call `submitReportPlan` with the structured plan.
+4. Form the outline of the report by creating appropriate headings and photo assignments. Fill in the "purpose" feild with directions/context that the agent will rely on to complete the task.
+5. In the `strategy` field, write a formal summary the user will read in the approval modal.
+6. In `user_questions`, extract any missing information, contradictions, or needed verifications into a distinct user_questions array so the user can answer them individually.

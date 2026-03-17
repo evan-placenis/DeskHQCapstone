@@ -10,6 +10,7 @@ export async function builderContinueNode(state: any) {
       messages, 
       sectionDrafts, 
       draftReportId, 
+      reportTitle,
       builderRetries 
     } = state;
     if (!reportPlan || !reportPlan.sections) return { next_step: 'FINISH' };
@@ -24,7 +25,7 @@ export async function builderContinueNode(state: any) {
   
     console.log(`🔍 [BuilderContinue] Analyzing result for Task ${currentSectionIndex + 1}: "${currentTask.title}"...`);
     const taskName = `BuilderContinue_Task_${currentSectionIndex + 1}`;
-    dumpAgentContext(draftReportId, taskName, messages, 'INPUT');
+    dumpAgentContext(draftReportId, taskName, messages, 'INPUT', undefined, reportTitle);
   
     let success = false;
     let newDraftContent = "";
@@ -82,8 +83,8 @@ export async function builderContinueNode(state: any) {
         // If the AI successfully wrote *any* section, we treat the task as progressed.
         if (content.status === 'SUCCESS' || content._written === true) {
           success = true;
-          // Capture the preview or content for the Synthesis node
-          newDraftContent = content.preview || content.content || "Section saved.";
+          // Capture full content for Synthesis node (reads entire report before writing summaries)
+          newDraftContent = content.content ?? "Section saved.";
           
           console.log(`✅ [BuilderContinue] Verified Tool Save (ID: ${content.sectionId}).`);
           break; // Found our success!
@@ -174,7 +175,7 @@ export async function builderContinueNode(state: any) {
         You MUST call the "writeSection" tool with reportId: "${draftReportId}".`
       });
       // 📝 INJECT LOGGER 2: Log the feedback we are about to send back to the AI
-      dumpAgentContext(draftReportId, taskName, [feedbackMessage], 'OUTPUT');
+      dumpAgentContext(draftReportId, taskName, [feedbackMessage], 'OUTPUT', undefined, reportTitle);
   
       return { 
           builderRetries: retryCount + 1, 

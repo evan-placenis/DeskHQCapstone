@@ -401,12 +401,17 @@ export class ReportService {
     /**
      * 🛠️ PRIVATE HELPER: The "Stitcher"
      */
-    /** Stitch section bodies only; do not inject section headings (AI controls headings in content). */
+    /** Stitch sections with heading + content so the final report includes section titles. */
     private compileMarkdown(sections: any[]): string {
         return sections.map(s => {
             let md = "";
-            
+            //TODO: Add a check to see if the heading exists from the tool call.
+            const heading = s.heading?.trim?.() || "";
             const body = s.content?.replace(/\\n/g, '\n') || "";
+            if (heading) {
+                md += heading.startsWith('#') ? heading : `# ${heading}`;
+                md += '\n\n';
+            }
             md += body;
             if (s.metadata?.severity) {
                 md += `\n**Severity:** ${s.metadata.severity.toUpperCase()}\n\n`;
