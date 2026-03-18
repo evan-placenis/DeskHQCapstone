@@ -71,6 +71,15 @@ export class ChatOrchestrator {
         // Build system prompt - use custom systemMessage if provided (e.g. selection-edit ack), otherwise default
         const systemPrompt = systemMessage || this.buildSystemPrompt(documentOutline, activeSectionMarkdown, activeSectionHeading, fullReportMarkdown);
 
+        const registeredToolNames = Object.keys(tools);
+        const skillNames = !systemMessage
+            ? (hasDocumentTools
+                ? ['chat-core', 'research', 'vision', 'report-aware-chat']
+                : ['chat-core', 'research', 'vision'])
+            : ['(overridden by systemMessage)'];
+        console.log(`[Chat] Skills injected into system prompt: [${skillNames.join(', ')}] (${systemPrompt.length} chars)`);
+        console.log(`[Chat] Tools registered: [${registeredToolNames.join(', ')}]`);
+
         return streamText({
             model: ModelStrategy.getModel(provider, heliconeInput),
             messages: await convertToModelMessages(messages),
@@ -78,7 +87,20 @@ export class ChatOrchestrator {
             stopWhen: stepCountIs(10),
             tools,
             onFinish,
-        });
+
+            experimental_onToolCallStart({ toolCall }: { toolCall: { toolName: string; toolCallId: string } }) {
+                console.log(`[Chat] Tool call started: ${toolCall.toolName} (${toolCall.toolCallId})`);
+            },
+
+            experimental_onToolCallFinish({ toolCall, durationMs, success }: { toolCall: { toolName: string; toolCallId: string }; durationMs: number; success: boolean }) {
+                const status = success ? 'OK' : 'FAILED';
+                console.log(`[Chat] Tool call finished: ${toolCall.toolName} [${status}] (${durationMs}ms)`);
+            },
+
+            onStepFinish({ finishReason }: { finishReason: string }) {
+                console.log(`[Chat] Step finished — reason: ${finishReason}`);
+            },
+        } as any);
     }
 
     /**
