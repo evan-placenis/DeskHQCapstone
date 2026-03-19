@@ -1,6 +1,6 @@
 // src/domain/reports/ReportRepository.ts
 
-import { Report } from "../reports/report.types";
+import { Report } from "../reports/report-types";
 import { SupabaseClient } from "@supabase/supabase-js";
 
 export interface ReportRepository {

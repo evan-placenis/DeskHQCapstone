@@ -1,8 +1,8 @@
 import { SystemMessage, HumanMessage, ToolMessage, AIMessage } from "@langchain/core/messages";
-import { ModelStrategy } from "../../../models/modelStrategy";
+import { ModelStrategy } from "../../../models/model-strategy";
 import { tool } from "@langchain/core/tools";
 import { z } from "zod";
-import { ObservationState } from "../../../state/Pretium/ObservationState";
+import { ObservationState } from "../../../state/pretium/observation-state";
 
 export async function reviewerNode(state: typeof ObservationState.State) {
   const { 

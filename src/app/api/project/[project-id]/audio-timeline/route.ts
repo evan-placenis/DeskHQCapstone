@@ -4,10 +4,10 @@ import { createAuthenticatedClient } from "@/app/api/utils";
 
 export async function GET(
     request: Request,
-    { params }: { params: Promise<{ projectId: string }> }
+    { params }: { params: Promise<{ "project-id": string }> }
 ) {
     try {
-        const { projectId } = await params;
+        const { "project-id": projectId } = await params;
         const { searchParams } = new URL(request.url);
         const folderName = searchParams.get("folderName");
 

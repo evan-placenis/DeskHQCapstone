@@ -2,9 +2,9 @@
 
 import { useState, useEffect, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Button } from "@/frontend/pages/ui_components/button";
-import { Label } from "@/frontend/pages/ui_components//label";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/frontend/pages/ui_components//card";
+import { Button } from "@/frontend/pages/ui-components/button";
+import { Label } from "@/frontend/pages/ui-components/label";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/frontend/pages/ui-components/card";
 import { Cpu, Building2, ArrowLeft, Loader2 } from "lucide-react";
 import { ROUTES } from "@/app/pages/config/routes";
 import {
@@ -13,7 +13,7 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/frontend/pages/ui_components//select";
+} from "@/frontend/pages/ui-components/select";
 
 function SelectOrganizationForm() {
   const router = useRouter();

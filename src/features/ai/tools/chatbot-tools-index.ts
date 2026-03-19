@@ -1,6 +1,6 @@
-export { chatContextTools } from './chat-context.tools';
-export { researchTools } from './research.tools';
-export { reportTools } from './report.tools';
-export { visionTools } from './vision.tools';
-export { referenceTools } from './reference.tools';
-export { audioTools } from './audio.tools';
+export { chatContextTools } from './chatbot-chat-context-tools';
+export { researchTools } from './chatbot-research-tools';
+export { reportTools } from './chatbot-report-tools';
+export { visionTools } from './chatbot-vision-tools';
+export { referenceTools } from './chatbot-reference-tools';
+export { audioTools } from './chatbot-audio-tools';

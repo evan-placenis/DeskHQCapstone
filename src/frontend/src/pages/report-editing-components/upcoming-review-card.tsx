@@ -1,4 +1,4 @@
-import { Badge } from "../ui_components/badge";
+import { Badge } from "../ui-components/badge";
 import { CalendarClock } from "lucide-react";
 import { UpcomingReview } from "@/frontend/types";
 

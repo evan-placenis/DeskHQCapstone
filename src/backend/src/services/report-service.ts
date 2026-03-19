@@ -1,7 +1,7 @@
-import { ReportRepository } from "../domain/interfaces/ReportRepository";
-import { ProjectRepository } from "../domain/interfaces/ProjectRepository";
-import { ReportOrchestrator } from "../ai/orchestrators/ReportOrchestrator";
-import { Report } from "../domain/reports/report.types";
+import { ReportRepository } from "../domain/interfaces/report-repository";
+import { ProjectRepository } from "../domain/interfaces/project-repository";
+import { ReportOrchestrator } from "@/features/ai/orchestrators/report-orchestrator";
+import { Report } from "../domain/reports/report-types";
 import { SupabaseClient } from "@supabase/supabase-js";
 import { v4 as uuidv4 } from 'uuid';
 

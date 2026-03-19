@@ -1,5 +1,5 @@
 "use client";
-import { CapturePage } from "@/frontend/pages/CapturePage";
+import { CapturePage } from "@/frontend/pages/capture-page";
 import { useRouter } from "next/navigation";
 import { Project } from "@/frontend/types";
 import { ROUTES } from "@/app/pages/config/routes";

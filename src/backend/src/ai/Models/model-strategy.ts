@@ -7,7 +7,7 @@ import {
     HELICONE_TARGET_URLS,
     HELICONE_TARGET_URL_HEADER,
     type HeliconeContextInput,
-} from '../gateway/HeliconeContextBuilder';
+} from '../gateway/helicone-context-builder';
 
 export class ModelStrategy {
     static getModel(

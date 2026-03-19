@@ -1,21 +1,21 @@
 import { useState } from "react";
-import { Button } from "../ui_components/button";
-import { Input } from "../ui_components/input";
-import { Badge } from "../ui_components/badge";
+import { Button } from "../ui-components/button";
+import { Input } from "../ui-components/input";
+import { Badge } from "../ui-components/badge";
 import {
   Dialog,
   DialogContent,
   DialogDescription,
   DialogHeader,
   DialogTitle,
-} from "../ui_components/dialog";
+} from "../ui-components/dialog";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "../ui_components/select";
+} from "../ui-components/select";
 import { Upload, FileText, X, File, Plus } from "lucide-react";
 import { KnowledgeDocument } from "@/frontend/types";
 

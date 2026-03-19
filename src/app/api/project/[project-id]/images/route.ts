@@ -7,7 +7,7 @@ import { createAuthenticatedClient } from "@/app/api/utils";
 
 export async function POST(
     request: Request,
-    { params }: { params: Promise<{ projectId: string }> }
+    { params }: { params: Promise<{ "project-id": string }> }
 ) {
     try {
         const formData = await request.formData();
@@ -36,7 +36,7 @@ export async function POST(
         }
         
         const resolvedParams = await params;
-        const projectId = resolvedParams.projectId;
+        const projectId = resolvedParams["project-id"];
 
         // ... Authentication Checks (Same as before) ...
         const { supabase, user } = await createAuthenticatedClient();
@@ -102,11 +102,11 @@ export async function POST(
 
 export async function GET(
     request: Request,
-    { params }: { params: Promise<{ projectId: string }> }
+    { params }: { params: Promise<{ "project-id": string }> }
 ) {
     try {
         const resolvedParams = await params;
-        const projectId = resolvedParams.projectId;
+        const projectId = resolvedParams["project-id"];
 
         // Create a user-scoped Supabase client for GET request as well
         const { supabase, user } = await createAuthenticatedClient();
@@ -145,10 +145,10 @@ export async function GET(
 
 export async function DELETE( //delete images or folders
     request: Request,
-    { params }: { params: Promise<{ projectId: string }> }
+    { params }: { params: Promise<{ "project-id": string }> }
 ) {
     try {
-        const { projectId } = await params;
+        const { "project-id": projectId } = await params;
         const { searchParams } = new URL(request.url);
         const imageId = searchParams.get('imageId');
         const folderName = searchParams.get('folderName');

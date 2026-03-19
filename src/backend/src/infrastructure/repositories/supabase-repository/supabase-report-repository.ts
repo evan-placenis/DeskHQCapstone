@@ -1,6 +1,6 @@
 import { SupabaseClient } from '@supabase/supabase-js';
-import { ReportRepository } from '../../../domain/interfaces/ReportRepository'; // Check path
-import { Report } from '../../../domain/reports/report.types'; // Check path
+import { ReportRepository } from '../../../domain/interfaces/report-repository';
+import { Report } from '../../../domain/reports/report-types'; // Check path
 
 export class SupabaseReportRepository implements ReportRepository {
 

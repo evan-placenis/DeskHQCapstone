@@ -1,10 +1,10 @@
 "use client";
-import { DashboardPage } from "@/frontend/pages/DashboardPage";
+import { DashboardPage } from "@/frontend/pages/dashboard-page";
 import { useRouter } from "next/navigation";
 import { Page } from "@/app/pages/config/routes";
 import { Project } from "@/frontend/types";
 import { ROUTES, getRoute } from "@/app/pages/config/routes";
-import { useAuth } from "@/src/app/context/AuthContext";
+import { useAuth } from "@/app/context/auth-context";
 
 export default function Dashboard() {
   const router = useRouter();

@@ -1,8 +1,8 @@
 import { useState } from "react";
-import { AppHeader } from "./smart_components/AppHeader";
+import { AppHeader } from "./smart-components/app-header";
 import { Page } from "@/app/pages/config/routes";
-import { ReportLayout } from "./report_editing_components/ReportLayout";
-import { ExportModal } from "./large_modal_components/ExportModal";
+import { ReportLayout } from "./report-editing-components/report-layout";
+import { ExportModal } from "./large-modal-components/export-modal";
 import { ReportContent } from "@/frontend/types";
 
 interface ReportEditorPageProps {

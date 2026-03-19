@@ -1,8 +1,8 @@
 import { useState, useEffect } from "react";
-import { Button } from "../ui_components/button";
-import { Badge } from "../ui_components/badge";
-import { Textarea } from "../ui_components/textarea";
-import { Avatar, AvatarFallback } from "../ui_components/avatar";
+import { Button } from "../ui-components/button";
+import { Badge } from "../ui-components/badge";
+import { Textarea } from "../ui-components/textarea";
+import { Avatar, AvatarFallback } from "../ui-components/avatar";
 import {
   Dialog,
   DialogContent,
@@ -10,9 +10,9 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "../ui_components/dialog";
-import { Input } from "../ui_components/input";
-import { Label } from "../ui_components/label";
+} from "../ui-components/dialog";
+import { Input } from "../ui-components/input";
+import { Label } from "../ui-components/label";
 import { 
   UserCheck, 
   Search, 

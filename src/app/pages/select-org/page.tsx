@@ -1,4 +1,4 @@
-import { SelectOrganizationPage } from "@/frontend/pages/SelectOrganizationPage";
+import { SelectOrganizationPage } from "@/frontend/pages/select-organization-page";
 
 export default function Page() {
   return <SelectOrganizationPage />;

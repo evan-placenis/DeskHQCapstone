@@ -1,12 +1,12 @@
 "use client";
 
 import { useState } from "react";
-import { Button } from "../ui_components/button";
-import { Badge } from "../ui_components/badge";
-import { Textarea } from "../ui_components/textarea";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../ui_components/card";
-import { Avatar, AvatarFallback } from "../ui_components/avatar";
-import { Separator } from "../ui_components/separator";
+import { Button } from "../ui-components/button";
+import { Badge } from "../ui-components/badge";
+import { Textarea } from "../ui-components/textarea";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../ui-components/card";
+import { Avatar, AvatarFallback } from "../ui-components/avatar";
+import { Separator } from "../ui-components/separator";
 import { 
   UserCheck, 
   MessageSquare, 

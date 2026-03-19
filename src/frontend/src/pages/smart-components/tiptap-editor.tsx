@@ -17,7 +17,7 @@ import {
     type OutlineEntry,
     type ActiveSectionInfo,
     type InsertAnchor,
-} from '@/frontend/lib/editorContext'
+} from '@/frontend/lib/editor-context'
 
 import { Table } from '@tiptap/extension-table'
 import { TableRow } from '@tiptap/extension-table-row'
@@ -29,16 +29,16 @@ import TextAlign from '@tiptap/extension-text-align'
 import { ReactNodeViewRenderer } from '@tiptap/react'
 import Image from '@tiptap/extension-image'
 import Audio from '@tiptap/extension-audio'
-import { ReportImageComponent } from './ReportImageComponent'
-import { AdditionMark, DeletionMark } from './DiffMarks'
-import { computeDiffDocument } from './diffUtils'
-import { Button } from '../ui_components/button'
+import { ReportImageComponent } from './report-image-component'
+import { AdditionMark, DeletionMark } from './diff-marks'
+import { computeDiffDocument } from './diff-utils'
+import { Button } from '../ui-components/button'
 import {
     DropdownMenu,
     DropdownMenuContent,
     DropdownMenuItem,
     DropdownMenuTrigger,
-} from '../ui_components/dropdown-menu'
+} from '../ui-components/dropdown-menu'
 import { Check, X, Heading as HeadingIcon, ChevronDown, AlignLeft, AlignCenter, AlignRight, AlignJustify, List, ListOrdered, Image as ImageIcon, FileAudio, Table2, Plus, Minus, Trash2, Columns, Rows } from 'lucide-react'
 
 

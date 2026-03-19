@@ -1,8 +1,8 @@
-import { ChatRepository } from "../domain/interfaces/ChatRepository";
-import { ChatOrchestrator } from "../ai/orchestrators/ChatOrchestrator";
-import { ChatSession, ChatMessage } from "../domain/chat/chat.types";
+import { ChatRepository } from "../domain/interfaces/chat-repository";
+import { ChatOrchestrator } from "@/features/ai/orchestrators/chat-orchestrator";
+import { ChatSession, ChatMessage } from "../domain/chat/chat-types";
 import { v4 as uuidv4 } from 'uuid';
-import { ReportService } from "./ReportService";
+import { ReportService } from "./report-service";
 import { SupabaseClient } from "@supabase/supabase-js";
 
 /**
@@ -91,7 +91,7 @@ export class ChatService {
 
         // 4. Call Orchestrator
         const streamResult = await this.chatOrchestrator.generateStream({
-            messages: session.messages.slice(-10).map(m => ({
+            messages: session.messages.slice(-10).map((m: ChatMessage) => ({
                 role: m.sender,
                 content: m.content
             })).concat([{ role: 'user', content: userText }]),
@@ -150,7 +150,7 @@ export class ChatService {
         const session = await this.repo.getSessionById(sessionId, client);
         if (!session?.reportId) throw new Error("Context missing");
 
-        const message = session.messages.find(m => m.messageId === messageId);
+        const message = session.messages.find((m: ChatMessage) => m.messageId === messageId);
         if (!message?.suggestion) throw new Error("No suggestion found");
 
         // 1. Fetch current section to preserve 'order' and 'metadata'

@@ -1,8 +1,8 @@
 import { ToolMessage, AIMessage} from "@langchain/core/messages";
-import { reportTools } from "../../../tools/report.tools";
-import { researchTools } from "../../../tools/research.tools"; 
-import { ObservationState } from "../../../state/Pretium/ObservationState";
-import { Container } from "../../../../../config/container";
+import { reportTools } from "@/features/ai/tools/report-generation-report-tools";
+import { researchTools } from "@/features/ai/tools/report-generation-research-tools";
+import { ObservationState } from "../../../state/pretium/observation-state";
+import { Container } from "@/backend/config/container";
 
 const SEARCH_TOOL_NAMES = ['searchInternalKnowledge', 'searchWeb'] as const;
 const SEARCH_CIRCUIT_BREAKER_THRESHOLD = 4;

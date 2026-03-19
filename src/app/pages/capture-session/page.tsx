@@ -1,6 +1,6 @@
 "use client";
 
-import { CaptureSessionPage } from "@/frontend/pages/CaptureSessionPage";
+import { CaptureSessionPage } from "@/frontend/pages/capture-session-page";
 import { useRouter } from "next/navigation";
 import { ROUTES } from "@/app/pages/config/routes";
 

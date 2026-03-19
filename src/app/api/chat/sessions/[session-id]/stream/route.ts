@@ -4,15 +4,16 @@ import { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
 import { Container } from '@/backend/config/container';
 import { createAuthenticatedClient } from "@/app/api/utils";
-import type { HeliconeContextInput } from '@/backend/ai/gateway/HeliconeContextBuilder';
+import type { HeliconeContextInput } from '@/backend/ai/gateway/helicone-context-builder';
+import type { ChatMessage } from '@/backend/domain/chat/chat-types';
 
 // GET chat history (same shape as sessions/[sessionId] GET, so frontend can use /stream for both)
 export async function GET(
     req: NextRequest,
-    { params }: { params: Promise<{ sessionId: string }> }
+    { params }: { params: Promise<{ "session-id": string }> }
 ) {
     try {
-        const { sessionId } = await params;
+        const { "session-id": sessionId } = await params;
         const { supabase, user } = await createAuthenticatedClient();
         if (!user) {
             return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -24,7 +25,7 @@ export async function GET(
             console.error(`GET /stream 404 — sessionId=${sessionId}, userId=${user.id}, userOrgId=${profile?.organization_id ?? 'NULL (no profile!)'}`);
             return NextResponse.json({ error: "Not found" }, { status: 404 });
         }
-        const uiMessages = session.messages.map(m => ({
+        const uiMessages = session.messages.map((m: ChatMessage) => ({
             id: m.messageId,
             role: m.sender,
             content: m.content,
@@ -38,10 +39,10 @@ export async function GET(
 
 export async function POST(
     req: NextRequest,
-    { params }: { params: Promise<{ sessionId: string }> }
+    { params }: { params: Promise<{ "session-id": string }> }
 ) {
     try {
-        const { sessionId } = await params;
+        const { "session-id": sessionId } = await params;
         const body = await req.json();
         const { messages, activeSectionId, reportId, projectId, provider = 'gemini-cheap', selectionEdit, documentOutline, activeSectionMarkdown, activeSectionHeading, fullReportMarkdown } = body;
 

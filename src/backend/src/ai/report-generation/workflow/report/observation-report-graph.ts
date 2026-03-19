@@ -1,19 +1,19 @@
 import { StateGraph, END, START} from "@langchain/langgraph";
 import { ToolMessage } from "@langchain/core/messages";
-import { ObservationState } from "../../state/Pretium/ObservationState";
-import { architectNode } from "../../nodes/report/observation/architectNode";
-import { humanApprovalNode } from "../../nodes/report/observation/humanApprovalNode";
+import { ObservationState } from "../../state/pretium/observation-state";
+import { architectNode } from "../../nodes/report/observation/architect-node";
+import { humanApprovalNode } from "../../nodes/report/observation/human-approval-node";
 
-import { builderNode } from "../../nodes/report/observation/builderNode";
-import { builderContinueNode } from "../../nodes/report/observation/builderContinueNode";
-import { reviewerNode } from "../../nodes/report/observation/reviewerNode";
-import { synthesisBuilderNode} from "../../nodes/report/observation/synthesisBuilderNode";
-import { toolNode } from "../../nodes/toolNode";
+import { builderNode } from "../../nodes/report/observation/builder-node";
+import { builderContinueNode } from "../../nodes/report/observation/builder-continue-node";
+import { reviewerNode } from "../../nodes/report/observation/reviewer-node";
+import { synthesisBuilderNode} from "../../nodes/report/observation/synthesis-builder-node";
+import { toolNode } from "../../nodes/tool-node";
 import { AIMessage } from "@langchain/core/messages";
-import { fetchContextNode } from "../../nodes/report/observation/fetchContextNode";
+import { fetchContextNode } from "../../nodes/report/observation/fetch-context-node";
 import { sharedCheckpointer } from "../checkpointer"; 
 
-import { builderToolsNode } from "../../nodes/report/observation/builderToolNode";
+import { builderToolsNode } from "../../nodes/report/observation/builder-tool-node";
 
 const workflow = new StateGraph(ObservationState)
   .addNode("fetch_context", fetchContextNode)

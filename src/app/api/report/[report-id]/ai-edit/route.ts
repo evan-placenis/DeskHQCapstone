@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAuthenticatedClient } from "@/app/api/utils";
 import { Container } from "@/backend/config/container";
-import { ReportNotFoundError } from "@/backend/Services/EditService";
+import { ReportNotFoundError } from "@/backend/services/edit-service";
 
 /**
  * POST /api/report/[reportId]/ai-edit
@@ -11,10 +11,10 @@ import { ReportNotFoundError } from "@/backend/Services/EditService";
  */
 export async function POST(
     request: NextRequest,
-    { params }: { params: Promise<{ reportId: string }> }
+    { params }: { params: Promise<{ "report-id": string }> }
 ) {
     try {
-        const { reportId } = await params;
+        const { "report-id": reportId } = await params;
         const body = await request.json();
         const { selection, surroundingContext, instruction, provider } = body;
 

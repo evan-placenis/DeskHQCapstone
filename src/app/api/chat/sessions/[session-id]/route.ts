@@ -7,12 +7,12 @@ import { createAuthenticatedClient } from "@/app/api/utils";
 // 1. SEND A MESSAGE (Talk to AI) - Returns streaming response
 export async function POST(
     req: Request,
-    { params }: { params: Promise<{ sessionId: string }> }
+    { params }: { params: Promise<{ "session-id": string }> }
 ) {
     try {
         const body = await req.json();
         const { message, activeSectionId, reportId, provider = 'grok' } = body;
-        const { sessionId } = await params;
+        const { "session-id": sessionId } = await params;
 
         // Authenticate
         const { supabase, user } = await createAuthenticatedClient();

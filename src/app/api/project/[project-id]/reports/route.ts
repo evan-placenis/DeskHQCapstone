@@ -4,10 +4,10 @@ import { createAuthenticatedClient } from "@/app/api/utils";
 // this is the route for getting all reports for a project
 export async function GET(
     request: Request,
-    { params }: { params: Promise<{ projectId: string }> }
+    { params }: { params: Promise<{ "project-id": string }> }
 ) {
     try {
-        const { projectId } = await params;
+        const { "project-id": projectId } = await params;
 
         // Authenticate
         const { user, supabase } = await createAuthenticatedClient();

@@ -1,10 +1,10 @@
-import { Button } from "../ui_components/button";
-import { CardHeader } from "../ui_components/card";
-import { Label } from "../ui_components/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui_components/select";
-import { Slider } from "../ui_components/slider";
-import { Switch } from "../ui_components/switch";
-import { Separator } from "../ui_components/separator";
+import { Button } from "../ui-components/button";
+import { CardHeader } from "../ui-components/card";
+import { Label } from "../ui-components/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui-components/select";
+import { Slider } from "../ui-components/slider";
+import { Switch } from "../ui-components/switch";
+import { Separator } from "../ui-components/separator";
 import { X, Sparkles } from "lucide-react";
 
 interface AISettingsPanelProps {

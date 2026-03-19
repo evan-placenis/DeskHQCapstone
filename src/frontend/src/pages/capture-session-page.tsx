@@ -1,11 +1,11 @@
 "use client";
 //sinan made this
 import { useState, useRef, useEffect, useCallback } from "react";
-import { Button } from "./ui_components/button";
-import { Input } from "./ui_components/input";
+import { Button } from "./ui-components/button";
+import { Input } from "./ui-components/input";
 import { Camera, X, Mic, Loader2, CheckCircle2, Search, Plus, Check } from "lucide-react";
 import { Project } from "@/frontend/types";
-import { supabase } from "@/frontend/lib/supabaseClient";
+import { supabase } from "@/frontend/lib/supabase-client";
 import * as tus from "tus-js-client";
 
 type Step = "capture" | "choose-project" | "uploading" | "success";

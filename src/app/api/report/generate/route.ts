@@ -3,8 +3,8 @@ import { NextResponse } from "next/server";
 import { Container } from "@/backend/config/container";
 import { createAuthenticatedClient } from "@/app/api/utils";
 import { v4 as uuidv4 } from 'uuid';
-import { Report } from '@/backend/domain/reports/report.types';
-import { HeliconeContextBuilder } from '@/backend/ai/gateway/HeliconeContextBuilder';
+import { Report } from '@/backend/domain/reports/report-types';
+import { HeliconeContextBuilder } from '@/backend/ai/gateway/helicone-context-builder';
 
 export async function POST(
     request: Request

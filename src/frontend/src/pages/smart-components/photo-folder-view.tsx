@@ -3,14 +3,14 @@
 import { useCallback } from "react";
 import { Grid } from "react-window";
 import { AutoSizer } from "react-virtualized-auto-sizer";
-import { Badge } from "../ui_components/badge";
-import { Button } from "../ui_components/button";
-import { SecureImage } from "./SecureImage";
+import { Badge } from "../ui-components/badge";
+import { Button } from "../ui-components/button";
+import { SecureImage } from "./secure-image";
 import {
   Collapsible,
   CollapsibleContent,
   CollapsibleTrigger,
-} from "../ui_components/collapsible";
+} from "../ui-components/collapsible";
 import {
   Calendar,
   Eye,

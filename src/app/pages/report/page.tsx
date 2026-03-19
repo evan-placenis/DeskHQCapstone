@@ -1,4 +1,4 @@
-import { ReportViewerPage } from "@/frontend/pages/ReportViewerPage";
+import { ReportViewerPage } from "@/frontend/pages/report-viewer-page";
 
 export default function Page() {
   return <ReportViewerPage />;

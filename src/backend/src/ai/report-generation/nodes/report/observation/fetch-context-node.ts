@@ -1,4 +1,4 @@
-import { ObservationState } from "../../../state/Pretium/ObservationState";
+import { ObservationState } from "../../../state/pretium/observation-state";
 
 export const fetchContextNode = async (state: typeof ObservationState.State) => {
   const { selectedImageIds, client } = state;

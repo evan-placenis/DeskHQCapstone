@@ -8,7 +8,7 @@ import {
     HELICONE_TARGET_URL_HEADER,
     type HeliconeContext,
     type HeliconeContextInput,
-} from "../../gateway/HeliconeContextBuilder";
+} from "../../gateway/helicone-context-builder";
 
 /** Provider keys: anthropic, google, openai, grok (frontend sends claude→anthropic, gemini→google) */
 const MODEL_REGISTRY: Record<string, Record<string, string>> = {

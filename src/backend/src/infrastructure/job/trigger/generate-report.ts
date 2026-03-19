@@ -1,21 +1,21 @@
 import { task } from "@trigger.dev/sdk/v3";
 import { Container } from '../../../config/container';
 import { v4 as uuidv4 } from 'uuid';
-import { Report } from '../../../domain/reports/report.types';
-import { ChatMessage } from '../../../domain/chat/chat.types';
-import type { ChatRepository } from '../../../domain/interfaces/ChatRepository';
-import type { ChatService } from '../../../Services/ChatService';
+import { Report } from '../../../domain/reports/report-types';
+import { ChatMessage } from '../../../domain/chat/chat-types';
+import type { ChatRepository } from '../../../domain/interfaces/chat-repository';
+import type { ChatService } from '../../../services/chat-service';
 import dotenv from "dotenv";
 import path from "path";
 import { createClient } from "@supabase/supabase-js";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 // 👇 IMPORT WORKFLOW REGISTRY
-import { getWorkflow } from "../../../ai/ReportGeneration/workflow";
+import { getWorkflow } from "../../../ai/report-generation/workflow";
 import { HumanMessage, SystemMessage } from "@langchain/core/messages";
-import { StreamingAdapter } from "../../../ai/ReportGeneration/utils/streaming-adapter";
-import { getFlattenedTasks } from "../../../ai/ReportGeneration/nodes/report/observation/builderNode";
-import { HeliconeContextBuilder, type HeliconeContextInput } from "../../../ai/gateway/HeliconeContextBuilder";
+import { StreamingAdapter } from "../../../ai/report-generation/utils/streaming-adapter";
+import { getFlattenedTasks } from "../../../ai/report-generation/nodes/report/observation/builder-node";
+import { HeliconeContextBuilder, type HeliconeContextInput } from "../../../ai/gateway/helicone-context-builder";
 
 // Load environment variables - ensure they're available for Trigger.dev workers
 // Try multiple paths to find .env file (relative to where Trigger.dev runs from)

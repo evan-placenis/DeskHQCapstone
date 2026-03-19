@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useMemo, useRef } from "react";
-import { AIChatInput } from "./AIChatInput";
+import { AIChatInput } from "./ai-chat-input";
 import { useChat } from '@ai-sdk/react';
 import { useAISDKRuntime, AssistantChatTransport} from '@assistant-ui/react-ai-sdk';
 import {
@@ -10,13 +10,13 @@ import {
   MessagePrimitive,
   useMessage,
 } from '@assistant-ui/react';
-import { Button } from "../ui_components/button";
+import { Button } from "../ui-components/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-} from "../ui_components/dropdown-menu";
+} from "../ui-components/dropdown-menu";
 import {
   Sparkles,
   ChevronLeft,
@@ -201,11 +201,11 @@ interface AIChatSidebarProps {
   onSuggestionAccept: (suggestion: any) => void;
   onEditSuggestion?: (suggestion: EditSuggestion) => void;
   /** When user has highlighted text: get selection + markdown + range from editor (client-context edit) */
-  getEditorSelectionContext?: () => import("../smart_components/TiptapEditor").SelectionContext | null;
+  getEditorSelectionContext?: () => import("../smart-components/tiptap-editor").SelectionContext | null;
   /** Trigger selection-based edit (streaming). Called with full context (send context.markdown to API). */
-  onRequestAIEditWithSelection?: (context: import("../smart_components/TiptapEditor").SelectionContext, instruction: string) => Promise<void>;
+  onRequestAIEditWithSelection?: (context: import("../smart-components/tiptap-editor").SelectionContext, instruction: string) => Promise<void>;
   /** Pinned selection (survives blur) - show Cursor-style "Editing selection" pill when set */
-  pinnedSelectionContext?: import("../smart_components/TiptapEditor").SelectionContext | null;
+  pinnedSelectionContext?: import("../smart-components/tiptap-editor").SelectionContext | null;
   onClearPinnedSelection?: () => void;
   isGeneratingEdit?: boolean;
   selectedContexts?: any[];

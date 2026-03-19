@@ -1,6 +1,6 @@
 import { DocumentStrategy } from '../strategies/interfaces';
-import { SpecStrategy } from '../strategies/SpecStrategy';
-import { ReportStrategy } from '../strategies/ReportStrategy';
+import { SpecStrategy } from '../strategies/spec-strategy';
+import { ReportStrategy } from '../strategies/report-strategy';
 
 export class DocumentStrategyFactory {
     // We now switch based on the "document type" (e.g. "specification", "previous_report")

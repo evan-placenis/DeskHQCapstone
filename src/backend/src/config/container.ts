@@ -1,35 +1,35 @@
 
-import { SupabaseChatRepository } from '../infrastructure/repositories/supabase_repository/SupabaseChatRepository';
-import { SupabaseReportRepository } from '../infrastructure/repositories/supabase_repository/SupabaseReportRepository';
-import { SupabaseProjectRepository } from '../infrastructure/repositories/supabase_repository/SupbaseProjectRepository';
-import { SupabaseKnowledgeRepository } from '../infrastructure/repositories/supabase_repository/SupabaseKnowledgeRepository';
-import { SupabaseStatsRepository } from '../infrastructure/repositories/supabase_repository/SupabaseStatsRepository';
+import { SupabaseChatRepository } from '../infrastructure/repositories/supabase-repository/supabase-chat-repository';
+import { SupabaseReportRepository } from '../infrastructure/repositories/supabase-repository/supabase-report-repository';
+import { SupabaseProjectRepository } from '../infrastructure/repositories/supabase-repository/supbase-project-repository';
+import { SupabaseKnowledgeRepository } from '../infrastructure/repositories/supabase-repository/supabase-knowledge-repository';
+import { SupabaseStatsRepository } from '../infrastructure/repositories/supabase-repository/supabase-stats-repository';
 
-//import { supabaseAdmin } from '../infrastructure/supabase/supabaseClient';
+//import { supabaseAdmin } from '../infrastructure/supabase/supabase-client';
 
-import { PineconeVectorStore } from '../infrastructure/vector_store/PineconeVectorStore';
-import { DocumentStrategyFactory } from '../Document_Strategies/factory/DocumentFactory';
-import { ReportService } from '../Services/ReportService';
-import { ChatService } from '../Services/ChatService';
-import { EditService } from '../Services/EditService';
-import { ChatOrchestrator } from '../ai/orchestrators/ChatOrchestrator';
-import { EditOrchestrator } from '../ai/orchestrators/EditOrchestrator';
-import { ReportOrchestrator } from '../ai/orchestrators/ReportOrchestrator';
-import { CaptureOrchestrator } from '../ai/orchestrators/CaptureOrchestrator';
-import { CaptureService } from '../Services/CaptureService';
-import { ProjectService } from '../Services/ProjectService';
-import { SupabaseCaptureSessionRepository } from '../infrastructure/repositories/supabase_repository/SupabaseCaptureSessionRepository';
-import { KnowledgeService } from '../Services/KnowledgeServivce';
-import { UserService } from '../Services/UserService';
-import { StorageService } from '../Services/StorageService';
-import { PhotoService } from '../Services/PhotoService';
-import { StatsService } from '../Services/StatsService';
+import { PineconeVectorStore } from '../infrastructure/vector-store/pinecone-vector-store';
+import { DocumentStrategyFactory } from '../document-strategies/factory/document-factory';
+import { ReportService } from '../services/report-service';
+import { ChatService } from '../services/chat-service';
+import { EditService } from '../services/edit-service';
+import { ChatOrchestrator } from '@/features/ai/orchestrators/chat-orchestrator';
+import { EditOrchestrator } from '@/features/ai/orchestrators/edit-orchestrator';
+import { ReportOrchestrator } from '@/features/ai/orchestrators/report-orchestrator';
+import { CaptureOrchestrator } from '@/features/ai/orchestrators/capture-orchestrator';
+import { CaptureService } from '../services/capture-service';
+import { ProjectService } from '../services/project-service';
+import { SupabaseCaptureSessionRepository } from '../infrastructure/repositories/supabase-repository/supabase-capture-session-repository';
+import { KnowledgeService } from '../services/knowledge-servivce';
+import { UserService } from '../services/user-service';
+import { StorageService } from '../services/storage-service';
+import { PhotoService } from '../services/photo-service';
+import { StatsService } from '../services/stats-service';
 import Exa from "exa-js";
 
-import { SpecAgent } from '../ai/llm/VisonAgent/SpecAgent';
-import { SitePhotoAgent } from '../ai/llm/VisonAgent/SitePhotoAgent';
+import { SpecAgent } from '../ai/llm/vision-agent/spec-agent';
+import { SitePhotoAgent } from '../ai/llm/vision-agent/site-photo-agent';
 
-import { TriggerJobQueue } from '../infrastructure/job/trigger/TriggerJobQueue';
+import { TriggerJobQueue } from '../infrastructure/job/trigger/trigger-job-queue';
 import { createClient, SupabaseClient } from "@supabase/supabase-js";
 
 // 🛑 ADD THIS DEBUG CHECK

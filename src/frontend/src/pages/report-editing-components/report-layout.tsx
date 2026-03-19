@@ -1,9 +1,9 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { AIChatSidebar, EditSuggestion } from "./AIChatSidebar";
-import { ReportContent } from "./ReportContent";
+import { AIChatSidebar, EditSuggestion } from "./ai-chat-sidebar";
+import { ReportContent } from "./report-content";
 import { PeerReview, ReportContent as ReportContentType } from "@/frontend/types";
-import { DiffPopup } from "../smart_components/DiffPopup";
-import type { TiptapEditorHandle, SelectionContext } from "../smart_components/TiptapEditor";
+import { DiffPopup } from "../smart-components/diff-popup";
+import type { TiptapEditorHandle, SelectionContext } from "../smart-components/tiptap-editor";
 import { Loader2 } from "lucide-react";
 
 interface SelectedContext {

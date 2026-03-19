@@ -1,4 +1,4 @@
-// src/hooks/useDelete.ts
+// src/hooks/use-delete.ts
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 

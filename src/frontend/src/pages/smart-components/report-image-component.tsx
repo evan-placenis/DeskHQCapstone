@@ -1,7 +1,7 @@
 import { NodeViewWrapper, NodeViewProps } from '@tiptap/react';
 import { useState, useEffect } from 'react';
-import { supabase } from '@/frontend/lib/supabaseClient';
-import { SecureImage } from '@/frontend/pages/smart_components/SecureImage';
+import { supabase } from '@/frontend/lib/supabase-client';
+import { SecureImage } from '@/frontend/pages/smart-components/secure-image';
 import { Loader2, ImageOff } from 'lucide-react';
 
 export const ReportImageComponent = (props: NodeViewProps) => {

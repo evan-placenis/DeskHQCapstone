@@ -1,9 +1,9 @@
-import { AppHeader } from "@/frontend/pages/smart_components/AppHeader";
+import { AppHeader } from "@/frontend/pages/smart-components/app-header";
 import { Page } from "@/app/pages/config/routes";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/frontend/pages/ui_components/card";
-import { Badge } from "@/frontend/pages/ui_components/badge";
-import { Button } from "@/frontend/pages/ui_components/button";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/frontend/pages/ui_components/tabs";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/frontend/pages/ui-components/card";
+import { Badge } from "@/frontend/pages/ui-components/badge";
+import { Button } from "@/frontend/pages/ui-components/button";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/frontend/pages/ui-components/tabs";
 import {
   Clock,
   FileText,

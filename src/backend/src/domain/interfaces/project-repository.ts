@@ -1,4 +1,4 @@
-import { Project } from "../core/project.types";
+import { Project } from "../core/project-types";
 import { SupabaseClient } from "@supabase/supabase-js";
 
 export interface ProjectRepository {

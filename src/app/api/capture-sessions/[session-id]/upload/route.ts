@@ -4,10 +4,10 @@ import { createAuthenticatedClient } from "@/app/api/utils";
 
 export async function POST(
     request: Request,
-    { params }: { params: Promise<{ sessionId: string }> }
+    { params }: { params: Promise<{ "session-id": string }> }
 ) {
     try {
-        const { sessionId } = await params;
+        const { "session-id": sessionId } = await params;
         const { supabase, user } = await createAuthenticatedClient();
         if (!user) {
             return NextResponse.json({ error: "Authentication required" }, { status: 401 });

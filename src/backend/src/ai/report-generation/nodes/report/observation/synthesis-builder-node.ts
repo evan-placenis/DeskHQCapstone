@@ -1,7 +1,7 @@
 import { SystemMessage, HumanMessage } from "@langchain/core/messages";
-import { ModelStrategy } from "../../../models/modelStrategy";
-import { ObservationState } from "../../../state/Pretium/ObservationState";
-import { Container } from "../../../../../config/container";
+import { ModelStrategy } from "../../../models/model-strategy";
+import { ObservationState } from "../../../state/pretium/observation-state";
+import { Container } from "@/backend/config/container";
 import { dumpAgentContext } from "../../../utils/agent-logger";
 import * as fs from 'fs';
 import * as path from 'path';

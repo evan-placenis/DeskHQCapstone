@@ -1,6 +1,6 @@
 import { tool } from '@langchain/core/tools';
 import { z } from 'zod';
-import { Container } from '../../../config/container';
+import { Container } from '@/backend/config/container';
 import { SupabaseClient } from '@supabase/supabase-js';
 
 // Factory function to inject context (like projectId) into tools

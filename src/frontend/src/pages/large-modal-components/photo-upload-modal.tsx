@@ -1,22 +1,22 @@
 import { useState } from "react";
-import { Button } from "../ui_components/button";
-import { Input } from "../ui_components/input";
-import { Badge } from "../ui_components/badge";
-import { Checkbox } from "../ui_components/checkbox";
+import { Button } from "../ui-components/button";
+import { Input } from "../ui-components/input";
+import { Badge } from "../ui-components/badge";
+import { Checkbox } from "../ui-components/checkbox";
 import {
   Dialog,
   DialogContent,
   DialogDescription,
   DialogHeader,
   DialogTitle,
-} from "../ui_components/dialog";
+} from "../ui-components/dialog";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "../ui_components/select";
+} from "../ui-components/select";
 import { Upload, X, Image as ImageIcon, FolderPlus, Music } from "lucide-react";
 import { PhotoFolder } from "@/frontend/types";
 

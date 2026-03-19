@@ -1,5 +1,5 @@
 "use client";
-import { ReviewerForecastPage } from "@/frontend/pages/ReviewerForecastPage";
+import { ReviewerForecastPage } from "@/frontend/pages/reviewer-forecast-page";
 import { useRouter } from "next/navigation";
 import { Page } from "@/app/pages/config/routes";
 import { ROUTES, getRoute } from "@/app/pages/config/routes";

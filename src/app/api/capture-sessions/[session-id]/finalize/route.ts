@@ -1,14 +1,14 @@
 import { NextResponse } from "next/server";
 import { Container } from "@/backend/config/container";
 import { createAuthenticatedClient } from "@/app/api/utils";
-import { ServiceError } from "@/backend/Services/CaptureService";
+import { ServiceError } from "@/backend/services/capture-service";
 
 export async function POST(
     request: Request,
-    { params }: { params: Promise<{ sessionId: string }> }
+    { params }: { params: Promise<{ "session-id": string }> }
 ) {
     try {
-        const { sessionId } = await params;
+        const { "session-id": sessionId } = await params;
         const { supabase, user } = await createAuthenticatedClient();
         if (!user) {
             return NextResponse.json({ error: "Authentication required" }, { status: 401 });

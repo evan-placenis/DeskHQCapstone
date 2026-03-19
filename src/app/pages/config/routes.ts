@@ -20,23 +20,23 @@ export const ROUTES = {
   login: '/pages/login',
   register: '/pages/register',
   selectOrg: '/pages/select-org',
-  orgPassword: '/pages/organization_password',
+  orgPassword: '/pages/organization-password',
   dashboard: '/pages/dashboard',
   project: (id: string | number) => `/pages/project?projectId=${id}`,
   report: (id: string | number, fromPeerReview: boolean = false) =>
     `/pages/report?id=${id}${fromPeerReview ? '&fromPeerReview=true' : ''}`,
-  analytics: '/pages/analytics_dashboard',
+  analytics: '/pages/analytics-dashboard',
   mystats: '/pages/mystats',
   reviewer: '/pages/reviewer',
   settings: '/pages/settings',
   audioTimeline: (projectId?: string | number, folderName?: string) =>
     projectId && folderName
-      ? `/pages/audio_timeline?projectId=${projectId}&folderName=${encodeURIComponent(folderName)}`
+      ? `/pages/audio-timeline?projectId=${projectId}&folderName=${encodeURIComponent(folderName)}`
       : projectId
-        ? `/pages/audio_timeline?projectId=${projectId}`
-        : '/pages/audio_timeline',
+        ? `/pages/audio-timeline?projectId=${projectId}`
+        : '/pages/audio-timeline',
   capture: '/pages/capture',
-  captureSession: '/pages/capture_session',
+  captureSession: '/pages/capture-session',
 };
 
 // Helper to resolve route by Page type (for simple routes)
@@ -57,7 +57,7 @@ export const getRoute = (page: Page): string => {
     // This function is mainly for the simple 1:1 mapping cases
     case 'project': return '/pages/project';
     case 'report': return '/pages/report';
-    case 'audio-timeline': return '/pages/audio_timeline';
+    case 'audio-timeline': return '/pages/audio-timeline';
     default: return ROUTES.dashboard;
   }
 };

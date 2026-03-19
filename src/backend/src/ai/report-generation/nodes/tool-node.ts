@@ -1,8 +1,8 @@
 import { ToolMessage, AIMessage} from "@langchain/core/messages";
-import { reportTools } from "../tools/report.tools";
-import { researchTools } from "../tools/research.tools"; 
-import { visionTools } from "../tools/vision.tools";
-import { planningTools } from "../tools/planning.tool";
+import { reportTools } from "@/features/ai/tools/report-generation-report-tools";
+import { researchTools } from "@/features/ai/tools/report-generation-research-tools";
+import { visionTools } from "@/features/ai/tools/report-generation-vision-tools";
+import { planningTools } from "@/features/ai/tools/report-generation-planning-tool";
 
 export async function toolNode(state: any) {
   const { messages, projectId, userId, client, selectedImageIds } = state;

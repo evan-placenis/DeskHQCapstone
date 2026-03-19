@@ -1,9 +1,9 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import { Button } from "../ui_components/button";
-import { Textarea } from "../ui_components/textarea";
-import { Badge } from "../ui_components/badge";
+import { Button } from "../ui-components/button";
+import { Textarea } from "../ui-components/textarea";
+import { Badge } from "../ui-components/badge";
 import { MessageSquare, AlertCircle, X, Edit } from "lucide-react";
 import { PeerReviewComment } from "@/frontend/types";
 

@@ -1,8 +1,8 @@
 import { useState } from "react";
-import { Button } from "../ui_components/button";
-import { Input } from "../ui_components/input";
-import { Label } from "../ui_components/label";
-import { Textarea } from "../ui_components/textarea";
+import { Button } from "../ui-components/button";
+import { Input } from "../ui-components/input";
+import { Label } from "../ui-components/label";
+import { Textarea } from "../ui-components/textarea";
 import {
   Dialog,
   DialogContent,
@@ -10,7 +10,7 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "../ui_components/dialog";
+} from "../ui-components/dialog";
 import { Project } from "@/frontend/types";
 import { Upload, FileSpreadsheet, X } from "lucide-react";
 import * as XLSX from "xlsx";

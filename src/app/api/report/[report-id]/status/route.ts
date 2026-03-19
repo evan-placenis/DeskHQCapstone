@@ -11,10 +11,10 @@ import { createAuthenticatedClient } from "@/app/api/utils";
  */
 export async function GET(
   request: Request,
-  { params }: { params: Promise<{ reportId: string }> }
+  { params }: { params: Promise<{ "report-id": string }> }
 ) {
   try {
-    const { reportId } = await params;
+    const { "report-id": reportId } = await params;
 
     if (!reportId) {
       return NextResponse.json(

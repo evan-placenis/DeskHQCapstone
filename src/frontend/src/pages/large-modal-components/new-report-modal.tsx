@@ -1,12 +1,12 @@
 import { useState } from "react";
-import { Button } from "../ui_components/button";
-import { Input } from "../ui_components/input";
-import { Label } from "../ui_components/label";
-import { Textarea } from "../ui_components/textarea";
-import { Badge } from "../ui_components/badge";
-import { ScrollArea } from "../ui_components/scroll-area";
-import { Checkbox } from "../ui_components/checkbox";
-import { RadioGroup, RadioGroupItem } from "../ui_components/radio-group";
+import { Button } from "../ui-components/button";
+import { Input } from "../ui-components/input";
+import { Label } from "../ui-components/label";
+import { Textarea } from "../ui-components/textarea";
+import { Badge } from "../ui-components/badge";
+import { ScrollArea } from "../ui-components/scroll-area";
+import { Checkbox } from "../ui-components/checkbox";
+import { RadioGroup, RadioGroupItem } from "../ui-components/radio-group";
 import {
   Dialog,
   DialogContent,
@@ -14,18 +14,18 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "../ui_components/dialog";
+} from "../ui-components/dialog";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "../ui_components/select";
-import { Separator } from "../ui_components/separator";
-import { PhotoFolderView } from "../smart_components/PhotoFolderView";
+} from "../ui-components/select";
+import { Separator } from "../ui-components/separator";
+import { PhotoFolderView } from "../smart-components/photo-folder-view";
 import { Photo, PhotoFolder, ReportTemplate } from "@/frontend/types";
-import { REPORT_TEMPLATES } from "@/frontend/types/report_template_types";
+import { REPORT_TEMPLATES } from "@/frontend/types/report-template-types";
 import { EditorSection } from "@/frontend/types";
 import {
   ChevronRight,
@@ -46,7 +46,7 @@ import {
 } from "lucide-react";
 
 
-import { ReportStructureEditor } from '../smart_components/ReportStructureEditor';
+import { ReportStructureEditor } from '../smart-components/report-structure-editor';
 
 
 interface NewReportModalProps {
@@ -59,7 +59,7 @@ interface NewReportModalProps {
 }
 
 // ============================================================================
-// REPORT TEMPLATES - From frontend types (report_template_types.ts)
+// REPORT TEMPLATES - From frontend types (report-template-types.ts)
 // ============================================================================
 
 export function NewReportModal({ open, onOpenChange, projectName, onCreateReport, photos, folders }: NewReportModalProps) {

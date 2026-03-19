@@ -5,7 +5,7 @@ import { createAuthenticatedClient } from '@/app/api/utils';
 // Get Project Details
 export async function GET(
     request: NextRequest,
-    context: { params: Promise<{ projectId: string }> }
+    context: { params: Promise<{ "project-id": string }> }
 ) {
     try {
         const { supabase, user } = await createAuthenticatedClient();
@@ -13,7 +13,7 @@ export async function GET(
             return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
         }
 
-        const { projectId } = await context.params;
+        const { "project-id": projectId } = await context.params;
         if (!projectId) return NextResponse.json({ error: "Missing Project ID" }, { status: 400 });
 
         // Validate UUID
@@ -38,7 +38,7 @@ export async function GET(
 //This is the route for deleting a project and all associated documents in the pinecone knowledge base
 export async function DELETE(
     request: NextRequest,
-    context: { params: Promise<{ projectId: string }> }
+    context: { params: Promise<{ "project-id": string }> }
 ) {
     try {
         const { supabase, user } = await createAuthenticatedClient();
@@ -46,7 +46,7 @@ export async function DELETE(
             return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
         }
 
-        const { projectId } = await context.params;
+        const { "project-id": projectId } = await context.params;
 
         if (!projectId) {
             return NextResponse.json({ error: "Missing project ID" }, { status: 400 });

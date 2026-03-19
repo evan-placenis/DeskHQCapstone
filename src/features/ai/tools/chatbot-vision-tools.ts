@@ -1,6 +1,6 @@
 import { tool } from 'ai';
 import { z } from 'zod/v3';
-import { Container } from '../../../config/container';
+import { Container } from '@/backend/config/container';
 
 export const visionTools = {
   analyze_batch_images: tool({

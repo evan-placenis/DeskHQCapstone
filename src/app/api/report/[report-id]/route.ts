@@ -5,10 +5,10 @@ import { createAuthenticatedClient } from "@/app/api/utils";
 // GET /api/report/[reportId] - Get a report by id
 export async function GET(
     request: Request,
-    { params }: { params: Promise<{ reportId: string }> }
+    { params }: { params: Promise<{ "report-id": string }> }
 ) {
     try {
-        const { reportId } = await params;
+        const { "report-id": reportId } = await params;
         const { user, supabase } = await createAuthenticatedClient();
         if (!user) {
             return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -40,10 +40,10 @@ export async function GET(
 // PUT /api/report/[reportId] - Update report (tiptap_content, title)
 export async function PUT(
     request: Request,
-    { params }: { params: Promise<{ reportId: string }> }
+    { params }: { params: Promise<{ "report-id": string }> }
 ) {
     try {
-        const { reportId } = await params;
+        const { "report-id": reportId } = await params;
         const body = await request.json();
         const { tiptap_content, title } = body;
 

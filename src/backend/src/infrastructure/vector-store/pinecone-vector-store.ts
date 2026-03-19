@@ -5,8 +5,8 @@
 import { Pinecone } from '@pinecone-database/pinecone';
 import dotenv from 'dotenv'
 dotenv.config();
-import { VectorStore } from '../../domain/interfaces/VectorStore';
-import { DocumentChunk } from '../../domain/knowledge/rag.types';
+import { VectorStore } from '../../domain/interfaces/vector-store';
+import { DocumentChunk } from '../../domain/knowledge/rag-types';
 
 export class PineconeVectorStore implements VectorStore {
 

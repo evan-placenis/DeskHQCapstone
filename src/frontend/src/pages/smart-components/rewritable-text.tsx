@@ -1,8 +1,8 @@
 import { useState } from "react";
-import { Button } from "../ui_components/button";
-import { Textarea } from "../ui_components/textarea";
+import { Button } from "../ui-components/button";
+import { Textarea } from "../ui-components/textarea";
 import { Sparkles, X, Send } from "lucide-react";
-import { EditableText } from "./EditableText";
+import { EditableText } from "./editable-text";
 
 interface RewritableTextProps {
   value: string;

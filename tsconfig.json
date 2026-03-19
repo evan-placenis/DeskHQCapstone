@@ -23,7 +23,8 @@
       "@/*": ["./*"],
       "@/frontend/*": ["src/frontend/src/*"],
       "@/backend/*": ["src/backend/src/*"],
-      "@/app/*": ["src/app/*"]
+      "@/app/*": ["src/app/*"],
+      "@/features/*": ["src/features/*"]
     }
   },
   "include": [
@@ -36,5 +37,5 @@
     "next.config.mjs",
     "src/backend/**/*"
   ],
-  "exclude": ["node_modules"]
+  "exclude": ["node_modules", ".next"]
 }

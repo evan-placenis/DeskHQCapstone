@@ -1,18 +1,18 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../ui_components/dialog';
-import { Button } from '../ui_components/button';
-import { Label } from '../ui_components/label';
-import { Badge } from '../ui_components/badge';
-import { Textarea } from '../ui_components/textarea';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../ui-components/dialog';
+import { Button } from '../ui-components/button';
+import { Label } from '../ui-components/label';
+import { Badge } from '../ui-components/badge';
+import { Textarea } from '../ui-components/textarea';
 import { ReportPlan } from '@/app/shared/types/report-schemas';
 import { 
   ReportStructureEditor, 
   convertSectionToEditorFormat,
   convertEditorFormatToSection 
-} from '../smart_components/ReportStructureEditor';
+} from '../smart-components/report-structure-editor';
 import { Photo } from '@/frontend/types';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui_components/tabs';
-import { SecureImage } from '../smart_components/SecureImage';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui-components/tabs';
+import { SecureImage } from '../smart-components/secure-image';
 
 interface PlanApprovalModalProps {
   open: boolean;

@@ -1,32 +1,32 @@
 import { useState, useEffect, useMemo } from "react";
-import { useAuth } from "@/app/context/AuthContext";
-import { useDelete } from "@/frontend/pages/hooks/useDelete"; // Import the hook
-import { AppHeader } from "@/frontend/pages/smart_components/AppHeader";
-import { NewReportModal } from "@/frontend/pages/large_modal_components/NewReportModal";
-import { PhotoDetailModal } from "@/frontend/pages/large_modal_components/PhotoDetailModal";
+import { useAuth } from "@/app/context/auth-context";
+import { useDelete } from "@/frontend/pages/hooks/use-delete"; // Import the hook
+import { AppHeader } from "@/frontend/pages/smart-components/app-header";
+import { NewReportModal } from "@/frontend/pages/large-modal-components/new-report-modal";
+import { PhotoDetailModal } from "@/frontend/pages/large-modal-components/photo-detail-modal";
 import { Project, KnowledgeDocument, PhotoFolder, Photo, Report } from "@/frontend/types";
-import { KnowledgeUploadModal } from "@/frontend/pages/large_modal_components/KnowledgeUploadModal";
-import { PhotoUploadModal } from "@/frontend/pages/large_modal_components/PhotoUploadModal";
-import { PhotoFolderView } from "@/frontend/pages/smart_components/PhotoFolderView";
+import { KnowledgeUploadModal } from "@/frontend/pages/large-modal-components/knowledge-upload-modal";
+import { PhotoUploadModal } from "@/frontend/pages/large-modal-components/photo-upload-modal";
+import { PhotoFolderView } from "@/frontend/pages/smart-components/photo-folder-view";
 import { Page, ROUTES } from "@/app/pages/config/routes";
-import { Button } from "@/frontend/pages/ui_components/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/frontend/pages/ui_components/card";
-import { Badge } from "@/frontend/pages/ui_components/badge";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/frontend/pages/ui_components/tabs";
-import { ImageWithFallback } from "@/frontend/pages/figma/ImageWithFallback";
-import { Input } from "@/frontend/pages/ui_components/input";
+import { Button } from "@/frontend/pages/ui-components/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/frontend/pages/ui-components/card";
+import { Badge } from "@/frontend/pages/ui-components/badge";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/frontend/pages/ui-components/tabs";
+import { ImageWithFallback } from "@/frontend/pages/figma/image-with-fallback";
+import { Input } from "@/frontend/pages/ui-components/input";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/frontend/pages/ui_components/select";
+} from "@/frontend/pages/ui-components/select";
 import {
   Collapsible,
   CollapsibleContent,
   CollapsibleTrigger,
-} from "@/frontend/pages/ui_components/collapsible";
+} from "@/frontend/pages/ui-components/collapsible";
 import {
   ArrowLeft,
   Plus,
@@ -53,7 +53,7 @@ import {
   Upload,
   Loader2
 } from "lucide-react";
-import { ReportCard } from "@/frontend/pages/ui_components/ReportCard";
+import { ReportCard } from "@/frontend/pages/ui-components/report-card";
 
 interface ProjectDetailPageProps {
   project: Project;
@@ -457,7 +457,7 @@ const mockKnowledgeDocuments: KnowledgeDocument[] = [
   },
 ];
 
-import { UploadProgress } from "@/frontend/pages/ui_components/UploadProgress";
+import { UploadProgress } from "@/frontend/pages/ui-components/upload-progress";
 
 export function ProjectDetailPage({
   project,

@@ -1,5 +1,5 @@
 
-import { observationReportGraph } from "./report/ObservationReportGraph";
+import { observationReportGraph } from "./report/observation-report-graph";
 import { CompiledStateGraph } from "@langchain/langgraph";
 
 // This is your Strategy Registry

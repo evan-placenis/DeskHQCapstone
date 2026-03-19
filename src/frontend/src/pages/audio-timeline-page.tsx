@@ -1,8 +1,8 @@
-import { AppHeader } from "@/frontend/pages/smart_components/AppHeader";
+import { AppHeader } from "@/frontend/pages/smart-components/app-header";
 import { Page } from "@/app/pages/config/routes";
-import { Button } from "@/frontend/pages/ui_components/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/frontend/pages/ui_components/card";
-import { SecureImage } from "@/frontend/pages/smart_components/SecureImage";
+import { Button } from "@/frontend/pages/ui-components/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/frontend/pages/ui-components/card";
+import { SecureImage } from "@/frontend/pages/smart-components/secure-image";
 import {
   ArrowLeft,
   Play,

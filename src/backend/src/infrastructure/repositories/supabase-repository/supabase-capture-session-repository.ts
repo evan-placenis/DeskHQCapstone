@@ -1,5 +1,5 @@
 import { SupabaseClient } from '@supabase/supabase-js';
-import { CaptureSessionRepository, CaptureSession, CaptureSessionImage } from '../../../domain/interfaces/CaptureSessionRepository';
+import { CaptureSessionRepository, CaptureSession, CaptureSessionImage } from '../../../domain/interfaces/capture-session-repository';
 
 export class SupabaseCaptureSessionRepository implements CaptureSessionRepository {
 

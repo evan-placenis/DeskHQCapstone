@@ -1,7 +1,7 @@
 import { AIMessage, ToolMessage, HumanMessage, BaseMessage } from "@langchain/core/messages";
 import { Container } from "@/backend/config/container";
 import { dumpAgentContext } from "../../../utils/agent-logger";
-import { getFlattenedTasks } from "./builderNode";
+import { getFlattenedTasks } from "./builder-node";
 
 export async function builderContinueNode(state: any) {
     const { 

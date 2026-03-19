@@ -1,6 +1,6 @@
-import { JobQueue } from "../../../domain/interfaces/JobQueue";
+import { JobQueue } from "../../../domain/interfaces/job-queue";
 import { tasks } from "@trigger.dev/sdk/v3"; 
-import type { generateReportTask } from "./generateReport"; // Import the type only
+import type { generateReportTask } from "./generate-report";
 
 export class TriggerJobQueue implements JobQueue {
     

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { createAuthenticatedClient } from "@/app/api/utils";
 import { tasks } from "@trigger.dev/sdk/v3";
-import type { generateReportTask } from "@/backend/infrastructure/job/trigger/generateReport";
+import type { generateReportTask } from "@/backend/infrastructure/job/trigger/generate-report";
 
 /**
  * Resume a paused LangGraph workflow (Human-in-the-Loop)
@@ -18,10 +18,10 @@ import type { generateReportTask } from "@/backend/infrastructure/job/trigger/ge
  */
 export async function POST(
   request: Request,
-  { params }: { params: Promise<{ reportId: string }> }
+  { params }: { params: Promise<{ "report-id": string }> }
 ) {
   try {
-    const { reportId } = await params;
+    const { "report-id": reportId } = await params;
     const body = await request.json();
     const { approvalStatus, userFeedback, modifiedPlan, userClarification } = body;
 

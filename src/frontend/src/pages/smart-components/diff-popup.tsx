@@ -5,10 +5,10 @@ import { diff_match_patch } from 'diff-match-patch';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import rehypeRaw from 'rehype-raw';
-import { Button } from '../ui_components/button';
+import { Button } from '../ui-components/button';
 import { Check, X } from 'lucide-react';
-import type { EditSuggestion } from '../report_editing_components/AIChatSidebar';
-import { computeDiffDocument } from './diffUtils';
+import type { EditSuggestion } from '../report-editing-components/ai-chat-sidebar';
+import { computeDiffDocument } from './diff-utils';
 
 interface DiffPopupProps {
   suggestion: EditSuggestion;

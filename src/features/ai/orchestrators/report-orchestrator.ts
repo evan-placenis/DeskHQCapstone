@@ -1,8 +1,8 @@
 
 import { HumanMessage, AIMessage } from "@langchain/core/messages";
-import { Container } from '../../config/container'; // Your generic Supabase server client
-import { getWorkflow } from '../ReportGeneration/workflow'; // Dynamic workflow selector
-import { CustomLangChainAdapter } from '../ReportGeneration/utils/custom-adapter';
+import { Container } from '@/backend/config/container';
+import { getWorkflow } from '@/backend/ai/report-generation/workflow';
+import { CustomLangChainAdapter } from '@/backend/ai/report-generation/utils/custom-adapter';
 
 import { SupabaseClient } from "@supabase/supabase-js";
 // import { imageGeneration } from "@langchain/openai/dist/tools/imageGeneration.cjs";

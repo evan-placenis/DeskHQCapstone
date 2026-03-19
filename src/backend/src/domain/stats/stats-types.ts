@@ -1,4 +1,4 @@
-// src/backend/src/domain/stats/stats.types.ts
+// src/backend/src/domain/stats/stats-types.ts
 
 /**
  * User Productivity Statistics

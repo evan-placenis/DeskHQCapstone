@@ -1,16 +1,16 @@
 import { useState, useEffect, useRef } from "react";
 import { Camera, X, Mic, Square, Trash2, Search, Plus, Send, Upload } from "lucide-react";
-import { Button } from "@/frontend/pages/ui_components/button";
-import { Input } from "@/frontend/pages/ui_components/input";
-import { Card } from "@/frontend/pages/ui_components/card";
-import { Badge } from "@/frontend/pages/ui_components/badge";
+import { Button } from "@/frontend/pages/ui-components/button";
+import { Input } from "@/frontend/pages/ui-components/input";
+import { Card } from "@/frontend/pages/ui-components/card";
+import { Badge } from "@/frontend/pages/ui-components/badge";
 import {
   Dialog,
   DialogContent,
   DialogDescription,
   DialogHeader,
   DialogTitle,
-} from "@/frontend/pages/ui_components/dialog";
+} from "@/frontend/pages/ui-components/dialog";
 import { Project } from "@/frontend/types";
 
 interface CapturePageProps {

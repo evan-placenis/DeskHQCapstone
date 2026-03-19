@@ -1,7 +1,7 @@
 import { BaseMessage } from "@langchain/core/messages";
 import { Annotation } from "@langchain/langgraph";
 import { ReportPlan, ImageContext  } from "@/app/shared/types/report-schemas";
-import type { HeliconeContextInput } from "../../../gateway/HeliconeContextBuilder";
+import type { HeliconeContextInput } from "../../../gateway/helicone-context-builder";
  
 
 /**

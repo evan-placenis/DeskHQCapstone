@@ -1,10 +1,10 @@
 import { useState } from "react";
-import { Button } from "../ui_components/button";
-import { Input } from "../ui_components/input";
-import { Label } from "../ui_components/label";
-import { Badge } from "../ui_components/badge";
-import { Textarea } from "../ui_components/textarea";
-import { SecureImage } from "./SecureImage";
+import { Button } from "../ui-components/button";
+import { Input } from "../ui-components/input";
+import { Label } from "../ui-components/label";
+import { Badge } from "../ui-components/badge";
+import { Textarea } from "../ui-components/textarea";
+import { SecureImage } from "./secure-image";
 import { Photo } from "@/frontend/types";
 import { ReportSection } from "@/app/shared/types/report-schemas";
 import { EditorSection } from "@/frontend/types";

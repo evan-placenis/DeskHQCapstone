@@ -15,7 +15,8 @@
       "@/*": ["./*"],
       "@/frontend/*": ["src/frontend/src/*"],
       "@/backend/*": ["src/backend/src/*"],
-      "@/app/*": ["src/app/*"]
+      "@/app/*": ["src/app/*"],
+      "@/features/*": ["src/features/*"]
     }
   },
   "include": ["src/**/*", "../../trigger.config.ts"],

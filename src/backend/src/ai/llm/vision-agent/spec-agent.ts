@@ -1,7 +1,7 @@
 import OpenAI from "openai";
 import { SpecAnalysisResult, VisionStrategy, VisionRequest } from "../interfaces";
 import { GoogleGenerativeAI, GenerativeModel } from "@google/generative-ai";
-import { SPEC_IMAGE_ANALYSIS_SYSTEM_PROMPT } from "../prompts/image/VisionPrompts";
+import { SPEC_IMAGE_ANALYSIS_SYSTEM_PROMPT } from "../prompts/image/vision-prompts";
 import pLimit from 'p-limit'; // Import the queue manager
 import axios from 'axios'; // You'll likely need axios or fetch to get the image buffer for Gemini
 

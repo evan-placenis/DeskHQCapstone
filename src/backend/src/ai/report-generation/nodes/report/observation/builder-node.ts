@@ -1,9 +1,9 @@
 import { SystemMessage, AIMessage, ToolMessage, HumanMessage, BaseMessage } from "@langchain/core/messages";
-import { ModelStrategy } from "../../../models/modelStrategy";
-import { reportTools } from "../../../tools/report.tools";
-import { researchTools } from "../../../tools/research.tools";
+import { ModelStrategy } from "../../../models/model-strategy";
+import { reportTools } from "@/features/ai/tools/report-generation-report-tools";
+import { researchTools } from "@/features/ai/tools/report-generation-research-tools";
 import { Container } from "@/backend/config/container";
-import { ObservationState } from "../../../state/Pretium/ObservationState";
+import { ObservationState } from "../../../state/pretium/observation-state";
 import { dumpAgentContext } from "../../../utils/agent-logger";
 import { extractTextContent } from "../../../utils/streaming-adapter";
 import { createNodeBroadcaster } from "../../../utils/node-broadcast";
@@ -98,8 +98,8 @@ export async function builderNode(state: typeof ObservationState.State) {
   // Repo-root skills/ — cwd is src/backend when Trigger.dev runs (see trigger.config).
   const skillsDir = path.join(process.cwd(), '..', '..', 'skills');
   const skillPathBase = path.join(skillsDir, 'technical-observations.md');
-  const skillPathThinking = path.join(skillsDir, 'technical-observations(thinking).md');
-  const skillPathExecution = path.join(skillsDir, 'technical-observations(execution).md');
+  const skillPathThinking = path.join(skillsDir, 'technical-observations-thinking.md');
+  const skillPathExecution = path.join(skillsDir, 'technical-observations-execution.md');
   const technicalObservationBaseSkill = fs.readFileSync(skillPathBase, 'utf-8');
   const technicalObservationThinkingSkill = fs.readFileSync(skillPathThinking, 'utf-8');
   const technicalObservationExecutionSkill = fs.readFileSync(skillPathExecution, 'utf-8');

@@ -1,12 +1,13 @@
 // src/backend/src/Services/StatsService.ts
 
 import { SupabaseClient } from "@supabase/supabase-js";
-import { StatsRepository } from "../domain/interfaces/StatsRepository";
+import { StatsRepository } from "../domain/interfaces/stats-repository";
 import {
     UserProductivityStats,
     ActiveSiteWorkItem,
     ActiveSiteWorkRawData,
-} from "../domain/stats/stats.types";
+    ActiveProjectRow,
+} from "../domain/stats/stats-types";
 
 /**
  * StatsService - Orchestrates statistics retrieval.
@@ -61,7 +62,7 @@ export class StatsService {
 
         const now = new Date();
 
-        return raw.projects.map((project) => {
+        return raw.projects.map((project: ActiveProjectRow) => {
             const counts = reportsByProject[project.id] || { total: 0, draft: 0, awaitingApproval: 0, completed: 0 };
 
             const createdAt = new Date(project.created_at);

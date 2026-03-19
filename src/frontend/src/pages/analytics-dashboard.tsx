@@ -2,12 +2,12 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/frontend/pages/ui_components/card";
-import { Badge } from "@/frontend/pages/ui_components/badge";
-import { Button } from "@/frontend/pages/ui_components/button";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/frontend/pages/ui_components/tabs";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/frontend/pages/ui_components/select";
-import { AppHeader } from "@/frontend/pages/smart_components/AppHeader";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/frontend/pages/ui-components/card";
+import { Badge } from "@/frontend/pages/ui-components/badge";
+import { Button } from "@/frontend/pages/ui-components/button";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/frontend/pages/ui-components/tabs";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/frontend/pages/ui-components/select";
+import { AppHeader } from "@/frontend/pages/smart-components/app-header";
 import { Page } from "@/app/pages/config/routes";
 import { User, EmployeeProductivitySummary } from "@/frontend/types";
 import {

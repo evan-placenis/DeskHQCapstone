@@ -1,4 +1,4 @@
-import { ChatSession, ChatMessage } from "../chat/chat.types";
+import { ChatSession, ChatMessage } from "../chat/chat-types";
 import { SupabaseClient } from "@supabase/supabase-js";
 
 export interface ChatRepository {

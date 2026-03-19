@@ -1,6 +1,6 @@
 //This is the contract for your vector database (Pinecone, Weaviate, etc.). It says: "I need to save chunks and find similar ones."
 
-import { DocumentChunk } from "../knowledge/rag.types";
+import { DocumentChunk } from "../knowledge/rag-types";
 
 export interface VectorStore {
     /**

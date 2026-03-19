@@ -1,9 +1,9 @@
 import { SystemMessage, AIMessage, ToolMessage } from "@langchain/core/messages";
-import { ModelStrategy } from "../../../models/modelStrategy";
+import { ModelStrategy } from "../../../models/model-strategy";
 import { Container } from "@/backend/config/container";
-import { ObservationState } from "../../../state/Pretium/ObservationState";
+import { ObservationState } from "../../../state/pretium/observation-state";
 import { dumpAgentContext } from "../../../utils/agent-logger";
-import { planningTools } from "../../../tools/planning.tool";
+import { planningTools } from "@/features/ai/tools/report-generation-planning-tool";
 import { extractTextContent } from "../../../utils/streaming-adapter";
 import { createNodeBroadcaster } from "../../../utils/node-broadcast";
 import path from 'path';
@@ -31,8 +31,8 @@ export async function architectNode(state: typeof ObservationState.State) {
   // Repo-root skills/ is two levels up: src/backend -> .. -> src -> .. -> repo root.
   const skillsDir = path.join(process.cwd(), '..', '..', 'skills');
   const skillPathBase = path.join(skillsDir, 'architect-planning.md');
-  const skillPathThinking = path.join(skillsDir, 'architect-planning(thinking).md');
-  const skillPathExecution = path.join(skillsDir, 'architect-planning(execution).md');
+  const skillPathThinking = path.join(skillsDir, 'architect-planning-thinking.md');
+  const skillPathExecution = path.join(skillsDir, 'architect-planning-execution.md');
   const architectBaseSkill = fs.readFileSync(skillPathBase, 'utf-8');
   const architectThinkingSkill = fs.readFileSync(skillPathThinking, 'utf-8');
   const architectExecutionSkill = fs.readFileSync(skillPathExecution, 'utf-8');

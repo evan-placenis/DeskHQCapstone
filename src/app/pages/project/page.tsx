@@ -1,6 +1,6 @@
 "use client";
 import { useState, useEffect } from "react";
-import { ProjectDetailPage } from "@/frontend/pages/ProjectDetailPage";
+import { ProjectDetailPage } from "@/frontend/pages/project-detail-page";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Page } from "@/app/pages/config/routes";
 import { Project } from "@/frontend/types";

@@ -1,6 +1,6 @@
 import { SupabaseClient } from '@supabase/supabase-js';
-import { EditOrchestrator } from '../ai/orchestrators/EditOrchestrator';
-import type { HeliconeContextInput } from '../ai/gateway/HeliconeContextBuilder';
+import { EditOrchestrator } from '@/features/ai/orchestrators/edit-orchestrator';
+import type { HeliconeContextInput } from '../ai/gateway/helicone-context-builder';
 
 const VALID_PROVIDERS = ['grok', 'gemini-pro', 'claude', 'gemini-cheap'] as const;
 type Provider = (typeof VALID_PROVIDERS)[number];

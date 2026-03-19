@@ -2,8 +2,8 @@
 
 import { useState, useRef, useEffect } from "react";
 import ReactMarkdown from 'react-markdown';
-import { Textarea } from "../ui_components/textarea";
-import { Input } from "../ui_components/input";
+import { Textarea } from "../ui-components/textarea";
+import { Input } from "../ui-components/input";
 
 interface EditableTextProps {
   value: string;
