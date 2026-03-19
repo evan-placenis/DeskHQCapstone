@@ -2,19 +2,19 @@
 
 import { SupabaseClient } from "@supabase/supabase-js";
 import { StatsRepository } from "../../../domain/interfaces/StatsRepository";
-import { UserProductivityStats, GetUserStatsParams } from "../../../domain/stats/stats.types";
+import {
+    UserProductivityStats,
+    GetUserStatsParams,
+    GetActiveSiteWorkParams,
+    ActiveSiteWorkRawData,
+} from "../../../domain/stats/stats.types";
 
 /**
  * Supabase implementation of StatsRepository.
- * Contains all SQL aggregation queries for user statistics.
- * Following "Thin Client" philosophy - all calculations happen here.
+ * Pure data access — no business logic or transformation.
  */
 export class SupabaseStatsRepository implements StatsRepository {
 
-    /**
-     * Get total count of reports created by a specific user.
-     * Uses COUNT(*) aggregation on the reports table.
-     */
     async getTotalReportCount(params: GetUserStatsParams, client: SupabaseClient): Promise<number> {
         const { userId } = params;
 
@@ -31,24 +31,59 @@ export class SupabaseStatsRepository implements StatsRepository {
         return count ?? 0;
     }
 
-    /**
-     * Get all productivity statistics for a user in one call.
-     * Currently returns totalReports, will be extended for more metrics.
-     */
     async getUserProductivityStats(params: GetUserStatsParams, client: SupabaseClient): Promise<UserProductivityStats> {
-        const { userId } = params;
-
-        // For now, just get totalReports
-        // Future: Add parallel queries for other stats
         const totalReports = await this.getTotalReportCount(params, client);
 
         return {
-            userId,
+            userId: params.userId,
             totalReports,
-            // Future stats:
-            // completedThisWeek: await this.getCompletedThisWeek(params, client),
-            // draftReports: await this.getDraftReportCount(params, client),
-            // avgCompletionDays: await this.getAvgCompletionDays(params, client),
+        };
+    }
+
+    async getActiveSiteWorkData(params: GetActiveSiteWorkParams, client: SupabaseClient): Promise<ActiveSiteWorkRawData> {
+        const { orgId } = params;
+
+        const { data: projects, error: projectsError } = await client
+            .from("projects")
+            .select("id, name, status, created_at, created_by_user_id")
+            .eq("organization_id", orgId)
+            .eq("status", "ACTIVE")
+            .order("created_at", { ascending: false });
+
+        if (projectsError) {
+            throw new Error(`Failed to fetch active projects: ${projectsError.message}`);
+        }
+
+        if (!projects || projects.length === 0) {
+            return { projects: [], reports: [], profiles: [] };
+        }
+
+        const projectIds = projects.map((p: any) => p.id);
+        const creatorIds = [...new Set(
+            projects.map((p: any) => p.created_by_user_id).filter(Boolean)
+        )];
+
+        const [reportsRes, profilesRes] = await Promise.all([
+            client
+                .from("reports")
+                .select("id, project_id, status, created_by")
+                .in("project_id", projectIds),
+            creatorIds.length > 0
+                ? client.from("profiles").select("id, full_name").in("id", creatorIds)
+                : Promise.resolve({ data: [], error: null }),
+        ]);
+
+        if (reportsRes.error) {
+            throw new Error(`Failed to fetch reports: ${reportsRes.error.message}`);
+        }
+        if (profilesRes.error) {
+            throw new Error(`Failed to fetch profiles: ${profilesRes.error.message}`);
+        }
+
+        return {
+            projects: projects as any[],
+            reports: (reportsRes.data || []) as any[],
+            profiles: (profilesRes.data || []) as any[],
         };
     }
 }
