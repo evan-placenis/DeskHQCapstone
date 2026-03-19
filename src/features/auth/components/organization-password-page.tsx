@@ -8,6 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Cpu, Building2, ArrowLeft, CheckCircle2 } from "lucide-react";
 import { ROUTES } from "@/app/pages/config/routes";
+import { apiRoutes } from "@/lib/api-routes";
 
 // Mock organization names
 const organizationNames: Record<string, string> = {
@@ -55,7 +56,7 @@ function OrganizationPasswordForm() {
 
     try {
         // 3. Call the Registration API
-        const response = await fetch('/api/auth/register', {
+        const response = await fetch(apiRoutes.auth.register, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',

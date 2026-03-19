@@ -19,6 +19,7 @@ import { ReportCard } from "@/features/reports/components/report-card";
 import { UpcomingReviewCard } from "./upcoming-review-card";
 import { useEffect } from "react";
 import { useDelete } from "@/features/dashboard/components/use-delete";
+import { apiRoutes } from "@/lib/api-routes";
 import { List } from "react-window";
 import { AutoSizer } from "react-virtualized-auto-sizer";
 
@@ -157,7 +158,7 @@ export function DashboardPage({
       if (!currentUser?.id) return;
 
       try {
-        const response = await fetch(`/api/project/list?userId=${currentUser.id}`);
+        const response = await fetch(apiRoutes.project.list(currentUser.id));
 
         if (response.status === 401) {
           console.error("Unauthorized: Redirecting to login...");
@@ -260,7 +261,7 @@ export function DashboardPage({
         return;
       }
 
-      const response = await fetch("/api/project/create", {
+      const response = await fetch(apiRoutes.project.create, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -306,7 +307,7 @@ export function DashboardPage({
     // Only call API if it's a real project (string ID or valid number)
     // Assuming mock IDs are small numbers, but for simplicity we treat all as valid unless we want to block mock deletion
 
-    await deleteItem(`/api/project/${projectId}`, {
+    await deleteItem(apiRoutes.project.byId(projectId), {
       onError: (err) => {
         alert(`Failed to delete project: ${err}`);
         setProjectsList(previousProjects); // Revert

@@ -15,6 +15,7 @@ import { supabase } from "@/lib/supabase-browser-client";
 import { Loader2, FileText, CheckCircle2 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { useReportStreaming } from "@/features/reports/components/use-report-streaming";
+import { apiRoutes } from "@/lib/api-routes";
 
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -244,7 +245,7 @@ function ReportViewerContent() {
 
     if (reportId && reportId !== "0") {
       setIsLoading(true);
-      fetch(`/api/report/${reportId}`)
+      fetch(apiRoutes.report.byId(reportId))
         .then(res => {
           if (!res.ok) throw new Error("Failed to fetch");
           return res.json();
@@ -288,7 +289,7 @@ function ReportViewerContent() {
   // Fetch assigned peer review when in fromPeerReview mode
   useEffect(() => {
     if (fromPeerReview && reportId && reportId !== "0" && authUser?.id) {
-      fetch(`/api/report/${reportId}/assigned-review`)
+      fetch(apiRoutes.report.assignedReview(reportId))
         .then((res) => res.json())
         .then((data) => {
           if (data.review) setAssignedReview(data.review);
@@ -334,7 +335,7 @@ function ReportViewerContent() {
 
     const pollInterval = setInterval(async () => {
       try {
-        const response = await fetch(`/api/report/${pollingReportId}/status`);
+        const response = await fetch(apiRoutes.report.status(pollingReportId));
         const result = await response.json();
         
         if (result.error) {
@@ -473,7 +474,7 @@ function ReportViewerContent() {
   const onRequestPeerReview = useCallback(async (assignedToId: string, notes: string) => {
     if (!reportId || reportId === "0") return;
     try {
-      const res = await fetch("/api/report/review-request", {
+      const res = await fetch(apiRoutes.report.reviewRequest, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ reportId, assignedToId, notes }),

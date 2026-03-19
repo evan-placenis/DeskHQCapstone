@@ -4,6 +4,7 @@ import { ChatSession, ChatMessage } from "./domain-chat/chat-types";
 import { v4 as uuidv4 } from 'uuid';
 import { ReportService } from "@/features/reports/services/report-service";
 import { SupabaseClient } from "@supabase/supabase-js";
+import { DEFAULT_AI_SDK_CHAT_PROVIDER, type AiSdkChatProvider } from "@/lib/ai-providers";
 
 /**
  * 🆕 NEW ChatService using AI-SDK with Skills
@@ -47,7 +48,7 @@ export class ChatService {
         client: SupabaseClient,
         activeSectionId?: string,
         reportId?: string,
-        provider: 'grok' | 'gemini-pro' | 'gemini-cheap' | 'claude' = 'gemini-cheap'
+        provider: AiSdkChatProvider = DEFAULT_AI_SDK_CHAT_PROVIDER
     ): Promise<ChatMessage> {
 
         // 1. Fetch Session and Save USER Message

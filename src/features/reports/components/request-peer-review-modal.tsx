@@ -20,6 +20,7 @@ import {
   Building,
   Award
 } from "lucide-react";
+import { apiRoutes } from "@/lib/api-routes";
 
 export interface OrgUser {
   id: string;
@@ -54,7 +55,7 @@ export function RequestPeerReviewModal({
   useEffect(() => {
     if (open && currentUserId) {
       setIsLoadingUsers(true);
-      fetch("/api/organizations/users")
+      fetch(apiRoutes.organizations.users)
         .then((res) => {
           if (!res.ok) throw new Error(`API error: ${res.status}`);
           return res.json();

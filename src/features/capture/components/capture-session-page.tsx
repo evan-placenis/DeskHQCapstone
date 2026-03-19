@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Camera, X, Mic, Loader2, CheckCircle2, Search, Plus, Check } from "lucide-react";
 import { Project } from "@/lib/types";
 import { supabase } from "@/lib/supabase-browser-client";
+import { apiRoutes } from "@/lib/api-routes";
 import * as tus from "tus-js-client";
 
 type Step = "capture" | "choose-project" | "uploading" | "success";
@@ -72,7 +73,7 @@ export function CaptureSessionPage({
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      const res = await fetch("/api/capture-sessions", { method: "POST" });
+      const res = await fetch(apiRoutes.captureSessions.root, { method: "POST" });
       if (!res.ok || cancelled) return;
       const data = await res.json();
       if (data.sessionId && data.folderName) {
@@ -221,7 +222,7 @@ export function CaptureSessionPage({
     stopRecording();
     setStep("choose-project");
     setProjectsLoading(true);
-    fetch("/api/project/list")
+    fetch(apiRoutes.project.list())
       .then((r) => r.json())
       .then((data) => (data.projects ? setProjects(data.projects) : null))
       .catch(() => { })
@@ -232,7 +233,7 @@ export function CaptureSessionPage({
     if (!createName.trim()) return;
     setCreateSubmitting(true);
     try {
-      const res = await fetch("/api/project/create", {
+      const res = await fetch(apiRoutes.project.create, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -269,7 +270,7 @@ export function CaptureSessionPage({
     setUploadProgress("uploading");
 
     try {
-      const finalizeRes = await fetch(`/api/capture-sessions/${sessionId}/finalize`, {
+      const finalizeRes = await fetch(apiRoutes.captureSessions.finalize(sessionId), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ projectId }),
@@ -347,7 +348,7 @@ export function CaptureSessionPage({
         form.set("transcript_segments", JSON.stringify(transcriptEntries));
       }
 
-      const uploadRes = await fetch(`/api/capture-sessions/${sessionId}/upload`, {
+      const uploadRes = await fetch(apiRoutes.captureSessions.upload(sessionId), {
         method: "POST",
         body: form,
       });

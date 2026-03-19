@@ -1,5 +1,6 @@
 import { AppHeader } from "@/components/layouts/app-header";
 import { Page } from "@/app/pages/config/routes";
+import { apiRoutes } from "@/lib/api-routes";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { SecureImage } from "@/components/ui/secure-image";
@@ -122,9 +123,7 @@ export function AudioTimelinePage({
     setLoading(true);
     setFetchError(null);
 
-    fetch(
-      `/api/project/${encodeURIComponent(projectId)}/audio-timeline?folderName=${encodeURIComponent(folderName)}`
-    )
+    fetch(apiRoutes.project.audioTimeline(String(projectId), folderName))
       .then(async (res) => {
         if (!res.ok) {
           const body = await res.json().catch(() => ({}));

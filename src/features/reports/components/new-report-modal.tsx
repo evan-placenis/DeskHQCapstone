@@ -47,6 +47,7 @@ import {
 
 
 import { ReportStructureEditor } from "./report-structure-editor";
+import type { ReportGraphProvider } from "@/lib/ai-providers";
 
 
 interface NewReportModalProps {
@@ -72,7 +73,7 @@ export function NewReportModal({ open, onOpenChange, projectName, onCreateReport
   const [sections, setSections] = useState<EditorSection[]>([]);
   const [reportExecution, setReportExecution] = useState<"fast" | "thinking">("fast");
   const [processingMode, setProcessingMode] = useState<"TEXT_ONLY" | "IMAGE_AND_TEXT">("IMAGE_AND_TEXT");
-  const [modelProvider, setModelProvider] = useState<'claude' | 'gemini' | 'grok' | 'openai'>('gemini');
+  const [modelProvider, setModelProvider] = useState<ReportGraphProvider>('gemini');
   const [workflowType, setWorkflowType] = useState<string>("simple");
   const [additionalInstructions, setAdditionalInstructions] = useState("");
 

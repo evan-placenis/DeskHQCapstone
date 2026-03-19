@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from "react";
 import { useAuth } from "@/app/context/auth-context";
 import { useDelete } from "@/features/dashboard/components/use-delete"; // Import the hook
+import { apiRoutes } from "@/lib/api-routes";
 import { AppHeader } from "@/components/layouts/app-header";
 import { NewReportModal } from "@/features/reports/components/new-report-modal";
 import { PhotoDetailModal } from "@/features/projects/components/photo-detail-modal";
@@ -556,7 +557,7 @@ export function ProjectDetailPage({
       };
 
       // Start the streaming request (don't await - it's a stream)
-      const response = await fetch("/api/report/generate", {
+      const response = await fetch(apiRoutes.report.generate, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -668,7 +669,7 @@ export function ProjectDetailPage({
         formData.append('type', doc.type);
         formData.append('description', doc.description);
 
-        const response = await fetch('/api/knowledge/store', {
+        const response = await fetch(apiRoutes.knowledge.store(), {
           method: 'POST',
           body: formData
         });
@@ -744,7 +745,7 @@ export function ProjectDetailPage({
     // If it's a number, it might be a mock document, but we should try to delete anyway if it's not in the mock list
     // For simplicity, we assume string IDs are real DB items.
 
-    await deleteItem(`/api/knowledge/${id}`, {
+    await deleteItem(apiRoutes.knowledge.byId(id), {
       onError: (err) => {
         alert(`Failed to delete document: ${err}`);
         setKnowledgeDocuments(previousDocs); // Revert
@@ -913,7 +914,7 @@ export function ProjectDetailPage({
       // 3. BATCH AI ANALYSIS
       // The descriptions are now in the DB, so the PhotoService will fetch them automatically
       console.log(`📤 Uploading ${files.length} images in batch...`);
-      const response = await fetch(`/api/project/${project.id}/images`, {
+      const response = await fetch(apiRoutes.project.images(project.id), {
         method: 'POST',
         body: formData
       });
@@ -969,7 +970,7 @@ export function ProjectDetailPage({
     setPhotos(photos.filter(p => p.id !== photoId));
 
     // 2. Call API with query parameter (backend expects ?imageId=...)
-    await deleteItem(`/api/project/${project.id}/images?imageId=${photoId}`, {
+    await deleteItem(apiRoutes.project.imagesWithQuery(project.id, { imageId: photoId }), {
       onError: (err) => {
         alert(`Failed to delete photo: ${err}`);
         setPhotos(previousPhotos); // Revert on error
@@ -997,7 +998,7 @@ export function ProjectDetailPage({
     // If the folder is empty/local-only, the API call will just return success with 0 deletions, which is fine.
     // Backend expects folderName query parameter in the /images route, not a separate /folders route
 
-    await deleteItem(`/api/project/${project.id}/images?folderName=${encodeURIComponent(folder.name)}`, {
+    await deleteItem(apiRoutes.project.imagesWithQuery(project.id, { folderName: folder.name }), {
       onError: (err) => {
         alert(`Failed to delete folder: ${err}`);
         // Revert state
@@ -1105,7 +1106,7 @@ export function ProjectDetailPage({
     const fetchProjectData = async () => {
       const fetchImages = async () => {
         try {
-          const response = await fetch(`/api/project/${project.id}/images`);
+          const response = await fetch(apiRoutes.project.images(project.id));
           if (response.ok) {
             const data = await response.json();
             if (data.images && Array.isArray(data.images)) {
@@ -1154,7 +1155,7 @@ export function ProjectDetailPage({
 
       const fetchKnowledge = async () => {
         try {
-          const response = await fetch(`/api/knowledge/store?projectId=${project.id}`);
+          const response = await fetch(apiRoutes.knowledge.store(project.id));
           if (response.ok) {
             const data = await response.json();
             if (data.documents && Array.isArray(data.documents)) {
@@ -1179,7 +1180,7 @@ export function ProjectDetailPage({
 
       const fetchReports = async () => {
         try {
-          const response = await fetch(`/api/project/${project.id}/reports`);
+          const response = await fetch(apiRoutes.project.reports(project.id));
           if (response.ok) {
             const data = await response.json();
             if (data.reports && Array.isArray(data.reports)) {

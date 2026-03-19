@@ -6,6 +6,7 @@ import { Container } from '@/lib/container';
 import { createAuthenticatedClient } from "@/app/api/utils";
 import type { HeliconeContextInput } from '@/features/ai/services/gateway/helicone-context-builder';
 import type { ChatMessage } from '@/features/chat/services/domain-chat/chat-types';
+import { normalizeAiSdkChatProvider } from "@/lib/ai-providers";
 
 // GET chat history (same shape as sessions/[sessionId] GET, so frontend can use /stream for both)
 export async function GET(
@@ -145,7 +146,7 @@ You MUST respond with ONLY one short acknowledgment. Examples: "I've suggested a
         // BEFORE the stream closes — guaranteed to run even in serverless environments.
         const streamResult = await Container.chatOrchestrator.generateStream({
             messages: messages || [],
-            provider: provider as 'grok' | 'gemini-pro' | 'claude' | 'gemini-cheap',
+            provider,
             context: reportContext,
             projectId: session.projectId,
             userId: session.userId,

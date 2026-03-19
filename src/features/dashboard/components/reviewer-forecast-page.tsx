@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { AppHeader } from "@/components/layouts/app-header";
 import { Page } from "@/app/pages/config/routes";
+import { apiRoutes } from "@/lib/api-routes";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
@@ -105,7 +106,7 @@ export function ReviewerForecastPage({
   useEffect(() => {
     async function fetchActiveSiteWork() {
       try {
-        const res = await fetch("/api/project/active-site-work");
+        const res = await fetch(apiRoutes.project.activeSiteWork);
         if (!res.ok) {
           console.error("Failed to fetch active site work:", res.status);
           return;

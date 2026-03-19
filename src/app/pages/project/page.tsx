@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Page } from "@/app/pages/config/routes";
 import { Project } from "@/lib/types";
 import { ROUTES, getRoute } from "@/app/pages/config/routes";
+import { apiRoutes } from "@/lib/api-routes";
 
 export default function ProjectDetail() {
   const router = useRouter();
@@ -22,7 +23,7 @@ export default function ProjectDetail() {
 
       setLoading(true);
       // Fetch Project Details
-      fetch(`/api/project/${projectIdParam}`)
+      fetch(apiRoutes.project.byId(projectIdParam))
         .then(res => {
             if (!res.ok) throw new Error("Failed to fetch project");
             return res.json();

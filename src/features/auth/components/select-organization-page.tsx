@@ -7,6 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Cpu, Building2, ArrowLeft, Loader2 } from "lucide-react";
 import { ROUTES } from "@/app/pages/config/routes";
+import { apiRoutes } from "@/lib/api-routes";
 import {
   Select,
   SelectContent,
@@ -26,7 +27,7 @@ function SelectOrganizationForm() {
   useEffect(() => {
     async function fetchOrganizations() {
       try {
-        const response = await fetch("/api/organizations");
+        const response = await fetch(apiRoutes.organizations.list);
         if (response.ok) {
           const data = await response.json();
           setOrganizations(data);

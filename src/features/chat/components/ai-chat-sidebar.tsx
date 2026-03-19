@@ -28,6 +28,8 @@ import {
   Wrench
 } from "lucide-react";
 import { MarkdownTextPrimitive } from '@assistant-ui/react-markdown';
+import { apiRoutes } from "@/lib/api-routes";
+import { DEFAULT_AI_SDK_CHAT_PROVIDER, type AiSdkChatProvider } from "@/lib/ai-providers";
 import remarkGfm from 'remark-gfm';
 import { memo } from "react";
 
@@ -252,9 +254,9 @@ export function AIChatSidebar({
 }: AIChatSidebarProps) {
   const [isResizing, setIsResizing] = useState(false);
   const [windowWidth, setWindowWidth] = useState(0);
-  const [chatProvider, setChatProvider] = useState<'grok' | 'gemini-pro' | 'claude' | 'gemini-cheap'>('gemini-cheap');
+  const [chatProvider, setChatProvider] = useState<AiSdkChatProvider>(DEFAULT_AI_SDK_CHAT_PROVIDER);
 
-  const modelLabel: Record<typeof chatProvider, string> = {
+  const modelLabel: Record<AiSdkChatProvider, string> = {
     grok: 'Grok',
     'gemini-pro': 'Gemini Pro',
     'gemini-cheap': 'Gemini (fast)',
@@ -316,7 +318,7 @@ export function AIChatSidebar({
   const transport = useMemo(
     () =>
       new AssistantChatTransport({
-        api: sessionId ? `/api/chat/sessions/${sessionId}/stream` : '',
+        api: sessionId ? apiRoutes.chat.sessionStream(sessionId) : "",
         body: () => {
           const ctx = getEditorContext?.();
           const body = {
@@ -373,7 +375,7 @@ export function AIChatSidebar({
     let cancelled = false;
     const fetchHistory = async () => {
       try {
-        const response = await fetch(`/api/chat/sessions/${sessionId}/stream`);
+        const response = await fetch(apiRoutes.chat.sessionStream(sessionId));
         if (cancelled) return;
         if (!response.ok) return;
         const history = await response.json();

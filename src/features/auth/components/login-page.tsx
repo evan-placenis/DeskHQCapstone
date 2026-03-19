@@ -9,6 +9,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Cpu } from "lucide-react";
 import { ROUTES } from "@/app/pages/config/routes";
 import { useAuth } from "@/app/context/auth-context";
+import { apiRoutes } from "@/lib/api-routes";
 
 export function LoginPage() {
   const router = useRouter();
@@ -25,7 +26,7 @@ export function LoginPage() {
     setIsLoading(true);
 
     try {
-      const response = await fetch('/api/auth/login', {
+      const response = await fetch(apiRoutes.auth.login, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

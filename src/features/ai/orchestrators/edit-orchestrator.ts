@@ -2,6 +2,7 @@ import { streamText } from 'ai';
 import { ModelStrategy } from '@/features/ai/services/models/model-strategy';
 import { buildSkillPrompt } from '@/features/ai/services/chatbot/skill-loader';
 import type { HeliconeContextInput } from '@/features/ai/services/gateway/helicone-context-builder';
+import { DEFAULT_AI_SDK_CHAT_PROVIDER, type AiSdkChatProvider } from "@/lib/ai-providers";
 
 /**
  * Edit Orchestrator – selection-based editing only.
@@ -20,11 +21,11 @@ export class EditOrchestrator {
         selection: string;
         surroundingContext?: string;
         instruction: string;
-        provider?: 'grok' | 'gemini-pro' | 'claude' | 'gemini-cheap';
+        provider?: AiSdkChatProvider;
         projectId: string;
         heliconeInput?: HeliconeContextInput;
     }) {
-        const { selection, surroundingContext, instruction, provider = 'gemini-cheap', heliconeInput } = params;
+        const { selection, surroundingContext, instruction, provider = DEFAULT_AI_SDK_CHAT_PROVIDER, heliconeInput } = params;
 
         const userPrompt = surroundingContext
             ? `## Selected Markdown (edit this):

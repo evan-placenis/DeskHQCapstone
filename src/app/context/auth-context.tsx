@@ -4,6 +4,7 @@ import { createContext, useContext, useEffect, useState } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import { ROUTES } from "@/app/pages/config/routes";
 import { User } from "@/lib/types";
+import { publicApiAuthPaths } from "@/lib/api-routes";
 
 interface AuthContextType {
   user: User | null;
@@ -21,8 +22,7 @@ const PUBLIC_ROUTES = [
   ROUTES.selectOrg,
   ROUTES.orgPassword,
   "/", // Home
-  "/api/auth/login", // API routes should not be blocked by client-side auth
-  "/api/auth/register",
+  ...publicApiAuthPaths,
   "/pages/login" // Explicitly adding the path from ROUTES.login to be safe
 ];
 

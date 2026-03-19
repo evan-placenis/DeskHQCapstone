@@ -8,10 +8,11 @@ import {
     HELICONE_TARGET_URL_HEADER,
     type HeliconeContextInput,
 } from '../gateway/helicone-context-builder';
+import type { AiSdkChatProvider } from "@/lib/ai-providers";
 
 export class ModelStrategy {
     static getModel(
-        provider: 'grok' | 'gemini-pro' | 'gemini-cheap' | 'claude',
+        provider: AiSdkChatProvider,
         heliconeInput?: HeliconeContextInput,
     ): LanguageModelV2 {
         let helicone: ReturnType<typeof HeliconeContextBuilder.build> | null = null;

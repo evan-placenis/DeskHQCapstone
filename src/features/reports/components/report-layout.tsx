@@ -5,6 +5,7 @@ import { PeerReview, ReportContent as ReportContentType } from "@/lib/types";
 import { DiffPopup } from "./diff-popup";
 import type { TiptapEditorHandle, SelectionContext } from "./tiptap-editor";
 import { Loader2 } from "lucide-react";
+import { apiRoutes } from "@/lib/api-routes";
 
 interface SelectedContext {
   type: "photo" | "section" | "text";
@@ -167,7 +168,7 @@ export function ReportLayout({
       editorRef.current?.clearSelection();
       setIsGeneratingEdit(true);
       try {
-        const response = await fetch(`/api/report/${reportId}/ai-edit`, {
+        const response = await fetch(apiRoutes.report.aiEdit(reportId), {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -299,7 +300,7 @@ export function ReportLayout({
         try {
           // STEP 1: Get or Create the Session ID
           // We use a simplified call or the existing POST to get the ID
-          const res = await fetch("/api/chat", {
+          const res = await fetch(apiRoutes.chat.root, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ projectId, reportId, message: null })

@@ -4,11 +4,12 @@ import { ProjectService } from "@/features/projects/services/project-service";
 import { StorageService } from "@/features/projects/services/storage-service";
 import { SupabaseClient } from '@supabase/supabase-js';
 import { v4 as uuidv4 } from 'uuid';
+import type { AiSdkChatProvider } from "@/lib/ai-providers";
 
 export interface AnalyzeAudioParams {
   audioUrls: string[];
   prompt?: string;
-  provider?: 'grok' | 'gemini-pro' | 'claude' | 'gemini-cheap';
+  provider?: AiSdkChatProvider;
   projectId?: string;
   userId?: string;
   reportId?: string;

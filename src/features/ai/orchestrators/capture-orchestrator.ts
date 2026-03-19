@@ -3,6 +3,7 @@ import { ModelStrategy } from '@/features/ai/services/models/model-strategy';
 import { audioTools } from '@/features/ai/tools/chatbot-audio-tools';
 import { buildSkillPrompt } from '@/features/ai/services/chatbot/skill-loader';
 import { SupabaseClient } from '@supabase/supabase-js';
+import type { AiSdkChatProvider } from "@/lib/ai-providers";
 
 /**
  * Audio Orchestrator using AI-SDK.
@@ -11,7 +12,7 @@ import { SupabaseClient } from '@supabase/supabase-js';
 export class CaptureOrchestrator {
     async generateStream(params: {
         messages: any[],
-        provider: 'grok' | 'gemini-pro' | 'claude' | 'gemini-cheap',
+        provider: AiSdkChatProvider,
         context?: any,
         projectId?: string,
         userId?: string,

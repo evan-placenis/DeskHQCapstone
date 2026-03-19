@@ -1,5 +1,6 @@
 import { AppHeader } from "@/components/layouts/app-header";
 import { Page } from "@/app/pages/config/routes";
+import { apiRoutes } from "@/lib/api-routes";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -300,7 +301,7 @@ export function TechnicianAnalyticsPage({
   useEffect(() => {
     async function fetchStats() {
       try {
-        const response = await fetch('/api/stats');
+        const response = await fetch(apiRoutes.stats);
         if (response.ok) {
           const data = await response.json();
           setTotalReports(data.totalReports);

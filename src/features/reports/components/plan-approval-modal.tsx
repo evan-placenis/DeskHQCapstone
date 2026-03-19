@@ -13,6 +13,7 @@ import {
 import { Photo } from '@/lib/types';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { SecureImage } from "@/components/ui/secure-image";
+import { apiRoutes } from "@/lib/api-routes";
 
 interface PlanApprovalModalProps {
   open: boolean;
@@ -111,7 +112,7 @@ export default function PlanApprovalModal({
         ...reportPlan,
         sections: sections.map(convertEditorFormatToSection),
       };
-      const response = await fetch(`/api/report/${reportId}/resume`, {
+      const response = await fetch(apiRoutes.report.resume(reportId), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -135,7 +136,7 @@ export default function PlanApprovalModal({
   const handleRegenerate = async () => {
     setIsSubmitting(true);
     try {
-      const response = await fetch(`/api/report/${reportId}/resume`, {
+      const response = await fetch(apiRoutes.report.resume(reportId), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

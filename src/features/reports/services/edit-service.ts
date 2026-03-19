@@ -1,13 +1,7 @@
 import { SupabaseClient } from '@supabase/supabase-js';
 import { EditOrchestrator } from '@/features/ai/orchestrators/edit-orchestrator';
 import type { HeliconeContextInput } from "@/features/ai/services/gateway/helicone-context-builder";
-
-const VALID_PROVIDERS = ['grok', 'gemini-pro', 'claude', 'gemini-cheap'] as const;
-type Provider = (typeof VALID_PROVIDERS)[number];
-
-function normalizeProvider(provider: unknown): Provider {
-    return VALID_PROVIDERS.includes(provider as Provider) ? (provider as Provider) : 'gemini-cheap';
-}
+import { normalizeAiSdkChatProvider } from "@/lib/ai-providers";
 
 export class ReportNotFoundError extends Error {
     name = 'ReportNotFoundError';
@@ -58,7 +52,7 @@ export class EditService {
             };
         }
 
-        const provider = normalizeProvider(params.provider);
+        const provider = normalizeAiSdkChatProvider(params.provider);
         const result = await this.editOrchestrator.streamSelectionEdit({
             selection: params.selection,
             surroundingContext:

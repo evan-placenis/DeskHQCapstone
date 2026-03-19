@@ -7,6 +7,7 @@ import { visionTools } from '@/features/ai/tools/chatbot-vision-tools';
 import { buildSkillPrompt } from '@/features/ai/services/chatbot/skill-loader';
 import { SupabaseClient } from '@supabase/supabase-js';
 import type { HeliconeContextInput } from '@/features/ai/services/gateway/helicone-context-builder';
+import type { AiSdkChatProvider } from "@/lib/ai-providers";
 
 /**
  * Chat Orchestrator using AI-SDK.
@@ -18,7 +19,7 @@ import type { HeliconeContextInput } from '@/features/ai/services/gateway/helico
 export class ChatOrchestrator {
     async generateStream(params: {
         messages: any[],
-        provider: 'grok' | 'gemini-pro' | 'claude' | 'gemini-cheap',
+        provider: AiSdkChatProvider,
         context?: any,
         projectId?: string,
         userId?: string,

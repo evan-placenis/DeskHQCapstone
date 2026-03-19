@@ -5,6 +5,7 @@ import { getWorkflow } from '@/features/ai/services/report-generation/workflow';
 import { CustomLangChainAdapter } from '@/features/ai/services/report-generation/utils/custom-adapter';
 
 import { SupabaseClient } from "@supabase/supabase-js";
+import type { ReportGraphProvider } from "@/lib/ai-providers";
 // import { imageGeneration } from "@langchain/openai/dist/tools/imageGeneration.cjs";
 interface GenerateParams {
   messages: any[];
@@ -13,7 +14,7 @@ interface GenerateParams {
   projectId: string;
   userId: string;
   reportType?: string;
-  provider?: 'claude' | 'gemini' | 'grok' | 'openai';
+  provider?: ReportGraphProvider;
   draftReportId: string, 
   selectedImageIds?: string[];
   workflowType?: string;
