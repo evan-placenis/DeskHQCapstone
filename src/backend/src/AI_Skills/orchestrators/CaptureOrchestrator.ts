@@ -1,6 +1,7 @@
 import { streamText, convertToModelMessages, stepCountIs } from 'ai';
 import { ModelStrategy } from '../Models/model-strategy';
-import { audioSkills } from '../skills/audio.skills';
+import { audioTools } from '../chatbot-skills/tools/audio.tools';
+import { buildSkillPrompt } from '../chatbot-skills/agent-skills/skill-loader';
 import { SupabaseClient } from '@supabase/supabase-js';
 
 /**
@@ -24,7 +25,7 @@ export class CaptureOrchestrator {
 
         // Build tools - include report skills if we have context
         const tools: any = {
-            ...audioSkills,
+            ...audioTools,
         };
 
 
@@ -45,15 +46,6 @@ export class CaptureOrchestrator {
      * Build the system prompt for audio analysis tasks.
      */
     private buildSystemPrompt(): string {
-        return `You are an assistant for engineering site inspections and report writing.
-
-YOUR ROLE: When the user provides audio file URLs, use your audio analysis tools to process them.
-Provide clear transcriptions and/or summaries of key observations, safety notes, or findings.
-
-AUDIO TOOLS:
-- Use 'audioSKill1TODO' to analyze multiple audio files (batch).
-- Use 'audioSKill2TODO' to analyze a single audio file in detail.
-
-Structure your response based on what the user asks for (transcript, summary, bullet points, report section, etc.).`;
+        return buildSkillPrompt(['audio-capture']);
     }
 }

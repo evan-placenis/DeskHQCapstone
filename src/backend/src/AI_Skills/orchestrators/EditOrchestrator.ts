@@ -1,5 +1,6 @@
 import { streamText } from 'ai';
 import { ModelStrategy } from '../Models/model-strategy';
+import { buildSkillPrompt } from '../chatbot-skills/agent-skills/skill-loader';
 import type { HeliconeContextInput } from '../gateway/HeliconeContextBuilder';
 
 /**
@@ -11,16 +12,6 @@ import type { HeliconeContextInput } from '../gateway/HeliconeContextBuilder';
  * this is ideal. If you need research-backed edits later, add a separate flow or optional tools.
  */
 export class EditOrchestrator {
-    private static readonly SYSTEM_PROMPT = `You are an expert AI Editor for engineering reports.
-Your task is to rewrite the provided content based on the user's instruction.
-
-Input format: Markdown text (the selected passage, which may include **bold**, _italic_, links, lists, etc.).
-Output format: ONLY the rewritten Markdown text. Do not wrap in \`\`\`markdown blocks. Do not add conversational filler ("Here is the edit:", etc.).
-
-IMPORTANT:
-- Preserve formatting (bold, italics, links, lists) unless the user asks to remove or change it.
-- If the user sends a Markdown list, return a Markdown list.
-- Keep the same professional tone and technical accuracy.`;
 
     /**
      * Stream selection edit. No tools = model goes straight to generating, so first token arrives quickly.
@@ -56,7 +47,7 @@ Return only the edited replacement Markdown (no code fence, no preamble).`;
 
         return streamText({
             model: ModelStrategy.getModel(provider, heliconeInput),
-            system: EditOrchestrator.SYSTEM_PROMPT,
+            system: buildSkillPrompt(['selection-edit']),
             prompt: userPrompt,
         });
     }
