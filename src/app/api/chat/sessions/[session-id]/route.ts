@@ -1,7 +1,7 @@
 // 🆕 NEW Chat Route using AI-SDK
 // GET (History), POST (Send Message)
 import { NextResponse } from 'next/server';
-import { Container } from '@/backend/config/container';
+import { Container } from '@/lib/container';
 import { createAuthenticatedClient } from "@/app/api/utils";
 
 // 1. SEND A MESSAGE (Talk to AI) - Returns streaming response

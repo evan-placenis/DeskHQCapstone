@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { createServerClient } from '@supabase/ssr';
 import { cookies } from 'next/headers';
-import { Container } from '@/backend/config/container';
+import { Container } from '@/lib/container';
 
 export async function POST(request: Request) {
   try {

@@ -1,10 +1,10 @@
 // 🆕 NEW Report Generation Route using AI-SDK
 import { NextResponse } from "next/server";
-import { Container } from "@/backend/config/container";
+import { Container } from "@/lib/container";
 import { createAuthenticatedClient } from "@/app/api/utils";
 import { v4 as uuidv4 } from 'uuid';
-import { Report } from '@/backend/domain/reports/report-types';
-import { HeliconeContextBuilder } from '@/backend/ai/gateway/helicone-context-builder';
+import { Report } from '@/features/reports/services/domain-reports/report-types';
+import { HeliconeContextBuilder } from '@/features/ai/services/gateway/helicone-context-builder';
 
 export async function POST(
     request: Request

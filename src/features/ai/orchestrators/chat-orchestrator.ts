@@ -1,12 +1,12 @@
 import { streamText, convertToModelMessages, stepCountIs } from 'ai';
-import { ModelStrategy } from '@/backend/ai/models/model-strategy';
+import { ModelStrategy } from '@/features/ai/services/models/model-strategy';
 import { researchTools } from '@/features/ai/tools/chatbot-research-tools';
 import { reportTools } from '@/features/ai/tools/chatbot-report-tools';
 import { chatContextTools } from '@/features/ai/tools/chatbot-chat-context-tools';
 import { visionTools } from '@/features/ai/tools/chatbot-vision-tools';
-import { buildSkillPrompt } from '@/backend/ai/chatbot/skill-loader';
+import { buildSkillPrompt } from '@/features/ai/services/chatbot/skill-loader';
 import { SupabaseClient } from '@supabase/supabase-js';
-import type { HeliconeContextInput } from '@/backend/ai/gateway/helicone-context-builder';
+import type { HeliconeContextInput } from '@/features/ai/services/gateway/helicone-context-builder';
 
 /**
  * Chat Orchestrator using AI-SDK.

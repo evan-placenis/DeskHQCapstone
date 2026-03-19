@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAuthenticatedClient } from "@/app/api/utils";
-import { Container } from "@/backend/config/container";
-import { ReportNotFoundError } from "@/backend/services/edit-service";
+import { Container } from "@/lib/container";
+import { ReportNotFoundError } from "@/features/reports/services/edit-service";
 
 /**
  * POST /api/report/[reportId]/ai-edit

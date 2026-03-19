@@ -1,6 +1,6 @@
 import { tool } from 'ai';
 import { z } from 'zod/v3';
-import { Container } from '@/backend/config/container';
+import { Container } from '@/lib/container';
 import { SupabaseClient } from '@supabase/supabase-js';
 
 export const reportTools = (

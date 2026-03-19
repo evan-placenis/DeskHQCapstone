@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { Container } from '@/backend/config/container';
+import { Container } from '@/lib/container';
 import { createAuthenticatedClient } from '@/app/api/utils';
 
 // Get Project Details

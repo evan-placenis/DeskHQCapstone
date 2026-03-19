@@ -1,7 +1,7 @@
 //POST (Accept Suggestion)
 
 import { NextResponse } from 'next/server';
-import { Container } from '@/backend/config/container'
+import { Container } from '@/lib/container'
 import { createAuthenticatedClient } from "@/app/api/utils";
 
 export async function POST(

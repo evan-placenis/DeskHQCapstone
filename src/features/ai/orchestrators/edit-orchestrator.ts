@@ -1,7 +1,7 @@
 import { streamText } from 'ai';
-import { ModelStrategy } from '@/backend/ai/models/model-strategy';
-import { buildSkillPrompt } from '@/backend/ai/chatbot/skill-loader';
-import type { HeliconeContextInput } from '@/backend/ai/gateway/helicone-context-builder';
+import { ModelStrategy } from '@/features/ai/services/models/model-strategy';
+import { buildSkillPrompt } from '@/features/ai/services/chatbot/skill-loader';
+import type { HeliconeContextInput } from '@/features/ai/services/gateway/helicone-context-builder';
 
 /**
  * Edit Orchestrator – selection-based editing only.

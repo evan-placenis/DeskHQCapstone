@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { createAuthenticatedClient } from "@/app/api/utils";
 import { tasks } from "@trigger.dev/sdk/v3";
-import type { generateReportTask } from "@/backend/infrastructure/job/trigger/generate-report";
+import type { generateReportTask } from "@/features/reports/services/trigger/generate-report";
 
 /**
  * Resume a paused LangGraph workflow (Human-in-the-Loop)

@@ -1,6 +1,6 @@
 import { tool } from '@langchain/core/tools';
 import { z } from 'zod';
-import { Container } from '@/backend/config/container';
+import { Container } from '@/lib/container';
 function sanitizeQuery(rawQuery: string): string {
   // Matches standard UUIDv4 formats
   const uuidRegex = /[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}/g;

@@ -2,10 +2,10 @@
 // GET = chat history, POST = stream new messages
 import { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
-import { Container } from '@/backend/config/container';
+import { Container } from '@/lib/container';
 import { createAuthenticatedClient } from "@/app/api/utils";
-import type { HeliconeContextInput } from '@/backend/ai/gateway/helicone-context-builder';
-import type { ChatMessage } from '@/backend/domain/chat/chat-types';
+import type { HeliconeContextInput } from '@/features/ai/services/gateway/helicone-context-builder';
+import type { ChatMessage } from '@/features/chat/services/domain-chat/chat-types';
 
 // GET chat history (same shape as sessions/[sessionId] GET, so frontend can use /stream for both)
 export async function GET(

@@ -1,6 +1,6 @@
 import { tool } from '@langchain/core/tools';
 import { z } from 'zod';
-import { Container } from '@/backend/config/container';
+import { Container } from '@/lib/container';
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 /**

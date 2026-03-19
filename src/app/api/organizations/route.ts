@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { Container } from '@/backend/config/container';
+import { Container } from '@/lib/container';
 
 export async function GET() {
   try {
