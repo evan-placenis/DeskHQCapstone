@@ -1,7 +1,7 @@
 import { streamText, convertToModelMessages, stepCountIs } from 'ai';
 import { ModelStrategy } from '../Models/model-strategy';
-import { audioTools } from '../chatbot-skills/tools/audio.tools';
-import { buildSkillPrompt } from '../chatbot-skills/agent-skills/skill-loader';
+import { audioTools } from '../chatbot/tools/audio.tools';
+import { buildSkillPrompt } from '../chatbot/agent-skills/skill-loader';
 import { SupabaseClient } from '@supabase/supabase-js';
 
 /**

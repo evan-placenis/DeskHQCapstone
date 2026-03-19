@@ -1,10 +1,10 @@
 import { streamText, convertToModelMessages, stepCountIs } from 'ai';
 import { ModelStrategy } from '../Models/model-strategy';
-import { researchTools } from '../chatbot-skills/tools/research.tools';
-import { reportTools } from '../chatbot-skills/tools/report.tools';
-import { chatContextTools } from '../chatbot-skills/tools/chat-context.tools';
-import { visionTools } from '../chatbot-skills/tools/vision.tools';
-import { buildSkillPrompt } from '../chatbot-skills/agent-skills/skill-loader';
+import { researchTools } from '../chatbot/tools/research.tools';
+import { reportTools } from '../chatbot/tools/report.tools';
+import { chatContextTools } from '../chatbot/tools/chat-context.tools';
+import { visionTools } from '../chatbot/tools/vision.tools';
+import { buildSkillPrompt } from '../chatbot/agent-skills/skill-loader';
 import { SupabaseClient } from '@supabase/supabase-js';
 import type { HeliconeContextInput } from '../gateway/HeliconeContextBuilder';
 
