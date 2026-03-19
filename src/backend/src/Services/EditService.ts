@@ -1,6 +1,6 @@
 import { SupabaseClient } from '@supabase/supabase-js';
-import { EditOrchestrator } from '../AI_Skills/orchestrators/EditOrchestrator';
-import type { HeliconeContextInput } from '../AI_Skills/gateway/HeliconeContextBuilder';
+import { EditOrchestrator } from '../ai/orchestrators/EditOrchestrator';
+import type { HeliconeContextInput } from '../ai/gateway/HeliconeContextBuilder';
 
 const VALID_PROVIDERS = ['grok', 'gemini-pro', 'claude', 'gemini-cheap'] as const;
 type Provider = (typeof VALID_PROVIDERS)[number];
@@ -19,7 +19,7 @@ export class ReportNotFoundError extends Error {
  * Resolves projectId from the report, runs the edit orchestrator (with tools), returns a Response.
  */
 export class EditService {
-    constructor(private readonly editOrchestrator: EditOrchestrator) {}
+    constructor(private readonly editOrchestrator: EditOrchestrator) { }
 
     /**
      * Run selection edit: resolve project_id, stream tokens from the model as they are generated.

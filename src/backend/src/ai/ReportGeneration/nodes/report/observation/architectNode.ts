@@ -28,13 +28,13 @@ export async function architectNode(state: typeof ObservationState.State) {
   } = state;
   // 1. LOAD THE STATIC SKILLS
   // Trigger.dev runs with cwd=capstone/src/backend, so path is relative to that
-  const skillPathBase = path.join(process.cwd(), 'src/AI_Skills/ReportGeneration/skills/architect-planning.md');
-  const skillPathThinking = path.join(process.cwd(), 'src/AI_Skills/ReportGeneration/skills/architect-planning(thinking).md');
-  const skillPathExecution = path.join(process.cwd(), 'src/AI_Skills/ReportGeneration/skills/architect-planning(execution).md');
+  const skillPathBase = path.join(process.cwd(), 'src/ai/ReportGeneration/skills/architect-planning.md');
+  const skillPathThinking = path.join(process.cwd(), 'src/ai/ReportGeneration/skills/architect-planning(thinking).md');
+  const skillPathExecution = path.join(process.cwd(), 'src/ai/ReportGeneration/skills/architect-planning(execution).md');
   const architectBaseSkill = fs.readFileSync(skillPathBase, 'utf-8');
   const architectThinkingSkill = fs.readFileSync(skillPathThinking, 'utf-8');
   const architectExecutionSkill = fs.readFileSync(skillPathExecution, 'utf-8');
-  const exampleReport = fs.readFileSync(path.join(process.cwd(), 'src/AI_Skills/ReportGeneration/skills/example-report.md'), 'utf-8');
+  const exampleReport = fs.readFileSync(path.join(process.cwd(), 'src/ai/ReportGeneration/skills/example-report.md'), 'utf-8');
 
   // 2 GENERATE CONTEXT STRING
   // We use the "Compressed Manifest" pattern: Metadata only, no 2000-token descriptions.

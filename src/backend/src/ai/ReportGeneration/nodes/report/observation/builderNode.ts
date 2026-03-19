@@ -96,13 +96,13 @@ export async function builderNode(state: typeof ObservationState.State) {
   // ==========================================
 
   // LOAD THE STATIC SKILL (Trigger.dev cwd=capstone/src/backend)
-  const skillPathBase = path.join(process.cwd(), 'src/AI_Skills/ReportGeneration/skills/technical-observations.md');
-  const skillPathThinking = path.join(process.cwd(), 'src/AI_Skills/ReportGeneration/skills/technical-observations(thinking).md');
-  const skillPathExecution = path.join(process.cwd(), 'src/AI_Skills/ReportGeneration/skills/technical-observations(execution).md');
+  const skillPathBase = path.join(process.cwd(), 'src/ai/ReportGeneration/skills/technical-observations.md');
+  const skillPathThinking = path.join(process.cwd(), 'src/ai/ReportGeneration/skills/technical-observations(thinking).md');
+  const skillPathExecution = path.join(process.cwd(), 'src/ai/ReportGeneration/skills/technical-observations(execution).md');
   const technicalObservationBaseSkill = fs.readFileSync(skillPathBase, 'utf-8');
   const technicalObservationThinkingSkill = fs.readFileSync(skillPathThinking, 'utf-8');
   const technicalObservationExecutionSkill = fs.readFileSync(skillPathExecution, 'utf-8');
-  const exampleReport = fs.readFileSync(path.join(process.cwd(), 'src/AI_Skills/ReportGeneration/skills/example-report.md'), 'utf-8');
+  const exampleReport = fs.readFileSync(path.join(process.cwd(), 'src/ai/ReportGeneration/skills/example-report.md'), 'utf-8');
 
   // Build Q&A pairs from architect's questions + user answers (index-matched)
   const questions = reportPlan.user_questions ?? [];

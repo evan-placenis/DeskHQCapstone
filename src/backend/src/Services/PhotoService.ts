@@ -1,6 +1,6 @@
 import { SupabaseClient } from '@supabase/supabase-js';
 import { Container } from '../config/container';
-import { VisionRequest } from '../AI_Skills/llm/interfaces';
+import { VisionRequest } from '../ai/llm/interfaces';
 
 /**
  * Service for processing photos with AI vision analysis.

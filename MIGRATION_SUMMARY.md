@@ -30,12 +30,12 @@ This migration moves the system from custom `AI_Strategies` workflows to using t
    - Includes PUT endpoint to save completed reports
 
 ### Skills
-5. **`src/backend/src/AI_Skills/skills/knowledge.skills.ts`**
+5. **`src/backend/src/ai/skills/knowledge.skills.ts`**
    - New knowledge skills for RAG/search
    - Provides `searchInternalKnowledge` and `getProjectSpecs` tools
 
 ### Orchestrators
-6. **`src/backend/src/AI_Skills/orchestrators/ChatOrchestrator.ts`**
+6. **`src/backend/src/ai/orchestrators/ChatOrchestrator.ts`**
    - Updated ChatOrchestrator with proper .ts extension
    - Conditionally includes reportSkills when report context is available
    - Uses knowledgeSkills and researchSkills
@@ -43,16 +43,16 @@ This migration moves the system from custom `AI_Strategies` workflows to using t
 ## Modified Files
 
 ### Skills Updates
-1. **`src/backend/src/AI_Skills/skills/research.skills.ts`**
+1. **`src/backend/src/ai/skills/research.skills.ts`**
    - Fixed `searchInternalKnowledge` to match KnowledgeService.search signature (string[] → string[])
    - Updated parameter from `z.array(z.string())` to `z.string()`
 
-2. **`src/backend/src/AI_Skills/skills/report.skills.ts`**
+2. **`src/backend/src/ai/skills/report.skills.ts`**
    - Fixed to properly use projectId and userId context
    - Added `getReportStructure` tool
    - Improved `updateSection` tool implementation
 
-3. **`src/backend/src/AI_Skills/orchestrators/ReportOrchestrator.ts`**
+3. **`src/backend/src/ai/orchestrators/ReportOrchestrator.ts`**
    - Fixed to properly call `reportSkills(projectId, userId)` as a function
    - Added researchSkills and knowledgeSkills to tools
    - Improved system prompt

@@ -1,6 +1,6 @@
 import { ReportRepository } from "../domain/interfaces/ReportRepository";
 import { ProjectRepository } from "../domain/interfaces/ProjectRepository";
-import { ReportOrchestrator } from "../AI_Skills/orchestrators/ReportOrchestrator";
+import { ReportOrchestrator } from "../ai/orchestrators/ReportOrchestrator";
 import { Report } from "../domain/reports/report.types";
 import { SupabaseClient } from "@supabase/supabase-js";
 import { v4 as uuidv4 } from 'uuid';
@@ -68,7 +68,7 @@ export class ReportService {
             input.title
         );
 
-       // 3a. Prepare System Context (Identity & Liability Rules)
+        // 3a. Prepare System Context (Identity & Liability Rules)
         // This goes to the Planner/Orchestrator so it knows "What it is" and what to do
         const systemContext = `
         ${template.system_prompt}
@@ -102,7 +102,7 @@ export class ReportService {
 
         const streamResult = await this.reportOrchestrator.generateStream({
             messages: [userMessage],
-            systemPrompt: systemContext,       
+            systemPrompt: systemContext,
             structureInstructions: structureContext,
             projectId,
             userId,
@@ -442,7 +442,7 @@ export class ReportService {
         client: SupabaseClient
     ): Promise<void> {
         console.log(`📊 Updating report ${reportId} with status: ${updates.status}`);
-        
+
         const updateData: any = {
             updated_at: new Date().toISOString()
         };

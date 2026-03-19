@@ -6,17 +6,17 @@ import { dumpAgentContext } from "../../../utils/agent-logger";
 import * as fs from 'fs';
 import * as path from 'path';
 export async function synthesisBuilderNode(state: typeof ObservationState.State) {
-  const { 
-    reportPlan, 
-    sectionDrafts, 
-    structureInstructions, 
+  const {
+    reportPlan,
+    sectionDrafts,
+    structureInstructions,
     draftReportId,
     reportTitle,
-    systemPrompt, 
+    systemPrompt,
     provider,
     heliconeInput,
   } = state;
-  if(!reportPlan) {
+  if (!reportPlan) {
     console.error("❌ [Synthesis] No report plan found!");
     return { next_step: "FINISH" };
   }
@@ -25,7 +25,7 @@ export async function synthesisBuilderNode(state: typeof ObservationState.State)
 
   // 1. IDENTIFY GAPS: We look at the Master Plan and see what the Builder didn't write.
   const existingTitles = new Set(Object.keys(sectionDrafts || {}));
-  const sectionsToWrite = reportPlan.sections.filter(section => 
+  const sectionsToWrite = reportPlan.sections.filter(section =>
     !existingTitles.has(section.title)
   );
 
@@ -55,10 +55,10 @@ export async function synthesisBuilderNode(state: typeof ObservationState.State)
 
 
   // LOAD SYNTHESIS SKILLS (OUTSIDE THE LOOP)
-  const skillPath = path.join(process.cwd(), 'src/AI_Skills/ReportGeneration/skills/summarize.md');
+  const skillPath = path.join(process.cwd(), 'src/ai/ReportGeneration/skills/summarize.md');
   let summarizeSkill = fs.readFileSync(skillPath, 'utf-8');
-  const exampleReport = fs.readFileSync(path.join(process.cwd(), 'src/AI_Skills/ReportGeneration/skills/example-report.md'), 'utf-8');
-  
+  const exampleReport = fs.readFileSync(path.join(process.cwd(), 'src/ai/ReportGeneration/skills/example-report.md'), 'utf-8');
+
   // Build the massive cached prompt ONCE so it will be cached by Gemini.
   const combinedSystemPrompt = `
   ${systemPrompt}
@@ -85,7 +85,7 @@ export async function synthesisBuilderNode(state: typeof ObservationState.State)
     let success = false;
     let attempts = 0;
     const MAX_RETRIES = 3;
-    
+
     // Keep this tiny and specific to the current loop iteration!
     const prompt = `
         TASK: Write the section "**${section.title}**" for the structural inspection report.
@@ -125,21 +125,21 @@ export async function synthesisBuilderNode(state: typeof ObservationState.State)
         // SAVE TO DATABASE (Critical Fix): We must persist this immediately so the final compiler sees it.
         if (draftReportId) {
           try {
-              const safeOrder = Math.floor(Number(section.reportOrder));
-              await Container.reportService.updateSectionInReport(
-                  draftReportId,
-                  section.sectionId,
-                  section.title,
-                  cleanContent,
-                  safeOrder, // Use the correct order from the plan
-                  freshClient
-              );
-              console.log(`💾 [Synthesis] Saved "${section.title}" to DB.`);
+            const safeOrder = Math.floor(Number(section.reportOrder));
+            await Container.reportService.updateSectionInReport(
+              draftReportId,
+              section.sectionId,
+              section.title,
+              cleanContent,
+              safeOrder, // Use the correct order from the plan
+              freshClient
+            );
+            console.log(`💾 [Synthesis] Saved "${section.title}" to DB.`);
           } catch (saveErr) {
-              console.error(`❌ [Synthesis] Failed to save "${section.title}" to DB:`, saveErr);
+            console.error(`❌ [Synthesis] Failed to save "${section.title}" to DB:`, saveErr);
           }
         }
-        
+
       } catch (err) {
         // 🛑 FALLBACK: Retry
         console.error(`❌ [Synthesis] Failed to write "${section.title}":`, err);
@@ -147,9 +147,9 @@ export async function synthesisBuilderNode(state: typeof ObservationState.State)
         if (attempts < MAX_RETRIES) {
           await new Promise(resolve => setTimeout(resolve, attempts * 1000));
         } else {
-              // ❌ FINAL FAIL
-              console.error(`❌ [Synthesis] Failed after ${MAX_RETRIES} attempts.`);
-              newContent[section.title] = "Error generating section. Please rewrite manually.";
+          // ❌ FINAL FAIL
+          console.error(`❌ [Synthesis] Failed after ${MAX_RETRIES} attempts.`);
+          newContent[section.title] = "Error generating section. Please rewrite manually.";
         }
       }
     }
@@ -173,6 +173,6 @@ export async function synthesisBuilderNode(state: typeof ObservationState.State)
   // Merge the new sections into the main draft list and end the graph.
   return {
     sectionDrafts: sortedDrafts,
-    next_step: "FINISH" 
+    next_step: "FINISH"
   };
 }

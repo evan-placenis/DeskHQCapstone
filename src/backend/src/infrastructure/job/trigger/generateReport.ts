@@ -11,11 +11,11 @@ import { createClient } from "@supabase/supabase-js";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 // 👇 IMPORT WORKFLOW REGISTRY
-import { getWorkflow } from "../../../AI_Skills/ReportGeneration/workflow";
+import { getWorkflow } from "../../../ai/ReportGeneration/workflow";
 import { HumanMessage, SystemMessage } from "@langchain/core/messages";
-import { StreamingAdapter } from "../../../AI_Skills/ReportGeneration/utils/streaming-adapter";
-import { getFlattenedTasks } from "../../../AI_Skills/ReportGeneration/nodes/report/observation/builderNode";
-import { HeliconeContextBuilder, type HeliconeContextInput } from "../../../AI_Skills/gateway/HeliconeContextBuilder";
+import { StreamingAdapter } from "../../../ai/ReportGeneration/utils/streaming-adapter";
+import { getFlattenedTasks } from "../../../ai/ReportGeneration/nodes/report/observation/builderNode";
+import { HeliconeContextBuilder, type HeliconeContextInput } from "../../../ai/gateway/HeliconeContextBuilder";
 
 // Load environment variables - ensure they're available for Trigger.dev workers
 // Try multiple paths to find .env file (relative to where Trigger.dev runs from)
@@ -79,9 +79,9 @@ export const generateReportTask = task({
     // Create a fresh Supabase client to avoid Container singleton issues in Trigger.dev
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
     const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
-    
+
     if (!supabaseUrl || !supabaseKey) {
-        throw new Error("Missing Supabase credentials in environment variables");
+      throw new Error("Missing Supabase credentials in environment variables");
     }
 
     const supabase = createClient(supabaseUrl, supabaseKey);
@@ -100,7 +100,7 @@ export const generateReportTask = task({
 
     let finalMessage = "Report generation complete!";
 
-    
+
 
     try {
       if (!payload.projectId || !payload.input) {
@@ -108,10 +108,10 @@ export const generateReportTask = task({
       }
       // Use pre-generated ID from API route, or generate a new one as fallback
       const draftReportId = payload.input.reportId || uuidv4();
-      
+
       // Use workflow type from modal; only fallback to "simple" when field is missing (e.g. old client)
       const workflowType = payload.input.workflowType ?? 'simple';
-      
+
       console.log(`🚀 Starting LangGraph for Report: ${draftReportId} using workflow: ${workflowType}`);
 
       // 3. FETCH PROJECT TO GET ORGANIZATION_ID
@@ -128,10 +128,10 @@ export const generateReportTask = task({
       const organizationId = project.organization_id;
 
       // 4. CREATE DRAFT REPORT IN DATABASE (so we can save plan to it later)
-      const title = payload.input.title?.trim() 
-        ? payload.input.title.trim() 
+      const title = payload.input.title?.trim()
+        ? payload.input.title.trim()
         : `${payload.input.reportType} Report (Draft)`;
-      
+
       const { error: createError } = await supabase
         .from('reports')
         .upsert({
@@ -236,7 +236,7 @@ export const generateReportTask = task({
       console.log(`📤 Sending initial status broadcast...`);
       await broadcast(supabase, payload.projectId!, 'status', { chunk: 'Starting report generation...' });
       console.log(`✅ Initial status broadcast sent`);
-      
+
       // 10. EVENT LOOP
       // Nodes now broadcast their own reasoning tokens directly via createNodeBroadcaster.
       // This loop only handles structural events: node starts, tool status, completion.
@@ -259,7 +259,7 @@ export const generateReportTask = task({
         // If approvalStatus is PENDING, the graph paused for human approval
         if (currentState?.values?.approvalStatus === 'PENDING' && currentState?.values?.reportPlan) {
           console.log('⏸️ Graph paused for human approval, broadcasting to frontend');
-          
+
           await broadcast(supabase, payload.projectId, 'paused', {
             reportId: draftReportId,
             reportPlan: currentState.values.reportPlan,
@@ -267,9 +267,9 @@ export const generateReportTask = task({
           });
 
           // Don't finalize or mark as complete - wait for resume
-          return { 
-            reportId: draftReportId, 
-            success: true, 
+          return {
+            reportId: draftReportId,
+            success: true,
             paused: true,
             message: 'Report generation paused for human approval'
           };
@@ -472,7 +472,7 @@ async function handleResumeAction(
     // 3. Get current state to preserve draftReportId
     const pausedState = await workflowGraph.getState(config);
     const existingDraftReportId = pausedState?.values?.draftReportId || reportId;
-    
+
     // 4. Update the paused state with user's decision
     // When APPROVED, use the frontend's plan (edited or not) so the builder writes from that structure
     const stateUpdate: Record<string, unknown> = {
@@ -562,10 +562,10 @@ async function handleResumeAction(
 
     // 8. Check if we paused again (rejection cycle)
     const finalState = await workflowGraph.getState(config);
-    
+
     if (finalState?.values?.approvalStatus === 'PENDING' && finalState?.values?.reportPlan) {
       console.log('⏸️ Graph paused again for revised plan approval');
-      
+
       if (projectId) {
         await broadcast(supabase, projectId, 'paused', {
           reportId: reportId,
@@ -574,9 +574,9 @@ async function handleResumeAction(
         });
       }
 
-      return { 
-        reportId, 
-        success: true, 
+      return {
+        reportId,
+        success: true,
         paused: true,
         message: 'Report generation paused for revised plan approval'
       };
@@ -595,15 +595,15 @@ async function handleResumeAction(
       });
     }
 
-    return { 
-      reportId, 
+    return {
+      reportId,
       success: true,
       message: 'Report generation completed successfully'
     };
 
   } catch (error) {
     console.error(`❌ Resume failed for ${reportId}:`, error);
-    
+
     // Broadcast error to frontend
     const { data: report } = await supabase
       .from('reports')
