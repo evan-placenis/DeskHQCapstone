@@ -1,6 +1,6 @@
 import { streamText } from 'ai';
 import { ModelStrategy } from '../Models/model-strategy';
-import { buildSkillPrompt } from '../chatbot/agent-skills/skill-loader';
+import { buildSkillPrompt } from '../chatbot/skill-loader';
 import type { HeliconeContextInput } from '../gateway/HeliconeContextBuilder';
 
 /**
