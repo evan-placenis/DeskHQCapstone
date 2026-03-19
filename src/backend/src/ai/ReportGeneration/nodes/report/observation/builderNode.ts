@@ -95,14 +95,15 @@ export async function builderNode(state: typeof ObservationState.State) {
   // 3. CONSTRUCT SYSTEM MESSAGE & CONTEXT
   // ==========================================
 
-  // LOAD THE STATIC SKILL (Trigger.dev cwd=capstone/src/backend)
-  const skillPathBase = path.join(process.cwd(), 'src/ai/ReportGeneration/skills/technical-observations.md');
-  const skillPathThinking = path.join(process.cwd(), 'src/ai/ReportGeneration/skills/technical-observations(thinking).md');
-  const skillPathExecution = path.join(process.cwd(), 'src/ai/ReportGeneration/skills/technical-observations(execution).md');
+  // Repo-root skills/ — cwd is src/backend when Trigger.dev runs (see trigger.config).
+  const skillsDir = path.join(process.cwd(), '..', '..', 'skills');
+  const skillPathBase = path.join(skillsDir, 'technical-observations.md');
+  const skillPathThinking = path.join(skillsDir, 'technical-observations(thinking).md');
+  const skillPathExecution = path.join(skillsDir, 'technical-observations(execution).md');
   const technicalObservationBaseSkill = fs.readFileSync(skillPathBase, 'utf-8');
   const technicalObservationThinkingSkill = fs.readFileSync(skillPathThinking, 'utf-8');
   const technicalObservationExecutionSkill = fs.readFileSync(skillPathExecution, 'utf-8');
-  const exampleReport = fs.readFileSync(path.join(process.cwd(), 'src/ai/ReportGeneration/skills/example-report.md'), 'utf-8');
+  const exampleReport = fs.readFileSync(path.join(skillsDir, 'example-report.md'), 'utf-8');
 
   // Build Q&A pairs from architect's questions + user answers (index-matched)
   const questions = reportPlan.user_questions ?? [];

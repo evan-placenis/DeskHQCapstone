@@ -54,10 +54,11 @@ export async function synthesisBuilderNode(state: typeof ObservationState.State)
   const freshClient = Container.adminClient;
 
 
-  // LOAD SYNTHESIS SKILLS (OUTSIDE THE LOOP)
-  const skillPath = path.join(process.cwd(), 'src/ai/ReportGeneration/skills/summarize.md');
+  // Repo-root skills/ — cwd is src/backend when Trigger.dev runs (see trigger.config).
+  const skillsDir = path.join(process.cwd(), '..', '..', 'skills');
+  const skillPath = path.join(skillsDir, 'summarize.md');
   let summarizeSkill = fs.readFileSync(skillPath, 'utf-8');
-  const exampleReport = fs.readFileSync(path.join(process.cwd(), 'src/ai/ReportGeneration/skills/example-report.md'), 'utf-8');
+  const exampleReport = fs.readFileSync(path.join(skillsDir, 'example-report.md'), 'utf-8');
 
   // Build the massive cached prompt ONCE so it will be cached by Gemini.
   const combinedSystemPrompt = `
