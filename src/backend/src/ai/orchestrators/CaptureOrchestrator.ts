@@ -46,6 +46,6 @@ export class CaptureOrchestrator {
      * Build the system prompt for audio analysis tasks.
      */
     private buildSystemPrompt(): string {
-        return buildSkillPrompt(['audio-capture']);
+        return buildSkillPrompt(['audio-processing']);
     }
 }

@@ -74,8 +74,8 @@ export class ChatOrchestrator {
         const registeredToolNames = Object.keys(tools);
         const skillNames = !systemMessage
             ? (hasDocumentTools
-                ? ['chat-core', 'research', 'vision', 'report-aware-chat']
-                : ['chat-core', 'research', 'vision'])
+                ? ['core-conversation', 'knowledge-search', 'image-schematic-analysis', 'report-context-chat']
+                : ['core-conversation', 'knowledge-search', 'image-schematic-analysis'])
             : ['(overridden by systemMessage)'];
         console.log(`[Chat] Skills injected into system prompt: [${skillNames.join(', ')}] (${systemPrompt.length} chars)`);
         console.log(`[Chat] Tools registered: [${registeredToolNames.join(', ')}]`);
@@ -115,10 +115,10 @@ export class ChatOrchestrator {
     ): string {
         const hasDocumentTools = !!(fullReportMarkdown?.trim());
         const hasMapLens = !!(documentOutline?.trim());
-        const baseSkillPrompt = buildSkillPrompt(['chat-core', 'research', 'vision']);
+        const baseSkillPrompt = buildSkillPrompt(['core-conversation', 'knowledge-search', 'image-schematic-analysis']);
 
         if (hasDocumentTools) {
-            const reportSkillPrompt = buildSkillPrompt(['report-aware-chat']);
+            const reportSkillPrompt = buildSkillPrompt(['report-context-chat']);
             const outlineBlock = hasMapLens
                 ? `DOCUMENT OUTLINE (Table of Contents):\n${documentOutline}\n\n`
                 : '';

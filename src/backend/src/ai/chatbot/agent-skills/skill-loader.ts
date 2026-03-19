@@ -9,10 +9,7 @@ export interface SkillDocument {
 
 const skillCache = new Map<string, SkillDocument>();
 
-const SKILLS_DIR = path.resolve(
-  process.cwd(),
-  'src', 'backend', 'src', 'AI_Skills', 'chatbot-skills', 'agent-skills',
-);
+const SKILLS_DIR = path.resolve(process.cwd(), 'skills');
 
 function parseFrontmatter(markdown: string): SkillDocument {
   const match = markdown.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/);
@@ -41,33 +38,33 @@ function parseFrontmatter(markdown: string): SkillDocument {
   };
 }
 
-function resolveSkillPath(skillFolder: string): string {
-  return path.join(SKILLS_DIR, skillFolder, 'SKILL.md');
+function resolveSkillPath(skillName: string): string {
+  return path.join(SKILLS_DIR, `${skillName}.md`);
 }
 
-export function loadSkill(skillFolder: string): SkillDocument {
-  if (skillCache.has(skillFolder)) {
-    return skillCache.get(skillFolder)!;
+export function loadSkill(skillName: string): SkillDocument {
+  if (skillCache.has(skillName)) {
+    return skillCache.get(skillName)!;
   }
 
-  const filePath = resolveSkillPath(skillFolder);
+  const filePath = resolveSkillPath(skillName);
 
   if (!fs.existsSync(filePath)) {
-    console.error(`[skill-loader] SKILL.md not found at: ${filePath}`);
+    console.error(`[skill-loader] Skill file not found at: ${filePath}`);
     return {
-      name: skillFolder,
-      description: `Skill "${skillFolder}" could not be loaded.`,
+      name: skillName,
+      description: `Skill "${skillName}" could not be loaded.`,
       body: '',
     };
   }
 
   const raw = fs.readFileSync(filePath, 'utf8');
   const parsed = parseFrontmatter(raw);
-  skillCache.set(skillFolder, parsed);
+  skillCache.set(skillName, parsed);
   return parsed;
 }
 
-export function buildSkillPrompt(skillFolders: string[]): string {
-  const docs = skillFolders.map(loadSkill);
+export function buildSkillPrompt(skillNames: string[]): string {
+  const docs = skillNames.map(loadSkill);
   return docs.map((doc) => `# Skill: ${doc.name}\n${doc.description}\n\n${doc.body}`).join('\n\n');
 }

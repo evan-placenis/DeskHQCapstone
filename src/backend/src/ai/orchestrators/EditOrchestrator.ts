@@ -47,7 +47,7 @@ Return only the edited replacement Markdown (no code fence, no preamble).`;
 
         return streamText({
             model: ModelStrategy.getModel(provider, heliconeInput),
-            system: buildSkillPrompt(['selection-edit']),
+            system: buildSkillPrompt(['inline-selection-edit']),
             prompt: userPrompt,
         });
     }
