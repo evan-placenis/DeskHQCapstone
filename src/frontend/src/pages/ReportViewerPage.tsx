@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, Suspense, useEffect, useCallback, useRef } from "react";
+import { useState, Suspense, useEffect, useCallback, useRef, memo } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/src/app/context/AuthContext";
 import { AppHeader } from "@/frontend/pages/smart_components/AppHeader";
@@ -16,43 +16,43 @@ import { Loader2, FileText, CheckCircle2 } from "lucide-react";
 import { Card, CardContent } from "@/frontend/pages/ui_components/card";
 import { useReportStreaming } from "@/frontend/pages/hooks/useReportStreaming";
 
-import { memo } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 
 // 1. CONSTANTS
 const MARKDOWN_PLUGINS = [remarkGfm];
 
-// 2. THE RENDERER (Memoized for performance)
+// 2. THE RENDERER (Memoized for performance — only re-renders when content changes)
 const StreamRenderer = memo(({ content }: { content: string }) => (
   <div className="prose prose-sm max-w-none text-slate-700 leading-relaxed
-    prose-p:my-2 prose-ul:my-2 prose-li:my-0 
-    prose-headings:font-semibold prose-headings:text-slate-900 prose-headings:mt-4 prose-headings:mb-2
-    prose-strong:text-slate-900 prose-strong:font-bold
-    prose-pre:bg-slate-100 prose-pre:p-3 prose-pre:rounded-lg">
-
+    prose-p:my-2 prose-ul:my-2 prose-li:my-1
+    prose-headings:font-semibold prose-headings:text-slate-900 prose-headings:mt-5 prose-headings:mb-2
+    prose-h2:text-base prose-h3:text-sm
+    prose-strong:text-slate-900 prose-strong:font-semibold
+    prose-blockquote:border-l-2 prose-blockquote:border-theme-primary/40 prose-blockquote:text-slate-500 prose-blockquote:pl-3
+    prose-pre:bg-slate-100 prose-pre:p-3 prose-pre:rounded-lg prose-code:text-xs">
     <ReactMarkdown remarkPlugins={MARKDOWN_PLUGINS}>
       {content}
     </ReactMarkdown>
-
-    {/* The "Ghost Cursor" Effect */}
-    <span className="inline-block w-1.5 h-4 ml-1 bg-theme-primary animate-pulse align-middle translate-y-[2px]" />
+    {/* Blinking cursor while streaming */}
+    <span className="inline-block w-1.5 h-4 ml-0.5 bg-theme-primary/70 animate-pulse align-middle translate-y-[1px] rounded-sm" />
   </div>
 ));
+StreamRenderer.displayName = 'StreamRenderer';
 
 // 3. STATUS INDICATOR
 const StatusFooter = memo(({ status }: { status: string }) => {
-  if (!status || status === 'Idle') return null;
-
+  if (!status || status === 'Initializing...') return null;
   return (
-    <div className="flex items-center gap-2 mt-4 pt-4 border-t border-slate-100 text-slate-400 animate-in fade-in">
-      <Loader2 className="w-3.5 h-3.5 animate-spin text-theme-primary" />
-      <span className="text-xs font-mono uppercase tracking-wider">{status}</span>
+    <div className="flex items-center gap-2 px-4 py-2.5 border-t border-slate-100 bg-slate-50/60 animate-in fade-in">
+      <Loader2 className="w-3 h-3 animate-spin text-theme-primary flex-shrink-0" />
+      <span className="text-xs text-slate-500 font-mono truncate">{status}</span>
     </div>
   );
 });
+StatusFooter.displayName = 'StatusFooter';
 
-// 4. MAIN COMPONENT — "Disappearing Act": reasoning box only while generating, hides when isComplete
+// 4. MAIN COMPONENT — reasoning box while generating; disappears on complete
 export const ReportLiveStream = ({
   reasoningText,
   status,
@@ -62,46 +62,73 @@ export const ReportLiveStream = ({
   status: string;
   isComplete?: boolean;
 }) => {
+  // Auto-scroll: keep a ref to the bottom sentinel and scroll it into view whenever
+  // new text arrives. The scroll container uses overflow-y-auto so it clips correctly.
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const bottomRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!bottomRef.current || !scrollContainerRef.current) return;
+    const container = scrollContainerRef.current;
+    // Only auto-scroll if the user is already near the bottom (within 120px).
+    // This avoids hijacking scroll position if they deliberately scroll up to re-read.
+    const { scrollTop, scrollHeight, clientHeight } = container;
+    const distanceFromBottom = scrollHeight - scrollTop - clientHeight;
+    if (distanceFromBottom < 120) {
+      bottomRef.current.scrollIntoView({ behavior: 'smooth', block: 'end' });
+    }
+  }, [reasoningText]);
 
   return (
     <div className="flex flex-col gap-4 max-w-4xl mx-auto mt-8">
 
-      {/* 2. THINKING BOX — Only while generating; fades out when isComplete */}
+      {/* THINKING BOX — only while generating */}
       {!isComplete && (
-        <Card className="border-2 border-theme-primary/10 shadow-lg bg-white overflow-hidden animate-in fade-in slide-in-from-bottom-2 duration-300">
-          <div className="bg-slate-50/80 border-b border-slate-100 px-4 py-2 flex items-center gap-2">
-            <FileText className="w-4 h-4 text-theme-primary animate-pulse" />
-            <h4 className="text-xs font-bold text-slate-600 uppercase tracking-wide">Agent is thinking...</h4>
-          </div>
-          <CardContent className="p-6 min-h-[200px] max-h-[60vh] overflow-y-auto scroll-smooth bg-white">
-            {!reasoningText ? (
-              <div className="flex flex-col items-center justify-center text-slate-400 gap-2 py-12">
-                <Loader2 className="w-8 h-8 animate-spin opacity-50" />
-                <p className="text-sm font-medium">Building Report ...</p>
-              </div>
-            ) : (
-              <div className="prose prose-sm max-w-none text-slate-700">
-                <StreamRenderer content={reasoningText} />
-              </div>
-            )}
-          </CardContent>
-          {status && status !== 'Initializing...' && (
-            <div className="px-4 pb-3 pt-0">
-              <StatusFooter status={status} />
+        <Card className="border border-slate-200 shadow-md bg-white overflow-hidden animate-in fade-in slide-in-from-bottom-2 duration-300">
+          {/* Header */}
+          <div className="bg-white border-b border-slate-100 px-4 py-2.5 flex items-center gap-2.5">
+            <div className="relative flex-shrink-0">
+              <div className="w-2 h-2 rounded-full bg-theme-primary animate-ping absolute" />
+              <div className="w-2 h-2 rounded-full bg-theme-primary" />
             </div>
-          )}
+            <span className="text-xs font-semibold text-slate-600 uppercase tracking-widest">
+              Analyzing &amp; Planning
+            </span>
+          </div>
+
+          {/* Scrollable content area */}
+          <div
+            ref={scrollContainerRef}
+            className="min-h-[220px] max-h-[60vh] overflow-y-auto bg-white"
+          >
+            <div className="p-5">
+              {!reasoningText ? (
+                <div className="flex flex-col items-center justify-center text-slate-400 gap-3 py-14">
+                  <Loader2 className="w-7 h-7 animate-spin opacity-40" />
+                  <p className="text-sm text-slate-400">Starting agent...</p>
+                </div>
+              ) : (
+                <StreamRenderer content={reasoningText} />
+              )}
+              {/* Bottom sentinel — scrolled into view on each update */}
+              <div ref={bottomRef} className="h-px" />
+            </div>
+          </div>
+
+          {/* Status bar */}
+          <StatusFooter status={status} />
         </Card>
       )}
 
-      {/* 3. SUCCESS STATE — Shown when isComplete (replaces thinking box) */}
+      {/* SUCCESS STATE */}
       {isComplete && (
-        <Card className="border-2 border-green-200 shadow-lg bg-white overflow-hidden animate-in fade-in duration-300">
-          <CardContent className="p-6 flex flex-col items-center justify-center gap-4 min-h-[120px]">
-            <div className="p-3 rounded-full bg-green-100 text-green-600">
-              <CheckCircle2 className="w-8 h-8" />
+        <Card className="border border-green-200 shadow-md bg-white overflow-hidden animate-in fade-in duration-300">
+          <CardContent className="p-6 flex flex-col items-center justify-center gap-3 min-h-[120px]">
+            <div className="p-3 rounded-full bg-green-50 text-green-500">
+              <CheckCircle2 className="w-7 h-7" />
             </div>
-            <h2 className="text-lg font-bold text-green-700">Report generated successfully!</h2>
-            <p className="text-sm text-slate-500">Redirecting to report...</p>
+            <h2 className="text-base font-semibold text-green-700">Report generated successfully!</h2>
+            <p className="text-sm text-slate-400">Redirecting to report...</p>
           </CardContent>
         </Card>
       )}

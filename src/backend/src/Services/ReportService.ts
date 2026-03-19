@@ -1,6 +1,6 @@
 import { ReportRepository } from "../domain/interfaces/ReportRepository";
 import { ProjectRepository } from "../domain/interfaces/ProjectRepository";
-import { ReportOrchestrator } from "../AI_Skills/orchestrators/ReportOrchestrator";
+import { ReportOrchestrator } from "../ai/orchestrators/ReportOrchestrator";
 import { Report } from "../domain/reports/report.types";
 import { SupabaseClient } from "@supabase/supabase-js";
 import { v4 as uuidv4 } from 'uuid';
@@ -68,7 +68,7 @@ export class ReportService {
             input.title
         );
 
-       // 3a. Prepare System Context (Identity & Liability Rules)
+        // 3a. Prepare System Context (Identity & Liability Rules)
         // This goes to the Planner/Orchestrator so it knows "What it is" and what to do
         const systemContext = `
         ${template.system_prompt}
@@ -98,11 +98,11 @@ export class ReportService {
         };
         // Filter out any messages with empty/undefined content
         // 3. Call AI-SDK Orchestrator
-        const provider = (normalizedInput.modelName?.toLowerCase())|| 'gemini-cheap';
+        const provider = (normalizedInput.modelName?.toLowerCase()) || 'gemini';
 
         const streamResult = await this.reportOrchestrator.generateStream({
             messages: [userMessage],
-            systemPrompt: systemContext,       
+            systemPrompt: systemContext,
             structureInstructions: structureContext,
             projectId,
             userId,
@@ -401,12 +401,17 @@ export class ReportService {
     /**
      * 🛠️ PRIVATE HELPER: The "Stitcher"
      */
-    /** Stitch section bodies only; do not inject section headings (AI controls headings in content). */
+    /** Stitch sections with heading + content so the final report includes section titles. */
     private compileMarkdown(sections: any[]): string {
         return sections.map(s => {
             let md = "";
-            
+            //TODO: Add a check to see if the heading exists from the tool call.
+            const heading = s.heading?.trim?.() || "";
             const body = s.content?.replace(/\\n/g, '\n') || "";
+            if (heading) {
+                md += heading.startsWith('#') ? heading : `# ${heading}`;
+                md += '\n\n';
+            }
             md += body;
             if (s.metadata?.severity) {
                 md += `\n**Severity:** ${s.metadata.severity.toUpperCase()}\n\n`;
@@ -437,7 +442,7 @@ export class ReportService {
         client: SupabaseClient
     ): Promise<void> {
         console.log(`📊 Updating report ${reportId} with status: ${updates.status}`);
-        
+
         const updateData: any = {
             updated_at: new Date().toISOString()
         };

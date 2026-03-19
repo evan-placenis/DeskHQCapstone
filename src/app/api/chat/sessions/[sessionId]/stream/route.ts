@@ -4,7 +4,7 @@ import { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
 import { Container } from '@/backend/config/container';
 import { createAuthenticatedClient } from "@/app/api/utils";
-import type { HeliconeContextInput } from '@/backend/AI_Skills/gateway/HeliconeContextBuilder';
+import type { HeliconeContextInput } from '@/backend/ai/gateway/HeliconeContextBuilder';
 
 // GET chat history (same shape as sessions/[sessionId] GET, so frontend can use /stream for both)
 export async function GET(

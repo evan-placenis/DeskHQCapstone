@@ -4,7 +4,7 @@ import { Container } from "@/backend/config/container";
 import { createAuthenticatedClient } from "@/app/api/utils";
 import { v4 as uuidv4 } from 'uuid';
 import { Report } from '@/backend/domain/reports/report.types';
-import { HeliconeContextBuilder } from '@/backend/AI_Skills/gateway/HeliconeContextBuilder';
+import { HeliconeContextBuilder } from '@/backend/ai/gateway/HeliconeContextBuilder';
 
 export async function POST(
     request: Request

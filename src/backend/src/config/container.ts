@@ -12,10 +12,10 @@ import { DocumentStrategyFactory } from '../Document_Strategies/factory/Document
 import { ReportService } from '../Services/ReportService';
 import { ChatService } from '../Services/ChatService';
 import { EditService } from '../Services/EditService';
-import { ChatOrchestrator } from '../AI_Skills/orchestrators/ChatOrchestrator';
-import { EditOrchestrator } from '../AI_Skills/orchestrators/EditOrchestrator';
-import { ReportOrchestrator } from '../AI_Skills/orchestrators/ReportOrchestrator';
-import { CaptureOrchestrator } from '../AI_Skills/orchestrators/CaptureOrchestrator';
+import { ChatOrchestrator } from '../ai/orchestrators/ChatOrchestrator';
+import { EditOrchestrator } from '../ai/orchestrators/EditOrchestrator';
+import { ReportOrchestrator } from '../ai/orchestrators/ReportOrchestrator';
+import { CaptureOrchestrator } from '../ai/orchestrators/CaptureOrchestrator';
 import { CaptureService } from '../Services/CaptureService';
 import { ProjectService } from '../Services/ProjectService';
 import { SupabaseCaptureSessionRepository } from '../infrastructure/repositories/supabase_repository/SupabaseCaptureSessionRepository';
@@ -26,8 +26,8 @@ import { PhotoService } from '../Services/PhotoService';
 import { StatsService } from '../Services/StatsService';
 import Exa from "exa-js";
 
-import { SpecAgent } from '../AI_Skills/llm/VisonAgent/SpecAgent';
-import { SitePhotoAgent } from '../AI_Skills/llm/VisonAgent/SitePhotoAgent';
+import { SpecAgent } from '../ai/llm/VisonAgent/SpecAgent';
+import { SitePhotoAgent } from '../ai/llm/VisonAgent/SitePhotoAgent';
 
 import { TriggerJobQueue } from '../infrastructure/job/trigger/TriggerJobQueue';
 import { createClient, SupabaseClient } from "@supabase/supabase-js";

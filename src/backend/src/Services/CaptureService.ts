@@ -1,4 +1,4 @@
-import { CaptureOrchestrator } from '../AI_Skills/orchestrators/CaptureOrchestrator';
+import { CaptureOrchestrator } from '../ai/orchestrators/CaptureOrchestrator';
 import { CaptureSessionRepository } from "../domain/interfaces/CaptureSessionRepository";
 import { ProjectService } from "./ProjectService";
 import { StorageService } from "./StorageService";

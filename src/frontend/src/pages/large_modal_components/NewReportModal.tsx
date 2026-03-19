@@ -72,7 +72,7 @@ export function NewReportModal({ open, onOpenChange, projectName, onCreateReport
   const [sections, setSections] = useState<EditorSection[]>([]);
   const [reportExecution, setReportExecution] = useState<"fast" | "thinking">("fast");
   const [processingMode, setProcessingMode] = useState<"TEXT_ONLY" | "IMAGE_AND_TEXT">("IMAGE_AND_TEXT");
-  const [modelProvider, setModelProvider] = useState<'grok' | 'claude' | 'gemini-pro' | 'gemini-cheap'>('gemini-cheap');
+  const [modelProvider, setModelProvider] = useState<'claude' | 'gemini' | 'grok' | 'openai'>('gemini');
   const [workflowType, setWorkflowType] = useState<string>("simple");
   const [additionalInstructions, setAdditionalInstructions] = useState("");
 
@@ -171,8 +171,8 @@ export function NewReportModal({ open, onOpenChange, projectName, onCreateReport
     setSections([]);
     setReportExecution("fast");
     setProcessingMode("IMAGE_AND_TEXT");
-    setModelProvider("gemini-cheap");
-    setWorkflowType("simple");
+    setModelProvider("gemini");
+    setWorkflowType("observation");
     setAdditionalInstructions("");
     onOpenChange(false);
   };
@@ -433,34 +433,34 @@ export function NewReportModal({ open, onOpenChange, projectName, onCreateReport
           {step === 4 && (
             <div className="space-y-6">
               <div className="space-y-3">
-                <Label>AI Model</Label>
-                <Select value={modelProvider} onValueChange={(v) => setModelProvider(v as 'grok' | 'gemini-pro' | 'gemini-cheap' | 'claude')}>
+                <Label>AI Provider</Label>
+                <Select value={modelProvider} onValueChange={(v) => setModelProvider(v as 'claude' | 'gemini' | 'grok' | 'openai')}>
                   <SelectTrigger className="rounded-lg">
-                    <SelectValue placeholder="Select model" />
+                    <SelectValue placeholder="Select provider" />
                   </SelectTrigger>
                   <SelectContent className="rounded-lg">
-                    <SelectItem value="grok" className="rounded-md">
-                      <div>
-                        <p>Grok (xAI)</p>
-                        <p className="text-xs text-slate-500">grok-4-fast — fast and capable</p>
-                      </div>
-                    </SelectItem>
-                    <SelectItem value="gemini-pro" className="rounded-md">
-                      <div>
-                        <p>Gemini-Pro(Google)</p>
-                        <p className="text-xs text-slate-500">gemini-3-pro — strong reasoning</p>
-                      </div>
-                    </SelectItem>
                     <SelectItem value="claude" className="rounded-md">
                       <div>
                         <p>Claude (Anthropic)</p>
-                        <p className="text-xs text-slate-500">claude-4.5-sonnet — strong agentic capabilities</p>
+                        <p className="text-xs text-slate-500">Haiku / Sonnet — strong reasoning</p>
                       </div>
                     </SelectItem>
-                    <SelectItem value="gemini-cheap" className="rounded-md">
+                    <SelectItem value="gemini" className="rounded-md">
                       <div>
-                        <p>Gemini-Cheap(Google)</p>
-                        <p className="text-xs text-slate-500">gemini-3-flash — fast and cheap</p>
+                        <p>Gemini (Google)</p>
+                        <p className="text-xs text-slate-500">Flash / Pro — fast and capable</p>
+                      </div>
+                    </SelectItem>
+                    <SelectItem value="openai" className="rounded-md">
+                      <div>
+                        <p>OpenAI (GPT)</p>
+                        <p className="text-xs text-slate-500">GPT-4o-mini / GPT-4o</p>
+                      </div>
+                    </SelectItem>
+                    <SelectItem value="grok" className="rounded-md">
+                      <div>
+                        <p>Grok (xAI)</p>
+                        <p className="text-xs text-slate-500">Turbo / Fast — fast and capable</p>
                       </div>
                     </SelectItem>
                   </SelectContent>
@@ -584,7 +584,7 @@ export function NewReportModal({ open, onOpenChange, projectName, onCreateReport
                     <span className="text-slate-900">{processingMode === "IMAGE_AND_TEXT" ? "Image & Text" : "Text Only"}</span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-slate-600">AI Model:</span>
+                    <span className="text-slate-600">AI Provider:</span>
                     <span className="text-slate-900 capitalize">{modelProvider}</span>
                   </div>
                   <div className="flex justify-between">
