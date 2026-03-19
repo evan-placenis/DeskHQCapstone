@@ -1,13 +1,13 @@
 // src/backend/src/Services/StatsService.ts
 
 import { SupabaseClient } from "@supabase/supabase-js";
-import { StatsRepository } from "../domain/interfaces/stats-repository";
+import { StatsRepository } from "./stats-repository";
 import {
     UserProductivityStats,
     ActiveSiteWorkItem,
     ActiveSiteWorkRawData,
     ActiveProjectRow,
-} from "../domain/stats/stats-types";
+} from "./domain-stats/stats-types";
 
 /**
  * StatsService - Orchestrates statistics retrieval.

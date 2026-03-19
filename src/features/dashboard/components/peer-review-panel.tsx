@@ -1,12 +1,12 @@
 "use client";
 
 import { useState } from "react";
-import { Button } from "../ui-components/button";
-import { Badge } from "../ui-components/badge";
-import { Textarea } from "../ui-components/textarea";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../ui-components/card";
-import { Avatar, AvatarFallback } from "../ui-components/avatar";
-import { Separator } from "../ui-components/separator";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Textarea } from "@/components/ui/textarea";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Separator } from "@/components/ui/separator";
 import { 
   UserCheck, 
   MessageSquare, 
@@ -15,7 +15,7 @@ import {
   Send, 
   AlertCircle 
 } from "lucide-react";
-import { PeerReviewComment } from "@/frontend/types";
+import { PeerReviewComment } from "@/lib/types";
 
 interface PeerReviewPanelProps {
   reviewerName: string;

@@ -96,7 +96,7 @@ export async function builderNode(state: typeof ObservationState.State) {
   // ==========================================
 
   // Repo-root skills/ — run Trigger from project root (see trigger.config.ts).
-  const skillsDir = path.join(process.cwd(), '..', '..', 'skills');
+  const skillsDir = path.join(process.cwd(), 'skills');
   const skillPathBase = path.join(skillsDir, 'technical-observations.md');
   const skillPathThinking = path.join(skillsDir, 'technical-observations-thinking.md');
   const skillPathExecution = path.join(skillsDir, 'technical-observations-execution.md');

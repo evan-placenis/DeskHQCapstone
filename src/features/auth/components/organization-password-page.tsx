@@ -2,10 +2,10 @@
 
 import { useState, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Button } from "@/frontend/pages/ui-components/button";
-import { Input } from "@/frontend/pages/ui-components/input";
-import { Label } from "@/frontend/pages/ui-components/label";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/frontend/pages/ui-components/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Cpu, Building2, ArrowLeft, CheckCircle2 } from "lucide-react";
 import { ROUTES } from "@/app/pages/config/routes";
 

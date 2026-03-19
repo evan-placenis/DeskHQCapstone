@@ -1,7 +1,7 @@
 import { useState } from "react";
-import { Button } from "../ui-components/button";
-import { Label } from "../ui-components/label";
-import { Checkbox } from "../ui-components/checkbox";
+import { Button } from "@/components/ui/button";
+import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
   DialogContent,
@@ -9,8 +9,8 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "../ui-components/dialog";
-import { Card } from "../ui-components/card";
+} from "@/components/ui/dialog";
+import { Card } from "@/components/ui/card";
 import { FileText, Download, CheckCircle2 } from "lucide-react";
 
 interface ExportModalProps {

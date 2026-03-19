@@ -1,6 +1,6 @@
 import { useState } from "react";
-import { Button } from "../ui-components/button";
-import { Textarea } from "../ui-components/textarea";
+import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
 import { Sparkles, X, Send } from "lucide-react";
 import { EditableText } from "./editable-text";
 

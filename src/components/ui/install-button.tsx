@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Button } from '@/frontend/pages/ui-components/button';
+import { Button } from '@/components/ui/button';
 import { Download } from 'lucide-react';
 
 /** Standard PWA install prompt event (Chrome, Edge, etc.) */

@@ -1,24 +1,24 @@
-import { AppHeader } from "./smart-components/app-header";
-import { NewProjectModal } from "./large-modal-components/new-project-modal";
+import { AppHeader } from "@/components/layouts/app-header";
+import { NewProjectModal } from "@/features/projects/components/new-project-modal";
 import { Page } from "@/app/pages/config/routes";
-import { Project, PeerReview, User, Report } from "@/frontend/types";
-import { Button } from "./ui-components/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "./ui-components/card";
-import { Badge } from "./ui-components/badge";
+import { Project, PeerReview, User, Report } from "@/lib/types";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "./ui-components/select";
+} from "@/components/ui/select";
 import { Plus, FolderOpen, Camera, FileText, Clock, ArrowRight, TrendingUp, CheckCircle2, AlertCircle, UserCheck, Edit3, Star, CalendarClock } from "lucide-react";
 import { useState, useMemo, useCallback } from "react";
-import { ProjectCard } from "./ui-components/project-card";
-import { ReportCard } from "./ui-components/report-card";
-import { UpcomingReviewCard } from "./report-editing-components/upcoming-review-card";
+import { ProjectCard } from "@/features/projects/components/project-card";
+import { ReportCard } from "@/features/reports/components/report-card";
+import { UpcomingReviewCard } from "./upcoming-review-card";
 import { useEffect } from "react";
-import { useDelete } from "@/frontend/pages/hooks/use-delete";
+import { useDelete } from "@/features/dashboard/components/use-delete";
 import { List } from "react-window";
 import { AutoSizer } from "react-virtualized-auto-sizer";
 

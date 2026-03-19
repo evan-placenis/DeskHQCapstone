@@ -1,9 +1,9 @@
 import { useEffect, useState } from "react";
-import { AppHeader } from "@/frontend/pages/smart-components/app-header";
+import { AppHeader } from "@/components/layouts/app-header";
 import { Page } from "@/app/pages/config/routes";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/frontend/pages/ui-components/card";
-import { Badge } from "@/frontend/pages/ui-components/badge";
-import { Progress } from "@/frontend/pages/ui-components/progress";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Progress } from "@/components/ui/progress";
 import {
   Calendar,
   Clock,

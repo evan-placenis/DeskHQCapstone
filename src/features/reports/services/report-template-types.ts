@@ -1,4 +1,4 @@
-import type { ReportTemplate } from "./index";
+import type { ReportTemplate } from "@/lib/types";
 import { ClipboardList } from "lucide-react";
 
 /** Section titles for the Observation Report template */

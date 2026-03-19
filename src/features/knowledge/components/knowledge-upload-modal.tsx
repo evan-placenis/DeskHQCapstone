@@ -1,23 +1,23 @@
 import { useState } from "react";
-import { Button } from "../ui-components/button";
-import { Input } from "../ui-components/input";
-import { Badge } from "../ui-components/badge";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
 import {
   Dialog,
   DialogContent,
   DialogDescription,
   DialogHeader,
   DialogTitle,
-} from "../ui-components/dialog";
+} from "@/components/ui/dialog";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "../ui-components/select";
+} from "@/components/ui/select";
 import { Upload, FileText, X, File, Plus } from "lucide-react";
-import { KnowledgeDocument } from "@/frontend/types";
+import { KnowledgeDocument } from "@/lib/types";
 
 interface KnowledgeUploadModalProps {
   open: boolean;

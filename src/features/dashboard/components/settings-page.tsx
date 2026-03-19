@@ -1,11 +1,11 @@
-import { AppHeader } from "@/frontend/pages/smart-components/app-header";
+import { AppHeader } from "@/components/layouts/app-header";
 import { Page } from "@/app/pages/config/routes";
-import { Card } from "@/frontend/pages/ui-components/card";
-import { Label } from "@/frontend/pages/ui-components/label";
-import { Switch } from "@/frontend/pages/ui-components/switch";
-import { Button } from "@/frontend/pages/ui-components/button";
-import { Input } from "@/frontend/pages/ui-components/input";
-import { Separator } from "@/frontend/pages/ui-components/separator";
+import { Card } from "@/components/ui/card";
+import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Separator } from "@/components/ui/separator";
 import {
   User,
   Bell,

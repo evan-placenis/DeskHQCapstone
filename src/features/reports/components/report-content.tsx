@@ -2,25 +2,25 @@
 
 import ReactMarkdown from 'react-markdown';
 import { useState } from "react";
-import { Button } from "../ui-components/button";
-import { Card } from "../ui-components/card";
-import { Badge } from "../ui-components/badge";
-import { Separator } from "../ui-components/separator";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Separator } from "@/components/ui/separator";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "../ui-components/select";
-import { EditableText } from "../smart-components/editable-text";
-import { RewritableText } from "../smart-components/rewritable-text";
-import { HighlightableText } from "../smart-components/highlightable-text";
-import { PeerReviewPanel } from "../smart-components/peer-review-panel";
-import { ImageWithFallback } from "../figma/image-with-fallback";
-import { SecureImage } from "../smart-components/secure-image";
-import { TiptapEditor, type TiptapEditorHandle } from "../smart-components/tiptap-editor";
-import { PeerReview, ReportContent as ReportContentType } from "@/frontend/types";
+} from "@/components/ui/select";
+import { EditableText } from "./editable-text";
+import { RewritableText } from "./rewritable-text";
+import { HighlightableText } from "./highlightable-text";
+import { PeerReviewPanel } from "@/features/dashboard/components/peer-review-panel";
+import { ImageWithFallback } from "@/components/ui/image-with-fallback";
+import { SecureImage } from "@/components/ui/secure-image";
+import { TiptapEditor, type TiptapEditorHandle } from "./tiptap-editor";
+import { PeerReview, ReportContent as ReportContentType } from "@/lib/types";
 import {
   ArrowLeft,
   Download,
@@ -108,7 +108,7 @@ interface ReportContentProps {
   /** Ref to Tiptap editor for client-context AI edit (selection + surrounding) */
   editorRef?: React.RefObject<TiptapEditorHandle | null>;
   /** Called when selection changes in Tiptap (to pin selection when user blurs to chat) */
-  onSelectionChange?: (context: import("../smart-components/tiptap-editor").SelectionContext | null) => void;
+  onSelectionChange?: (context: import("./tiptap-editor").SelectionContext | null) => void;
   /** When user has pinned selection (e.g. selected then clicked into chat), show persistent highlight at this range */
   pinnedSelectionRange?: { from: number; to: number } | null;
 }

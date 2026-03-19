@@ -3,14 +3,14 @@
 import { useCallback } from "react";
 import { Grid } from "react-window";
 import { AutoSizer } from "react-virtualized-auto-sizer";
-import { Badge } from "../ui-components/badge";
-import { Button } from "../ui-components/button";
-import { SecureImage } from "./secure-image";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { SecureImage } from "@/components/ui/secure-image";
 import {
   Collapsible,
   CollapsibleContent,
   CollapsibleTrigger,
-} from "../ui-components/collapsible";
+} from "@/components/ui/collapsible";
 import {
   Calendar,
   Eye,
@@ -20,7 +20,7 @@ import {
   Check,
   Volume2
 } from "lucide-react";
-import { Photo, PhotoFolder } from "@/frontend/types";
+import { Photo, PhotoFolder } from "@/lib/types";
 
 const VIRTUALIZE_THRESHOLD = 24;//24;
 const GAP = 8;

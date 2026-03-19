@@ -1,5 +1,5 @@
 "use client";
-import { AudioTimelinePage } from "@/frontend/pages/audio-timeline-page";
+import { AudioTimelinePage } from "@/features/audio/components/audio-timeline-page";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Page } from "@/app/pages/config/routes";
 import { ROUTES, getRoute } from "@/app/pages/config/routes";

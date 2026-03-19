@@ -1,8 +1,8 @@
 "use client";
 
-import { Button } from "@/frontend/pages/ui-components/button";
-import { Avatar, AvatarFallback } from "@/frontend/pages/ui-components/avatar";
-import { Badge } from "@/frontend/pages/ui-components/badge";
+import { Button } from "@/components/ui/button";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Badge } from "@/components/ui/badge";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -10,14 +10,14 @@ import {
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-} from "@/frontend/pages/ui-components/dropdown-menu";
-import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription, SheetTrigger } from "@/frontend/pages/ui-components/sheet";
+} from "@/components/ui/dropdown-menu";
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription, SheetTrigger } from "@/components/ui/sheet";
 import { Page } from "@/app/pages/config/routes";
-import { User } from "@/frontend/types";
+import { User } from "@/lib/types";
 import { Cpu, Settings, LogOut, BarChart3, Home, Shield, UserCog, Wrench, Menu, Activity } from "lucide-react";
 import { useState } from "react";
 import { MobileBottomNav } from "./mobile-bottom-nav";
-import InstallButton from "@/frontend/lib/install-button";
+import InstallButton from "@/components/ui/install-button";
 
 interface AppHeaderProps {
   currentPage: Page;

@@ -1,5 +1,5 @@
-import { ProjectRepository } from "../domain/interfaces/project-repository";
-import { Project } from "../domain/core/project-types";
+import { ProjectRepository } from "./project-repository";
+import { Project } from "./project-types";
 import { SupabaseClient } from "@supabase/supabase-js";
 import { v4 as uuidv4 } from 'uuid';
 

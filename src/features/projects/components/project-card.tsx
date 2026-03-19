@@ -1,4 +1,4 @@
-import { Project } from "@/frontend/types";
+import { Project } from "@/lib/types";
 import { FolderOpen, Camera, FileText, ArrowRight, Clock, CheckCircle2, Trash2 , Lightbulb} from "lucide-react";
 import {
   Select,
@@ -6,8 +6,8 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "./select";
-import { Button } from "./button";
+} from "@/components/ui/select";
+import { Button } from "@/components/ui/button";
 
 interface ProjectCardProps {
   project: Project;

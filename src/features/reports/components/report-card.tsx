@@ -1,6 +1,6 @@
-import { Badge } from "./badge";
+import { Badge } from "@/components/ui/badge";
 import { Clock, ArrowRight, FileText } from "lucide-react";
-import { Report } from "@/frontend/types";
+import { Report } from "@/lib/types";
 
 interface ReportCardProps {
   report: Report;

@@ -1,24 +1,24 @@
 import { useState } from "react";
-import { Button } from "../ui-components/button";
-import { Input } from "../ui-components/input";
-import { Badge } from "../ui-components/badge";
-import { Checkbox } from "../ui-components/checkbox";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
   DialogContent,
   DialogDescription,
   DialogHeader,
   DialogTitle,
-} from "../ui-components/dialog";
+} from "@/components/ui/dialog";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "../ui-components/select";
+} from "@/components/ui/select";
 import { Upload, X, Image as ImageIcon, FolderPlus, Music } from "lucide-react";
-import { PhotoFolder } from "@/frontend/types";
+import { PhotoFolder } from "@/lib/types";
 
 interface PhotoUploadModalProps {
   open: boolean;

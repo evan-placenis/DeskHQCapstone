@@ -1,7 +1,7 @@
 import { CaptureOrchestrator } from '@/features/ai/orchestrators/capture-orchestrator';
-import { CaptureSessionRepository } from "../domain/interfaces/capture-session-repository";
-import { ProjectService } from "./project-service";
-import { StorageService } from "./storage-service";
+import { CaptureSessionRepository } from "./capture-session-repository";
+import { ProjectService } from "@/features/projects/services/project-service";
+import { StorageService } from "@/features/projects/services/storage-service";
 import { SupabaseClient } from '@supabase/supabase-js';
 import { v4 as uuidv4 } from 'uuid';
 

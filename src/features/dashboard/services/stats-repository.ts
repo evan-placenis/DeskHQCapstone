@@ -6,7 +6,7 @@ import {
     GetUserStatsParams,
     GetActiveSiteWorkParams,
     ActiveSiteWorkRawData,
-} from "../stats/stats-types";
+} from "./domain-stats/stats-types";
 
 /**
  * Repository interface for statistics queries.

@@ -1,4 +1,4 @@
-import { KnowledgeItem } from "../knowledge/rag-types";
+import { KnowledgeItem } from "./domain-knowledge/rag-types";
 import { SupabaseClient } from "@supabase/supabase-js";
 
 export interface KnowledgeRepository {

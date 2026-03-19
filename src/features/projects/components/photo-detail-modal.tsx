@@ -1,16 +1,16 @@
 import { useState } from "react";
-import { Button } from "../ui-components/button";
-import { Textarea } from "../ui-components/textarea";
-import { Badge } from "../ui-components/badge";
+import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
+import { Badge } from "@/components/ui/badge";
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
   DialogDescription,
-} from "../ui-components/dialog";
-import { SecureImage } from "../smart-components/secure-image";
-import { Photo } from "@/frontend/types"; // Import shared Photo type
+} from "@/components/ui/dialog";
+import { SecureImage } from "@/components/ui/secure-image";
+import { Photo } from "@/lib/types"; // Import shared Photo type
 import {
   Calendar,
   MapPin,

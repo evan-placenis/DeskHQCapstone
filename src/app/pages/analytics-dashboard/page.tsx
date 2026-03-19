@@ -1,4 +1,4 @@
-import { AnalyticsDashboard } from "@/frontend/pages/analytics-dashboard";
+import { AnalyticsDashboard } from "@/features/dashboard/components/analytics-dashboard";
 
 export default function Page() {
   return <AnalyticsDashboard />;

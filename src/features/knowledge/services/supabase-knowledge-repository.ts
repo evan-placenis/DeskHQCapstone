@@ -1,6 +1,6 @@
 import { SupabaseClient } from '@supabase/supabase-js';
-import { KnowledgeRepository } from '../../../domain/interfaces/knowledge-repository';
-import { KnowledgeItem } from '../../../domain/knowledge/rag-types';
+import { KnowledgeRepository } from "./knowledge-repository";
+import { KnowledgeItem } from "./domain-knowledge/rag-types";
 
 export class SupabaseKnowledgeRepository implements KnowledgeRepository {
     

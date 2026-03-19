@@ -1,12 +1,12 @@
 // import { useState } from "react";
 // import { AppHeader } from "./smart-components/app-header";
 // import { Page } from "@/app/pages/config/routes";
-// import { Button } from "./ui-components/button";
-// import { Input } from "./ui-components/input";
-// import { Badge } from "./ui-components/badge";
-// import { Card } from "./ui-components/card";
-// import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui-components/select";
-// import { Tabs, TabsList, TabsTrigger } from "./ui-components/tabs";
+// import { Button } from "@/components/ui/button";
+// import { Input } from "@/components/ui/input";
+// import { Badge } from "@/components/ui/badge";
+// import { Card } from "@/components/ui/card";
+// import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+// import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 // import { ImageWithFallback } from "./figma/image-with-fallback";
 // import {
 //   Upload,

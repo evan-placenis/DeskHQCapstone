@@ -1,7 +1,7 @@
 "use client";
-import { CapturePage } from "@/frontend/pages/capture-page";
+import { CapturePage } from "@/features/capture/components/capture-page";
 import { useRouter } from "next/navigation";
-import { Project } from "@/frontend/types";
+import { Project } from "@/lib/types";
 import { ROUTES } from "@/app/pages/config/routes";
 
 export default function Capture() {

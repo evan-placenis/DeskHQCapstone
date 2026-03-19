@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { supabase } from '@/frontend/lib/supabase-client';
+import { supabase } from '@/lib/supabase-browser-client';
 
 /**
  * Custom hook for subscribing to report generation streaming via Supabase Realtime

@@ -1,17 +1,17 @@
 import { useState, useEffect, useRef } from "react";
 import { Camera, X, Mic, Square, Trash2, Search, Plus, Send, Upload } from "lucide-react";
-import { Button } from "@/frontend/pages/ui-components/button";
-import { Input } from "@/frontend/pages/ui-components/input";
-import { Card } from "@/frontend/pages/ui-components/card";
-import { Badge } from "@/frontend/pages/ui-components/badge";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Card } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 import {
   Dialog,
   DialogContent,
   DialogDescription,
   DialogHeader,
   DialogTitle,
-} from "@/frontend/pages/ui-components/dialog";
-import { Project } from "@/frontend/types";
+} from "@/components/ui/dialog";
+import { Project } from "@/lib/types";
 
 interface CapturePageProps {
   onClose: () => void;

@@ -1,8 +1,8 @@
-import { ChatRepository } from "../domain/interfaces/chat-repository";
+import { ChatRepository } from "./chat-repository";
 import { ChatOrchestrator } from "@/features/ai/orchestrators/chat-orchestrator";
-import { ChatSession, ChatMessage } from "../domain/chat/chat-types";
+import { ChatSession, ChatMessage } from "./domain-chat/chat-types";
 import { v4 as uuidv4 } from 'uuid';
-import { ReportService } from "./report-service";
+import { ReportService } from "@/features/reports/services/report-service";
 import { SupabaseClient } from "@supabase/supabase-js";
 
 /**

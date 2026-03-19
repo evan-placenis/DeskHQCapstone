@@ -1,12 +1,12 @@
 import { useState } from "react";
-import { Button } from "../ui-components/button";
-import { Input } from "../ui-components/input";
-import { Label } from "../ui-components/label";
-import { Textarea } from "../ui-components/textarea";
-import { Badge } from "../ui-components/badge";
-import { ScrollArea } from "../ui-components/scroll-area";
-import { Checkbox } from "../ui-components/checkbox";
-import { RadioGroup, RadioGroupItem } from "../ui-components/radio-group";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { Badge } from "@/components/ui/badge";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Checkbox } from "@/components/ui/checkbox";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import {
   Dialog,
   DialogContent,
@@ -14,19 +14,19 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "../ui-components/dialog";
+} from "@/components/ui/dialog";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "../ui-components/select";
-import { Separator } from "../ui-components/separator";
-import { PhotoFolderView } from "../smart-components/photo-folder-view";
-import { Photo, PhotoFolder, ReportTemplate } from "@/frontend/types";
-import { REPORT_TEMPLATES } from "@/frontend/types/report-template-types";
-import { EditorSection } from "@/frontend/types";
+} from "@/components/ui/select";
+import { Separator } from "@/components/ui/separator";
+import { PhotoFolderView } from "@/features/projects/components/photo-folder-view";
+import { Photo, PhotoFolder, ReportTemplate } from "@/lib/types";
+import { REPORT_TEMPLATES } from "@/features/reports/services/report-template-types";
+import { EditorSection } from "@/lib/types";
 import {
   ChevronRight,
   ChevronLeft,
@@ -46,7 +46,7 @@ import {
 } from "lucide-react";
 
 
-import { ReportStructureEditor } from '../smart-components/report-structure-editor';
+import { ReportStructureEditor } from "./report-structure-editor";
 
 
 interface NewReportModalProps {

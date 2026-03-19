@@ -1,14 +1,13 @@
 // ... imports
-import { DocumentStrategyFactory } from '../document-strategies/factory/document-factory';
+import { DocumentStrategyFactory } from "./document-strategies/factory/document-factory";
 import { SupabaseClient } from '@supabase/supabase-js';
 import { v4 as uuidv4 } from 'uuid';
-import { KnowledgeRepository } from '../domain/interfaces/knowledge-repository';
-import { VectorStore } from '../domain/interfaces/vector-store';
-import { DocumentChunk, KnowledgeItem, VectorMetadata } from '../domain/knowledge/rag-types';
-import { StorageService } from './storage-service';
-import { file } from 'zod';
+import { KnowledgeRepository } from './knowledge-repository';
+import { VectorStore } from './vector-store';
+import { DocumentChunk, KnowledgeItem, VectorMetadata } from './domain-knowledge/rag-types';
+import { StorageService } from "@/features/projects/services/storage-service";
 
-export type { VectorMetadata } from '../domain/knowledge/rag-types';
+export type { VectorMetadata } from "./domain-knowledge/rag-types";
 
 export interface SearchResult {
     source: string;

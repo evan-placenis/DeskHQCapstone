@@ -1,11 +1,11 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import { Button } from "../ui-components/button";
-import { Textarea } from "../ui-components/textarea";
-import { Badge } from "../ui-components/badge";
+import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
+import { Badge } from "@/components/ui/badge";
 import { MessageSquare, AlertCircle, X, Edit } from "lucide-react";
-import { PeerReviewComment } from "@/frontend/types";
+import { PeerReviewComment } from "@/lib/types";
 
 interface Highlight {
   id: number;

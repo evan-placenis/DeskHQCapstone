@@ -1,6 +1,6 @@
-import { Badge } from "../ui-components/badge";
+import { Badge } from "@/components/ui/badge";
 import { CalendarClock } from "lucide-react";
-import { UpcomingReview } from "@/frontend/types";
+import { UpcomingReview } from "@/lib/types";
 
 interface UpcomingReviewCardProps {
   review: UpcomingReview;

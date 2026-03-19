@@ -1,5 +1,5 @@
 import { SupabaseClient } from '@supabase/supabase-js';
-import { User, UserRole } from '../domain/core/user-types';
+import { User, UserRole } from "./user-types";
 
 export class UserService {
     constructor(private supabaseAdmin: SupabaseClient) {}

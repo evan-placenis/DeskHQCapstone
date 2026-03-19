@@ -1,13 +1,13 @@
 import { useState, useRef, useEffect } from "react";
-import { Button } from "../ui-components/button";
-import { cn } from "../ui-components/utils";
+import { Button } from "@/components/ui/button";
+import { cn } from "@/components/ui/utils";
 import { Send, Mic, MicOff, Plus, Paperclip } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-} from "../ui-components/dropdown-menu";
+} from "@/components/ui/dropdown-menu";
 
 interface AIChatInputProps {
   onSendMessage: (message: string) => void;

@@ -3,18 +3,18 @@
 import { useState, Suspense, useEffect, useCallback, useRef, memo } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/app/context/auth-context";
-import { AppHeader } from "@/frontend/pages/smart-components/app-header";
+import { AppHeader } from "@/components/layouts/app-header";
 import { Page } from "@/app/pages/config/routes";
-import { Project, PeerReview, ReportContent, Photo } from "@/frontend/types";
-import { RequestPeerReviewModal } from "@/frontend/pages/large-modal-components/request-peer-review-modal";
-import { RatingModal } from "@/frontend/pages/large-modal-components/rating-modal";
-import PlanApprovalModal from "@/frontend/pages/large-modal-components/plan-approval-modal";
-import { ReportLayout } from "@/frontend/pages/report-editing-components/report-layout";
+import { Project, PeerReview, ReportContent, Photo } from "@/lib/types";
+import { RequestPeerReviewModal } from "@/features/reports/components/request-peer-review-modal";
+import { RatingModal } from "@/features/reports/components/rating-modal";
+import PlanApprovalModal from "@/features/reports/components/plan-approval-modal";
+import { ReportLayout } from "@/features/reports/components/report-layout";
 import { ROUTES, getRoute } from "@/app/pages/config/routes";
-import { supabase } from "@/frontend/lib/supabase-client";
+import { supabase } from "@/lib/supabase-browser-client";
 import { Loader2, FileText, CheckCircle2 } from "lucide-react";
-import { Card, CardContent } from "@/frontend/pages/ui-components/card";
-import { useReportStreaming } from "@/frontend/pages/hooks/use-report-streaming";
+import { Card, CardContent } from "@/components/ui/card";
+import { useReportStreaming } from "@/features/reports/components/use-report-streaming";
 
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';

@@ -1,9 +1,9 @@
 import { useState } from "react";
-import { AppHeader } from "./smart-components/app-header";
+import { AppHeader } from "@/components/layouts/app-header";
 import { Page } from "@/app/pages/config/routes";
-import { ReportLayout } from "./report-editing-components/report-layout";
-import { ExportModal } from "./large-modal-components/export-modal";
-import { ReportContent } from "@/frontend/types";
+import { ReportLayout } from "./report-layout";
+import { ExportModal } from "./export-modal";
+import { ReportContent } from "@/lib/types";
 
 interface ReportEditorPageProps {
   onNavigate: (page: Page) => void;

@@ -55,7 +55,7 @@ export async function synthesisBuilderNode(state: typeof ObservationState.State)
 
 
   // Repo-root skills/ — run Trigger from project root (see trigger.config.ts).
-  const skillsDir = path.join(process.cwd(), '..', '..', 'skills');
+  const skillsDir = path.join(process.cwd(), 'skills');
   const skillPath = path.join(skillsDir, 'summarize.md');
   let summarizeSkill = fs.readFileSync(skillPath, 'utf-8');
   const exampleReport = fs.readFileSync(path.join(skillsDir, 'example-report.md'), 'utf-8');

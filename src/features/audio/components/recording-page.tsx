@@ -1,15 +1,15 @@
 import { useState, useEffect, useRef } from "react";
 import { Mic, Square, Check, X, ChevronRight } from "lucide-react";
-import { Button } from "./ui-components/button";
-import { Card } from "./ui-components/card";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
 import {
   Dialog,
   DialogContent,
   DialogDescription,
   DialogHeader,
   DialogTitle,
-} from "./ui-components/dialog";
-import { Project } from "@/frontend/types";
+} from "@/components/ui/dialog";
+import { Project } from "@/lib/types";
 
 interface RecordingPageProps {
   onClose: () => void;

@@ -1,7 +1,7 @@
 import { useState } from "react";
-import { Button } from "../ui-components/button";
-import { Textarea } from "../ui-components/textarea";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "../ui-components/dialog";
+import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Star, CheckCircle2 } from "lucide-react";
 
 interface RatingModalProps {

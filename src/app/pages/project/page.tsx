@@ -1,9 +1,9 @@
 "use client";
 import { useState, useEffect } from "react";
-import { ProjectDetailPage } from "@/frontend/pages/project-detail-page";
+import { ProjectDetailPage } from "@/features/projects/components/project-detail-page";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Page } from "@/app/pages/config/routes";
-import { Project } from "@/frontend/types";
+import { Project } from "@/lib/types";
 import { ROUTES, getRoute } from "@/app/pages/config/routes";
 
 export default function ProjectDetail() {

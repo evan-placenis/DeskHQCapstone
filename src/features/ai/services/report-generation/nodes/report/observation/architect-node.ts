@@ -28,7 +28,7 @@ export async function architectNode(state: typeof ObservationState.State) {
   } = state;
   // 1. LOAD THE STATIC SKILLS
   // Repo-root skills/ — run Trigger from project root (see trigger.config.ts).
-  const skillsDir = path.join(process.cwd(), '..', '..', 'skills');
+  const skillsDir = path.join(process.cwd(), 'skills');
   const skillPathBase = path.join(skillsDir, 'architect-planning.md');
   const skillPathThinking = path.join(skillsDir, 'architect-planning-thinking.md');
   const skillPathExecution = path.join(skillsDir, 'architect-planning-execution.md');

@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 
-import { supabase } from "@/frontend/lib/supabase-client";
+import { supabase } from "@/lib/supabase-browser-client";
 
 export const useSignedUrl = (
   storagePath: string | null | undefined, // Allow null so we can wait for data

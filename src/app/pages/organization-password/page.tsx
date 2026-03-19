@@ -1,4 +1,4 @@
-import { OrganizationPasswordPage } from "@/frontend/pages/organization-password-page";
+import { OrganizationPasswordPage } from "@/features/auth/components/organization-password-page";
 
 export default function Page() {
   return <OrganizationPasswordPage />;

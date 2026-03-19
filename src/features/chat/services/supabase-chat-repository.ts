@@ -1,6 +1,6 @@
 import { SupabaseClient } from '@supabase/supabase-js';
-import { ChatRepository } from '../../../domain/interfaces/chat-repository';
-import { ChatSession, ChatMessage } from '../../../domain/chat/chat-types';
+import { ChatRepository } from "./chat-repository";
+import { ChatSession, ChatMessage } from "./domain-chat/chat-types";
 
 export class SupabaseChatRepository implements ChatRepository {
     

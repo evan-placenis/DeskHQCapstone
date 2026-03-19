@@ -1,6 +1,6 @@
 import { SupabaseClient } from '@supabase/supabase-js';
 import { v4 as uuidv4 } from 'uuid';
-import { SpecImageRecord } from '../domain/storage/spec';
+import { SpecImageRecord } from "./storage-spec";
 import * as tus from 'tus-js-client';
 
 export class StorageService {

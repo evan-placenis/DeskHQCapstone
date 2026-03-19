@@ -1,7 +1,7 @@
 "use client";
 
-import { useSignedUrl } from "../hooks/use-signed-url";
-import { ImageWithFallback } from "../figma/image-with-fallback";
+import { useSignedUrl } from "@/features/projects/components/use-signed-url";
+import { ImageWithFallback } from "@/components/ui/image-with-fallback";
 import { Loader2 } from "lucide-react";
 
 interface SecureImageProps extends React.ImgHTMLAttributes<HTMLImageElement> {

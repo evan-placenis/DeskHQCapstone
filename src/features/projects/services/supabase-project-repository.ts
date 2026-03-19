@@ -1,6 +1,6 @@
 import { SupabaseClient } from '@supabase/supabase-js';
-import { ProjectRepository } from '../../../domain/interfaces/project-repository';
-import { Project, ProjectMetadata, JobInfoSheet } from '../../../domain/core/project-types'; // Verify path
+import { ProjectRepository } from "./project-repository";
+import { Project, ProjectMetadata, JobInfoSheet } from "./project-types";
 
 export class SupabaseProjectRepository implements ProjectRepository {
 
