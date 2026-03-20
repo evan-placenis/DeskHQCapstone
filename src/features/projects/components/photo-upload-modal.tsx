@@ -19,12 +19,31 @@ import {
 } from "@/components/ui/select";
 import { Upload, X, Image as ImageIcon, FolderPlus, Music } from "lucide-react";
 import { PhotoFolder } from "@/lib/types";
+import {
+  AI_SDK_CHAT_PROVIDERS,
+  DEFAULT_AI_SDK_CHAT_PROVIDER,
+  type AiSdkChatProvider,
+} from "@/lib/ai-providers";
+
+const MODEL_LABELS: Record<AiSdkChatProvider, string> = {
+  grok: "Grok",
+  "gemini-pro": "Gemini Pro",
+  "gemini-flash": "Gemini Flash",
+  "gemini-lite": "Gemini Lite",
+  claude: "Claude",
+};
 
 interface PhotoUploadModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   existingFolders: PhotoFolder[];
-  onUpload: (files: File[], folderId: number, folderName?: string, useFileNameAsDescription?: boolean) => void;
+  onUpload: (
+    files: File[],
+    folderId: number,
+    folderName?: string,
+    useFileNameAsDescription?: boolean,
+    provider?: AiSdkChatProvider
+  ) => void;
 }
 
 export function PhotoUploadModal({ 
@@ -41,6 +60,7 @@ export function PhotoUploadModal({
   const [isDragging, setIsDragging] = useState(false);
   const [isAudioDragging, setIsAudioDragging] = useState(false);
   const [useFileNameAsDescription, setUseFileNameAsDescription] = useState(true);
+  const [analysisProvider, setAnalysisProvider] = useState<AiSdkChatProvider>(DEFAULT_AI_SDK_CHAT_PROVIDER);
 
   // Auto-generate folder name with today's date
   const generateFolderName = () => {
@@ -130,7 +150,7 @@ export function PhotoUploadModal({
     // TODO: In production, handle audio files upload separately
     console.log("Audio files to upload:", selectedAudioFiles);
 
-    onUpload(selectedFiles, folderId, folderName, useFileNameAsDescription);
+    onUpload(selectedFiles, folderId, folderName, useFileNameAsDescription, analysisProvider);
 
     // Reset form
     setSelectedFiles([]);
@@ -218,6 +238,29 @@ export function PhotoUploadModal({
                 </Select>
               </div>
             )}
+          </div>
+
+          {/* AI Model for Analysis (Dev) */}
+          <div className="min-w-0">
+            <label className="text-sm text-slate-700 mb-2 block">AI Model for Analysis</label>
+            <Select
+              value={analysisProvider}
+              onValueChange={(v) => setAnalysisProvider(v as AiSdkChatProvider)}
+            >
+              <SelectTrigger className="rounded-lg">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent className="rounded-lg">
+                {AI_SDK_CHAT_PROVIDERS.map((p) => (
+                  <SelectItem key={p} value={p} className="rounded-md">
+                    {MODEL_LABELS[p]}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-slate-500 mt-1">
+              Select which model analyzes the uploaded photos
+            </p>
           </div>
 
           {/* File Upload Area */}

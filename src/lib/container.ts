@@ -23,8 +23,8 @@ import { PhotoService } from "@/features/projects/services/photo-service";
 import { StatsService } from "@/features/dashboard/services/stats-service";
 import Exa from "exa-js";
 
-import { SpecAgent } from "@/features/ai/services/llm/vision-agent/spec-agent";
-import { SitePhotoAgent } from "@/features/ai/services/llm/vision-agent/site-photo-agent";
+import { SpecAgent } from "@/features/ai/services/vision/spec-drawing-analysis";
+import { SitePhotoAgent } from "@/features/ai/services/vision/site-photo-analysis";
 
 import { TriggerJobQueue } from "@/features/reports/services/trigger/trigger-job-queue";
 import { createClient, SupabaseClient } from "@supabase/supabase-js";

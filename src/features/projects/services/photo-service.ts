@@ -1,6 +1,8 @@
 import { SupabaseClient } from '@supabase/supabase-js';
 import { Container } from "@/lib/container";
-import { VisionRequest } from "@/features/ai/services/llm/interfaces";
+import { VisionRequest } from "@/src/features/ai/services/vision/interfaces";
+import type { AiSdkChatProvider } from "@/lib/ai-providers";
+import { DEFAULT_AI_SDK_CHAT_PROVIDER } from "@/lib/ai-providers";
 
 /**
  * Service for processing photos with AI vision analysis.
@@ -14,7 +16,8 @@ export class PhotoService { //turn into a strategy pattern later for better flex
      */
     async analyzePhotos(
         images: Array<{ id: string; url: string }>,
-        client: SupabaseClient
+        client: SupabaseClient,
+        provider?: AiSdkChatProvider
     ): Promise<void> {
         if (images.length === 0) return;
 
@@ -76,16 +79,24 @@ export class PhotoService { //turn into a strategy pattern later for better flex
             }
 
             // 3. Run AI Analysis (The Agent handles concurrency internally)
-            const analyses = await Container.sitePhotoAgent.analyzeBatch(validRequests);
+            const analyses = await Container.sitePhotoAgent.analyzeBatch(
+                validRequests,
+                undefined,
+                provider ?? DEFAULT_AI_SDK_CHAT_PROVIDER
+            );
 
             // 4. Update Database in Parallel
             // We use Promise.all to blast updates to Supabase simultaneously 
             // instead of waiting for one to finish before starting the next.
-            const updatePromises = analyses.map(async (analysis) => {
+            const updatePromises = analyses.map(async (analysis: any) => {
+                const aiDescription = analysis.reasoning
+                    ? `${analysis.description}\n\n## Reasoning\n${analysis.reasoning}`
+                    : analysis.description;
+
                 const { error: updateError } = await client
                     .from('project_images')
                     .update({
-                        ai_description: analysis.description,
+                        ai_description: aiDescription,
                         tags: analysis.tags,
                         severity: analysis.severity
                     })

@@ -1,6 +1,6 @@
 import { SupabaseClient } from '@supabase/supabase-js';
 import { EditOrchestrator } from '@/features/ai/orchestrators/edit-orchestrator';
-import type { HeliconeContextInput } from "@/features/ai/services/gateway/helicone-context-builder";
+import type { HeliconeContextInput } from "@/src/features/ai/services/models/gateway/helicone-context-builder";
 import { normalizeAiSdkChatProvider } from "@/lib/ai-providers";
 
 export class ReportNotFoundError extends Error {

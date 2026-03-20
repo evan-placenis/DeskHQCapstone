@@ -14,7 +14,7 @@ import { getWorkflow } from "@/features/ai/services/report-generation/workflow";
 import { HumanMessage, SystemMessage } from "@langchain/core/messages";
 import { StreamingAdapter } from "@/features/ai/services/report-generation/utils/streaming-adapter";
 import { getFlattenedTasks } from "@/features/ai/services/report-generation/nodes/report/observation/builder-node";
-import { HeliconeContextBuilder, type HeliconeContextInput } from "@/features/ai/services/gateway/helicone-context-builder";
+import { HeliconeContextBuilder, type HeliconeContextInput } from "@/src/features/ai/services/models/gateway/helicone-context-builder";
 
 // Load .env from cwd (repo root when you run Trigger from the project)
 const envPaths = [

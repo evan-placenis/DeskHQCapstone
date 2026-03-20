@@ -259,7 +259,8 @@ export function AIChatSidebar({
   const modelLabel: Record<AiSdkChatProvider, string> = {
     grok: 'Grok',
     'gemini-pro': 'Gemini Pro',
-    'gemini-cheap': 'Gemini (fast)',
+    'gemini-flash': 'Gemini Flash',
+    'gemini-lite': 'Gemini Lite',
     claude: 'Claude',
   };
 
@@ -651,7 +652,8 @@ export function AIChatSidebar({
                   <DropdownMenuContent align="end" className="min-w-[140px]">
                     <DropdownMenuItem onClick={() => setChatProvider('grok')}>Grok (xAI)</DropdownMenuItem>
                     <DropdownMenuItem onClick={() => setChatProvider('gemini-pro')}>Gemini Pro</DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => setChatProvider('gemini-cheap')}>Gemini (fast)</DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => setChatProvider('gemini-flash')}>Gemini Flash</DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => setChatProvider('gemini-lite')}>Gemini Lite</DropdownMenuItem>
                     <DropdownMenuItem onClick={() => setChatProvider('claude')}>Claude</DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>

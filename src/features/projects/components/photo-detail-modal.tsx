@@ -76,7 +76,7 @@ export function PhotoDetailModal({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[900px] h-[85vh] rounded-xl p-0 flex flex-col overflow-hidden">
+      <DialogContent className="sm:max-w-[1200px] w-[95vw] h-[90vh] rounded-xl p-0 flex flex-col overflow-hidden">
         <DialogHeader className="px-6 pt-6 pb-4 flex-shrink-0 border-b border-slate-200">
           <div className="flex items-center justify-between">
             <DialogTitle>{photo.name}</DialogTitle>
@@ -117,7 +117,7 @@ export function PhotoDetailModal({
 
         <div className="flex-1 min-h-0 overflow-hidden flex">
           {/* Left side - Image */}
-          <div className="flex-1 bg-slate-900 flex items-center justify-center p-6">
+          <div className="flex-1 min-w-0 bg-slate-900 flex items-center justify-center p-6">
             <div className="max-w-full max-h-full">
               <SecureImage
                 src={photo.url}
@@ -128,33 +128,45 @@ export function PhotoDetailModal({
             </div>
           </div>
 
-          {/* Right side - Details and Description */}
-          <div className="w-[400px] bg-white border-l border-slate-200 flex flex-col">
-            {/* Photo metadata */}
-            <div className="p-6 border-b border-slate-200 flex-shrink-0">
-              <h3 className="text-slate-900 mb-4">Photo Details</h3>
-              <div className="space-y-3">
-                <div className="flex items-start gap-3">
-                  <Calendar className="w-4 h-4 text-slate-400 mt-0.5" />
+          {/* Right side - Details and Descriptions (single scrollable column) */}
+          <div className="w-[480px] min-w-[400px] bg-white border-l border-slate-200 flex flex-col overflow-hidden">
+            {/* Single scrollable content area - Photo Details + AI Analysis + Description */}
+            <div className="flex-1 overflow-y-auto p-6">
+              {/* Photo metadata - compact inline row */}
+              <div className="flex items-center gap-6 mb-6 pb-4 border-b border-slate-200">
+                <div className="flex items-center gap-2">
+                  <Calendar className="w-4 h-4 text-slate-400" />
                   <div>
-                    <p className="text-xs text-slate-500">Date Captured</p>
-                    <p className="text-sm text-slate-900">{photo.date}</p>
+                    <p className="text-xs text-slate-500">Date</p>
+                    <p className="text-sm font-medium text-slate-900">{photo.date}</p>
                   </div>
                 </div>
-                <div className="flex items-start gap-3">
-                  <MapPin className="w-4 h-4 text-slate-400 mt-0.5" />
+                <div className="flex items-center gap-2">
+                  <MapPin className="w-4 h-4 text-slate-400" />
                   <div>
                     <p className="text-xs text-slate-500">Location</p>
-                    <p className="text-sm text-slate-900">{photo.location}</p>
+                    <p className="text-sm font-medium text-slate-900">{photo.location}</p>
                   </div>
                 </div>
               </div>
-            </div>
 
-            {/* Description editor */}
-            <div className="flex-1 flex flex-col p-6 overflow-hidden">
-              <div className="flex items-center justify-between mb-3">
-                <h3 className="text-slate-900">Description</h3>
+              {/* AI Analysis (read-only) */}
+              {photo.ai_description && (
+                <div className="mb-6">
+                  <h3 className="text-slate-900 mb-2 flex items-center gap-2 font-medium">
+                    <Sparkles className="w-4 h-4 text-theme-primary" />
+                    AI Analysis
+                  </h3>
+                  <div className="text-sm text-slate-600 leading-relaxed whitespace-pre-wrap">
+                    {photo.ai_description}
+                  </div>
+                </div>
+              )}
+
+              {/* Description editor */}
+              <div className="flex flex-col">
+                <div className="flex items-center justify-between mb-3">
+                  <h3 className="text-slate-900">Description</h3>
                 {!isEditing && (
                   <Button
                     variant="outline"
@@ -165,15 +177,15 @@ export function PhotoDetailModal({
                     Edit
                   </Button>
                 )}
-              </div>
+                </div>
 
-              {isEditing ? (
-                <div className="flex-1 flex flex-col gap-3">
+                {isEditing ? (
+                <div className="flex flex-col gap-3">
                   <Textarea
                     value={description}
                     onChange={(e) => setDescription(e.target.value)}
                     placeholder="Add a detailed description of this photo..."
-                    className="flex-1 rounded-lg resize-none"
+                    className="min-h-[120px] rounded-lg resize-y"
                   />
 
                   <div className="flex flex-col gap-2">
@@ -208,13 +220,13 @@ export function PhotoDetailModal({
                   </div>
                 </div>
               ) : (
-                <div className="flex-1 overflow-y-auto">
+                <div>
                   {description ? (
                     <p className="text-sm text-slate-600 leading-relaxed whitespace-pre-wrap">
                       {description}
                     </p>
                   ) : (
-                    <div className="flex flex-col items-center justify-center h-full text-center">
+                    <div className="flex flex-col items-center justify-center py-8 text-center">
                       <div className="w-12 h-12 bg-slate-100 rounded-full flex items-center justify-center mb-3">
                         <Sparkles className="w-6 h-6 text-slate-400" />
                       </div>
@@ -233,9 +245,10 @@ export function PhotoDetailModal({
                   )}
                 </div>
               )}
+              </div>
             </div>
 
-            {/* Quick actions */}
+            {/* Quick actions - fixed at bottom */}
             <div className="p-4 border-t border-slate-200 bg-slate-50 flex-shrink-0">
               <div className="flex gap-2">
                 <Button

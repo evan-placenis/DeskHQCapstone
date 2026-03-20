@@ -832,7 +832,7 @@ export function ProjectDetailPage({
     });
   };
 
-  const handleUploadPhotos = async (files: File[], folderId: number, folderName?: string, useFileNameAsDescription?: boolean) => {
+  const handleUploadPhotos = async (files: File[], folderId: number, folderName?: string, useFileNameAsDescription?: boolean, provider?: string) => {
     if (!user) {
       alert("Please log in to upload photos.");
       return;
@@ -907,6 +907,9 @@ export function ProjectDetailPage({
       if (targetFolderName) {
         formData.append('folderName', targetFolderName);
       }
+      if (provider) {
+        formData.append('provider', provider);
+      }
 
 
       setUploadProgress(40); // FormData ready
@@ -943,6 +946,9 @@ export function ProjectDetailPage({
           location: "Project Site",
           linkedReport: null,
           description: description,
+          ai_description: dbImage.ai_description || undefined,
+          tags: dbImage.tags,
+          severity: dbImage.severity,
           folderId: targetFolderId
         } as Photo;
       });
@@ -1106,7 +1112,7 @@ export function ProjectDetailPage({
     const fetchProjectData = async () => {
       const fetchImages = async () => {
         try {
-          const response = await fetch(apiRoutes.project.images(project.id));
+          const response = await fetch(apiRoutes.project.images(project.id), { cache: "no-store" });
           if (response.ok) {
             const data = await response.json();
             if (data.images && Array.isArray(data.images)) {
@@ -1139,6 +1145,9 @@ export function ProjectDetailPage({
                   location: "Uploaded",
                   linkedReport: null,
                   description: img.description || "",
+                  ai_description: img.ai_description ?? img.aiDescription ?? undefined,
+                  tags: img.tags,
+                  severity: img.severity,
                   folderId: folder ? folder.id : 1
                 };
               });
@@ -1755,7 +1764,7 @@ export function ProjectDetailPage({
         <PhotoDetailModal
           open={true}
           onOpenChange={setIsPhotoModalOpen}
-          photo={selectedPhoto}
+          photo={selectedPhoto ? (photos.find((p) => p.id === selectedPhoto.id) ?? selectedPhoto) : null}
           onSaveDescription={handleSavePhotoDescription}
           onNavigate={handlePhotoNavigate}
           canNavigate={getNavigationState()}

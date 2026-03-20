@@ -7,7 +7,7 @@ import {
     HELICONE_TARGET_URLS,
     HELICONE_TARGET_URL_HEADER,
     type HeliconeContextInput,
-} from '../gateway/helicone-context-builder';
+} from './gateway/helicone-context-builder';
 import type { AiSdkChatProvider } from "@/lib/ai-providers";
 
 export class ModelStrategy {
@@ -52,9 +52,9 @@ export class ModelStrategy {
                         },
                     }),
                 });
-                return google('gemini-3-pro-preview') as unknown as LanguageModelV2;
+                return google('gemini-3.1-pro-preview') as unknown as LanguageModelV2;
             }
-            case 'gemini-cheap': {
+            case 'gemini-flash': {
                 const google = createGoogleGenerativeAI({
                     apiKey: process.env.GOOGLE_API_KEY,
                     ...(helicone && {
@@ -66,6 +66,19 @@ export class ModelStrategy {
                     }),
                 });
                 return google('gemini-3-flash-preview') as unknown as LanguageModelV2;
+            }
+            case 'gemini-lite': {
+                const google = createGoogleGenerativeAI({
+                    apiKey: process.env.GOOGLE_API_KEY,
+                    ...(helicone && {
+                        baseURL: `${helicone.baseURL}/v1beta`,
+                        headers: {
+                            ...helicone.headers,
+                            [HELICONE_TARGET_URL_HEADER]: HELICONE_TARGET_URLS.google,
+                        },
+                    }),
+                });
+                return google('gemini-3.1-flash-lite-preview') as unknown as LanguageModelV2;
             }
             case 'claude': {
                 const anthropicProvider = createAnthropic({
@@ -80,6 +93,7 @@ export class ModelStrategy {
                 });
                 return anthropicProvider('claude-sonnet-4-5') as unknown as LanguageModelV2;
             }
+
             default: {
                 const google = createGoogleGenerativeAI({
                     apiKey: process.env.GOOGLE_API_KEY,

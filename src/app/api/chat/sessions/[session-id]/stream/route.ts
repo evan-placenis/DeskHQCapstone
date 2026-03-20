@@ -4,7 +4,7 @@ import { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
 import { Container } from '@/lib/container';
 import { createAuthenticatedClient } from "@/app/api/utils";
-import type { HeliconeContextInput } from '@/features/ai/services/gateway/helicone-context-builder';
+import type { HeliconeContextInput } from '@/src/features/ai/services/models/gateway/helicone-context-builder';
 import type { ChatMessage } from '@/features/chat/services/domain-chat/chat-types';
 import { normalizeAiSdkChatProvider } from "@/lib/ai-providers";
 
@@ -45,7 +45,7 @@ export async function POST(
     try {
         const { "session-id": sessionId } = await params;
         const body = await req.json();
-        const { messages, activeSectionId, reportId, projectId, provider = 'gemini-cheap', selectionEdit, documentOutline, activeSectionMarkdown, activeSectionHeading, fullReportMarkdown } = body;
+        const { messages, activeSectionId, reportId, projectId, provider = 'gemini-flash', selectionEdit, documentOutline, activeSectionMarkdown, activeSectionHeading, fullReportMarkdown } = body;
 
         // [ChatContext] Debug: log what report context the chatbot received
         const userMsg = Container.chatService.getLastUserMessageTextFromBody(body);

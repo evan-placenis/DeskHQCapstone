@@ -6,7 +6,7 @@ import { chatContextTools } from '@/features/ai/tools/chatbot-chat-context-tools
 import { visionTools } from '@/features/ai/tools/chatbot-vision-tools';
 import { buildSkillPrompt } from '@/features/ai/services/chatbot/skill-loader';
 import { SupabaseClient } from '@supabase/supabase-js';
-import type { HeliconeContextInput } from '@/features/ai/services/gateway/helicone-context-builder';
+import type { HeliconeContextInput } from '@/src/features/ai/services/models/gateway/helicone-context-builder';
 import type { AiSdkChatProvider } from "@/lib/ai-providers";
 
 /**
