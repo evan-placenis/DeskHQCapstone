@@ -49,7 +49,7 @@ export class CaptureService {
     const {
       audioUrls,
       prompt = 'Transcribe and summarize this audio recording.',
-      provider = 'gemini-cheap',
+      provider = 'gemini-flash',
       projectId,
       userId,
       reportId,

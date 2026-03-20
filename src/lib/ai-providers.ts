@@ -3,11 +3,11 @@
  * LangChain report-graph code uses a different vocabulary (claude/gemini/…) — see REPORT_GRAPH_PROVIDERS.
  */
 
-export const AI_SDK_CHAT_PROVIDERS = ["grok", "gemini-pro", "claude", "gemini-cheap"] as const;
+export const AI_SDK_CHAT_PROVIDERS = ["grok", "gemini-pro", "claude", "gemini-flash", "gemini-lite", "nvidia-cosmos-8b", "nvidia-cosmos-2b"] as const;
 
 export type AiSdkChatProvider = (typeof AI_SDK_CHAT_PROVIDERS)[number];
 
-export const DEFAULT_AI_SDK_CHAT_PROVIDER: AiSdkChatProvider = "gemini-cheap";
+export const DEFAULT_AI_SDK_CHAT_PROVIDER: AiSdkChatProvider = "gemini-flash";
 
 export function normalizeAiSdkChatProvider(value: unknown): AiSdkChatProvider {
   return AI_SDK_CHAT_PROVIDERS.includes(value as AiSdkChatProvider)

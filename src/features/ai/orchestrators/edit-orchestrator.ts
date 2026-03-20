@@ -1,7 +1,7 @@
 import { streamText } from 'ai';
 import { ModelStrategy } from '@/features/ai/services/models/model-strategy';
 import { buildSkillPrompt } from '@/features/ai/services/chatbot/skill-loader';
-import type { HeliconeContextInput } from '@/features/ai/services/gateway/helicone-context-builder';
+import type { HeliconeContextInput } from '@/src/features/ai/services/models/gateway/helicone-context-builder';
 import { DEFAULT_AI_SDK_CHAT_PROVIDER, type AiSdkChatProvider } from "@/lib/ai-providers";
 
 /**

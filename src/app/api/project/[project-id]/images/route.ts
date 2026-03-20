@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { Container } from '@/lib/container';
 import { createAuthenticatedClient } from "@/app/api/utils";
+import { normalizeAiSdkChatProvider } from "@/lib/ai-providers";
 
 //This is the API endpoint for the ProjectDetailPage.tsx to upload photos for a project.
 // app/api/projects/[projectId]/images/route.ts
@@ -16,6 +17,8 @@ export async function POST(
         const files = formData.getAll("file") as File[]; // <--- KEY CHANGE
         const folderName = formData.get("folderName") as string;
         const descriptionsJson = formData.get("descriptions") as string;
+        const providerRaw = formData.get("provider") as string | null;
+        const provider = providerRaw ? normalizeAiSdkChatProvider(providerRaw) : undefined;
 
 
         let descriptions: string[] = [];
@@ -79,7 +82,7 @@ export async function POST(
         }));
 
         // Send the entire batch to the AI service (Fire-and-Forget)
-        Container.photoService.analyzePhotos(analysisRequests, supabase)
+        Container.photoService.analyzePhotos(analysisRequests, supabase, provider)
             .catch((error) => {
                 console.error(`❌ [API] Batch processing failed:`, error);
             });

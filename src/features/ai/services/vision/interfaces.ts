@@ -23,6 +23,7 @@ export interface SpecAnalysisResult extends BaseVisionResult {
 // For Site Photos (Rich Data)
 export interface SitePhotoResult extends BaseVisionResult {
   description: string; // The Markdown text
+  reasoning?: string; // Step-by-step analysis (appended to ai_description when stored)
   tags: string[];
   severity: 'Low' | 'Medium' | 'High' | 'Critical' | 'None';
 }

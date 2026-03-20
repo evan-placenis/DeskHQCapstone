@@ -111,6 +111,9 @@ export interface Photo {
   location: string;
   linkedReport?: string | null;
   description?: string;
+  ai_description?: string;
+  tags?: string[];
+  severity?: string;
   folderId: number;
   caption?: string;
   section?: string;
