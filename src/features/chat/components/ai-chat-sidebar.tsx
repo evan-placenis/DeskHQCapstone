@@ -315,14 +315,16 @@ export function AIChatSidebar({
     };
   }, [isResizing, windowWidth, onResize]);
 
-  // Body is a function so it's evaluated at send time — ensures fresh Map & Lens from the live editor
+  // Body is a function so it's evaluated at send time — ensures fresh Map & Lens from the live editor.
+  // When user had selection, pendingSelectionForBodyRef is set so we send selectionEdit for the chat API.
   const transport = useMemo(
     () =>
       new AssistantChatTransport({
         api: sessionId ? apiRoutes.chat.sessionStream(sessionId) : "",
         body: () => {
           const ctx = getEditorContext?.();
-          const body = {
+          const sel = pendingSelectionForBodyRef.current;
+          const body: Record<string, unknown> = {
             activeSectionId,
             reportId,
             projectId,
@@ -332,11 +334,11 @@ export function AIChatSidebar({
             activeSectionHeading: ctx?.activeSectionHeading ?? '',
             fullReportMarkdown: ctx?.fullReportMarkdown ?? '',
           };
-          console.log('[ChatContext] Body at send time:', {
-            documentOutlineLen: body.documentOutline.length,
-            activeSectionHeading: body.activeSectionHeading || '(none)',
-            fullReportMarkdownLen: body.fullReportMarkdown.length,
-          });
+          if (sel?.selection?.trim()) {
+            body.selectionEdit = true;
+            body.selectionMarkdown = sel.markdown;
+            body.surroundingContext = sel.surroundingContext ?? '';
+          }
           return body;
         },
       }),
@@ -404,6 +406,12 @@ export function AIChatSidebar({
   // Track processed edits to avoid duplicates
   const lastUserMessageRef = useRef<string | null>(null);
   const lastProcessedStructureInsertRef = useRef<string | null>(null);
+  // Hold selection for transport body when sending with selection (body runs at fetch time)
+  const pendingSelectionForBodyRef = useRef<typeof pinnedSelectionContext>(null);
+  // Guard: when the last send was a selection-based edit, the applyInlineDiff is
+  // handled by requestAIEditWithSelection.  Block propose_structure_insertion
+  // processing here so the diff is not applied a second time from the chat stream.
+  const selectionEditActiveRef = useRef(false);
 
   // Listen for message completion to handle tool calls and trigger non-streaming edits
   useEffect(() => {
@@ -437,6 +445,14 @@ export function AIChatSidebar({
             const callId = `${msgId}-propose_structure_insertion`;
             if (lastProcessedStructureInsertRef.current === callId) {
               // Already processed this tool call
+            } else if (selectionEditActiveRef.current) {
+              // This chat turn was triggered alongside a selection-based ai-edit.
+              // The diff is already being applied by requestAIEditWithSelection —
+              // skip this tool call to prevent a double-apply that corrupts the diff.
+              // CRITICAL: also mark callId as processed so subsequent processToolCalls
+              // invocations (which fire on every thread state update) don't retry.
+              lastProcessedStructureInsertRef.current = callId;
+              console.log('[AIChatSidebar] Skipping propose_structure_insertion — selection edit is active');
             } else {
               lastProcessedStructureInsertRef.current = callId;
               const result = structureInsertCall.result;
@@ -541,59 +557,28 @@ export function AIChatSidebar({
     if (!runtime) return;
     lastUserMessageRef.current = message;
 
-    const hadSelection =
-      useTiptap && !!getEditorSelectionContext?.()?.selection?.trim();
+    const selectionCtx =
+      pinnedSelectionContext ??
+      getEditorSelectionContext?.() ??
+      null;
+    const hadSelection = useTiptap && !!selectionCtx?.selection?.trim();
 
-    // When user has selection: run the edit flow and add user + confirmation to the thread without streaming.
-    if (useTiptap && hadSelection && getEditorSelectionContext && onRequestAIEditWithSelection) {
-      const ctx = getEditorSelectionContext();
-      if (ctx?.selection?.trim()) {
-        onRequestAIEditWithSelection(ctx, message);
-
-        // Add user message and a static assistant confirmation so the user sees their message and a reply.
-        const setMessages = setMessagesRef.current;
-        if (typeof setMessages === "function") {
-          const threadState = runtime.thread.getState();
-          const rawMessages = threadState.messages ?? [];
-          const existing = Array.from(rawMessages) as Array<{ id?: string; role?: string; content?: unknown }>;
-          const toParts = (m: (typeof existing)[0]) => {
-            const content = m.content;
-            if (Array.isArray(content)) {
-              const textPart = content.find((p: { type?: string; text?: string }) => p?.type === "text");
-              return [{ type: "text" as const, text: (textPart as { text?: string })?.text ?? "" }];
-            }
-            return [{ type: "text" as const, text: typeof content === "string" ? content : "" }];
-          };
-          const uiMessages = existing.map((m, i) => ({
-            id: m.id ?? `msg-${i}`,
-            role: (m.role === "assistant" ? "assistant" : "user") as "user" | "assistant",
-            parts: toParts(m),
-          }));
-          const ts = Date.now();
-          uiMessages.push(
-            { id: `user-sel-${ts}`, role: "user", parts: [{ type: "text" as const, text: message }] },
-            {
-              id: `assistant-sel-${ts}`,
-              role: "assistant",
-              parts: [
-                {
-                  type: "text" as const,
-                  text: "I've suggested an edit to your selection. Review the popup to accept or reject.",
-                },
-              ],
-            }
-          );
-          setMessages(uiMessages);
-        }
-        return;
-      }
+    // When user has selection: stash for transport body (evaluated at fetch time) and run ai-edit in parallel.
+    if (hadSelection && selectionCtx) {
+      pendingSelectionForBodyRef.current = selectionCtx;
+      selectionEditActiveRef.current = true;
+      onRequestAIEditWithSelection?.(selectionCtx, message);
+    } else {
+      pendingSelectionForBodyRef.current = null;
+      selectionEditActiveRef.current = false;
     }
 
-    // No selection: normal chat — append user message and let the transport stream the reply.
+    // Always append to thread — both flows use the chat stream so the AI SDK shows its native loader/skills.
     await runtime.thread.append({
       role: 'user',
       content: [{ type: 'text', text: message }],
     });
+    pendingSelectionForBodyRef.current = null;
   };
 
   return (

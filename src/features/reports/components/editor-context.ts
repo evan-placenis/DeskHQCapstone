@@ -196,7 +196,12 @@ export function getRangeForReplaceSection(
   for (let i = 0; i < outline.length; i++) {
     const entry = outline[i];
     if (entry.text.trim().toLowerCase() === normalizedTarget) {
-      const sectionStart = entry.pos;
+      // entry.pos is the position of the heading node's open token.
+      // We want `from` to point to the first content AFTER the heading node
+      // so the heading itself is never included in the replace range.
+      const headingNode = doc.nodeAt(entry.pos);
+      const sectionStart = entry.pos + (headingNode ? headingNode.nodeSize : 1);
+
       let sectionEnd = doc.content.size;
       for (let j = i + 1; j < outline.length; j++) {
         if (outline[j].level <= entry.level) {

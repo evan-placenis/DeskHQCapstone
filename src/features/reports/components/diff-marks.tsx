@@ -2,6 +2,15 @@
 
 import { Mark } from '@tiptap/core';
 
+const changeIdAttr = {
+  changeId: {
+    default: null as string | null,
+    parseHTML: (el: Element) => el.getAttribute('data-change-id'),
+    renderHTML: (attrs: Record<string, unknown>) =>
+      attrs.changeId ? { 'data-change-id': attrs.changeId } : {},
+  },
+};
+
 /**
  * AdditionMark: Green background for inserted text
  */
@@ -9,7 +18,7 @@ export const AdditionMark = Mark.create({
   name: 'addition',
 
   addAttributes() {
-    return {};
+    return changeIdAttr;
   },
 
   parseHTML() {
@@ -43,7 +52,7 @@ export const DeletionMark = Mark.create({
   name: 'deletion',
 
   addAttributes() {
-    return {};
+    return changeIdAttr;
   },
 
   parseHTML() {
@@ -62,7 +71,7 @@ export const DeletionMark = Mark.create({
       'span',
       {
         'data-diff': 'deletion',
-        class: 'bg-red-100 text-red-800 px-0.5 rounded',
+        class: 'bg-red-100 text-red-800 px-0.5 rounded line-through',
         ...HTMLAttributes,
       },
       0,
