@@ -26,7 +26,6 @@ export const HELICONE_TARGET_URLS: Record<string, string> = {
     xai: 'https://api.x.ai',
     google: 'https://generativelanguage.googleapis.com',
     anthropic: 'https://api.anthropic.com',
-    nvidia: 'https://integrate.api.nvidia.com/',
 };
 
 export const HELICONE_TARGET_URL_HEADER = 'Helicone-Target-URL';

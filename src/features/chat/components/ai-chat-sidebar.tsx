@@ -262,8 +262,6 @@ export function AIChatSidebar({
     'gemini-flash': 'Gemini Flash',
     'gemini-lite': 'Gemini Lite',
     claude: 'Claude',
-    'nvidia-cosmos-8b': 'NVIDIA Cosmos 8B',
-    'nvidia-cosmos-2b': 'NVIDIA Cosmos 2B',
   };
 
   // Set window width on mount and handle resize
@@ -657,8 +655,6 @@ export function AIChatSidebar({
                     <DropdownMenuItem onClick={() => setChatProvider('gemini-flash')}>Gemini Flash</DropdownMenuItem>
                     <DropdownMenuItem onClick={() => setChatProvider('gemini-lite')}>Gemini Lite</DropdownMenuItem>
                     <DropdownMenuItem onClick={() => setChatProvider('claude')}>Claude</DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => setChatProvider('nvidia-cosmos-8b')}>NVIDIA Cosmos 8B</DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => setChatProvider('nvidia-cosmos-2b')}>NVIDIA Cosmos 2B</DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>
                 <Button variant="ghost" size="icon" className="h-8 w-8" onClick={onToggleCollapse}>

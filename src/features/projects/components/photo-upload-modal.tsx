@@ -31,8 +31,6 @@ const MODEL_LABELS: Record<AiSdkChatProvider, string> = {
   "gemini-flash": "Gemini Flash",
   "gemini-lite": "Gemini Lite",
   claude: "Claude",
-  "nvidia-cosmos-8b": "NVIDIA Cosmos 8B",
-  "nvidia-cosmos-2b": "NVIDIA Cosmos 2B",
 };
 
 interface PhotoUploadModalProps {

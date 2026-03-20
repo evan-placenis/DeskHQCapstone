@@ -1,7 +1,6 @@
 import { createXai } from '@ai-sdk/xai';
 import { createGoogleGenerativeAI } from '@ai-sdk/google';
 import { createAnthropic } from '@ai-sdk/anthropic';
-import { createOpenAI } from '@ai-sdk/openai';
 import { LanguageModelV2 } from '@ai-sdk/provider';
 import {
     HeliconeContextBuilder,
@@ -95,38 +94,6 @@ export class ModelStrategy {
                 return anthropicProvider('claude-sonnet-4-5') as unknown as LanguageModelV2;
             }
 
-            case 'nvidia-cosmos-8b': {
-                const nvidiaProvider = createOpenAI({
-                    apiKey: process.env.NVIDIA_API_KEY,
-                    // Default NVIDIA NIM API base URL
-                    baseURL: 'https://integrate.api.nvidia.com/v1', 
-                    ...(helicone && {
-                        // Override with Helicone base URL if using Helicone
-                        baseURL: `${helicone.baseURL}/v1`,
-                        headers: {
-                            ...helicone.headers,
-                            // Fallback string in case HELICONE_TARGET_URLS.nvidia isn't defined yet
-                            [HELICONE_TARGET_URL_HEADER]: HELICONE_TARGET_URLS.nvidia || 'https://integrate.api.nvidia.com',
-                        },
-                    }),
-                });
-                // Pass the specific Cosmos model name
-                return nvidiaProvider.chat('nvidia/cosmos-reason2-8b') as unknown as LanguageModelV2;
-            }
-            case 'nvidia-cosmos-2b': {
-                const nvidiaProvider = createOpenAI({
-                    apiKey: process.env.NVIDIA_API_KEY,
-                    baseURL: 'https://integrate.api.nvidia.com/v1',
-                    ...(helicone && {
-                        baseURL: `${helicone.baseURL}/v1`,
-                        headers: {
-                            ...helicone.headers,
-                            [HELICONE_TARGET_URL_HEADER]: HELICONE_TARGET_URLS.nvidia || 'https://integrate.api.nvidia.com',
-                        },
-                    }),
-                });
-                return nvidiaProvider.chat('nvidia/cosmos-reason2-2b') as unknown as LanguageModelV2;
-            }
             default: {
                 const google = createGoogleGenerativeAI({
                     apiKey: process.env.GOOGLE_API_KEY,
