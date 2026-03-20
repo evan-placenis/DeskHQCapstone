@@ -26,10 +26,12 @@ export const apiRoutes = {
     images: (projectId: string | number) => `/api/project/${projectId}/images`,
     imagesWithQuery: (
       projectId: string | number,
-      query: { imageId?: string; folderName?: string },
+      query: { imageId?: string | number; folderName?: string },
     ) => {
       const base = `/api/project/${projectId}/images`;
-      if (query.imageId) return `${base}?imageId=${query.imageId}`;
+      if (query.imageId != null && query.imageId !== "") {
+        return `${base}?imageId=${encodeURIComponent(String(query.imageId))}`;
+      }
       if (query.folderName != null) return `${base}?folderName=${encodeURIComponent(query.folderName)}`;
       return base;
     },
