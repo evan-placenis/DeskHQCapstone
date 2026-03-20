@@ -1,5 +1,5 @@
 "use client";
-import { TechnicianAnalyticsPage } from "@/frontend/pages/TechnicianAnalyticsPage";
+import { TechnicianAnalyticsPage } from "@/features/dashboard/components/technician-analytics-page";
 import { useRouter } from "next/navigation";
 import { Page } from "@/app/pages/config/routes";
 import { ROUTES, getRoute } from "@/app/pages/config/routes";

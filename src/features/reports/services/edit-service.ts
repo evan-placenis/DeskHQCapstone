@@ -1,0 +1,88 @@
+import { SupabaseClient } from '@supabase/supabase-js';
+import { EditOrchestrator } from '@/features/ai/orchestrators/edit-orchestrator';
+import type { HeliconeContextInput } from "@/features/ai/services/gateway/helicone-context-builder";
+import { normalizeAiSdkChatProvider } from "@/lib/ai-providers";
+
+export class ReportNotFoundError extends Error {
+    name = 'ReportNotFoundError';
+}
+
+/**
+ * Edit Service – selection-based report editing.
+ *
+ * Resolves projectId from the report, runs the edit orchestrator (with tools), returns a Response.
+ */
+export class EditService {
+    constructor(private readonly editOrchestrator: EditOrchestrator) { }
+
+    /**
+     * Run selection edit: resolve project_id, stream tokens from the model as they are generated.
+     * @throws ReportNotFoundError if report does not exist or has no project_id
+     */
+    async streamSelectionEdit(
+        reportId: string,
+        params: {
+            selection: string;
+            surroundingContext?: string;
+            instruction: string;
+            provider?: string;
+        },
+        client: SupabaseClient,
+        userId?: string,
+    ): Promise<Response> {
+        const { data: report, error: reportError } = await client
+            .from('reports')
+            .select('project_id, organization_id, template_id')
+            .eq('id', reportId)
+            .single();
+
+        if (reportError || !report?.project_id) {
+            throw new ReportNotFoundError('Report not found');
+        }
+
+        let heliconeInput: HeliconeContextInput | undefined;
+        if (userId) {
+            heliconeInput = {
+                userId,
+                organizationId: report.organization_id ?? undefined,
+                projectId: String(report.project_id),
+                reportId,
+                templateId: report.template_id ?? undefined,
+                feature: 'ai_edit',
+            };
+        }
+
+        const provider = normalizeAiSdkChatProvider(params.provider);
+        const result = await this.editOrchestrator.streamSelectionEdit({
+            selection: params.selection,
+            surroundingContext:
+                typeof params.surroundingContext === 'string' ? params.surroundingContext : undefined,
+            instruction: params.instruction,
+            provider,
+            projectId: String(report.project_id),
+            heliconeInput,
+        });
+
+        const encoder = new TextEncoder();
+        const stream = new ReadableStream({
+            async start(controller) {
+                try {
+                    for await (const chunk of result.textStream) {
+                        controller.enqueue(encoder.encode(chunk));
+                    }
+                } catch (err) {
+                    controller.error(err);
+                } finally {
+                    controller.close();
+                }
+            },
+        });
+        return new Response(stream, {
+            headers: {
+                'Content-Type': 'text/plain; charset=utf-8',
+                'Cache-Control': 'no-cache',
+                'X-Content-Type-Options': 'nosniff',
+            },
+        });
+    }
+}

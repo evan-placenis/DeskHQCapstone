@@ -1,5 +1,5 @@
 "use client";
-import { SettingsPage } from "@/frontend/pages/SettingsPage";
+import { SettingsPage } from "@/features/dashboard/components/settings-page";
 import { useRouter } from "next/navigation";
 import { Page } from "@/app/pages/config/routes";
 import { ROUTES, getRoute } from "@/app/pages/config/routes";

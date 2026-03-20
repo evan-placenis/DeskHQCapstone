@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { Container } from '@/backend/config/container';
+import { Container } from '@/lib/container';
 import { createAuthenticatedClient } from '@/app/api/utils';
 //This is the route for deleting a document from the pinecone knowledge base
 export async function DELETE(

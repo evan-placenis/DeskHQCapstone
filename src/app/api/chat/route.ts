@@ -1,6 +1,6 @@
 //GET (List), POST (Create New)
 import { NextResponse } from 'next/server';
-import { Container } from '@/backend/config/container'
+import { Container } from '@/lib/container'
 import { createAuthenticatedClient } from "@/app/api/utils";
 
 // 1. CREATE OR GET SESSION (find-or-create by reportId so we reuse the session the trigger created)

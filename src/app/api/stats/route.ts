@@ -2,7 +2,7 @@
 
 import { NextResponse } from "next/server";
 import { createAuthenticatedClient } from "../utils";
-import { Container } from "@/backend/config/container";
+import { Container } from "@/lib/container";
 
 /**
  * GET /api/stats

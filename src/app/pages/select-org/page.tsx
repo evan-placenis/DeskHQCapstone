@@ -1,4 +1,4 @@
-import { SelectOrganizationPage } from "@/frontend/pages/SelectOrganizationPage";
+import { SelectOrganizationPage } from "@/features/auth/components/select-organization-page";
 
 export default function Page() {
   return <SelectOrganizationPage />;
