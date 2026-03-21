@@ -527,7 +527,7 @@ export function CaptureSessionPage({
               if (hasPendingUpload) {
                 doUpload();
               } else {
-                loadProjectsAndGo();
+                setStep("capture");
               }
             }}
           >
