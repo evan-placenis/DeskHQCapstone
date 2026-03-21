@@ -25,13 +25,20 @@ import {
   FileText,
   X,
   Loader2,
-  Wrench
+  Wrench,
+  Brain,
+  FileSearch,
 } from "lucide-react";
 import { MarkdownTextPrimitive } from '@assistant-ui/react-markdown';
 import { apiRoutes } from "@/lib/api-routes";
 import { DEFAULT_AI_SDK_CHAT_PROVIDER, type AiSdkChatProvider } from "@/lib/ai-providers";
 import remarkGfm from 'remark-gfm';
 import { memo } from "react";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
 
 
 
@@ -58,11 +65,95 @@ const StatusIndicator = memo(({ label }: { label: string }) => (
   </div>
 ));
 
-// 3. CRITICAL FIX: Define the config object OUTSIDE the component.
-// This guarantees strict equality (===), so React skips the "Did config change?" check entirely.
-const COMPONENT_CONFIG = {
-  Text: AI_Text_Renderer,
-};
+/** Humanize tool name for display (e.g. read_specific_sections → "Read specific sections") */
+function humanizeToolName(name: string): string {
+  const display = name.replace(/_/g, ' ');
+  return display.charAt(0).toUpperCase() + display.slice(1);
+}
+
+/** Icon for tool based on name - read/fetch tools get FileSearch, others get Wrench */
+function ToolIcon({ toolName }: { toolName: string }) {
+  const isRead = /^read_|^get|^search/.test(toolName);
+  return isRead ? (
+    <FileSearch className="w-3.5 h-3.5 text-slate-500 flex-shrink-0" />
+  ) : (
+    <Wrench className="w-3.5 h-3.5 text-slate-500 flex-shrink-0" />
+  );
+}
+
+/** Collapsible "Thought" section showing reasoning/plan from tool args */
+const ThoughtDropdown = memo(({
+  reasoning,
+  reason,
+  defaultOpen = false,
+}: {
+  reasoning?: string;
+  reason?: string;
+  defaultOpen?: boolean;
+}) => {
+  const content = reasoning?.trim() || reason?.trim();
+  if (!content) return null;
+
+  return (
+    <Collapsible defaultOpen={defaultOpen} className="mt-1 group">
+      <CollapsibleTrigger className="flex items-center gap-2 w-full text-left text-slate-500 hover:text-slate-700 transition-colors py-1">
+        <Brain className="w-3.5 h-3.5 flex-shrink-0" />
+        <span className="text-xs font-medium">Thought</span>
+        <ChevronDown className="w-3 h-3 ml-auto flex-shrink-0 transition-transform duration-200 group-data-[state=open]:rotate-180" />
+      </CollapsibleTrigger>
+      <CollapsibleContent>
+        <div className="pl-5 ml-1.5 border-l border-slate-200 py-2 space-y-1">
+          {content.split(/\n+/).filter(Boolean).map((line, i) => (
+            <div key={i} className="flex gap-2 text-xs text-slate-600">
+              <span className="text-slate-400">◦</span>
+              <span className="leading-relaxed">{line.trim()}</span>
+            </div>
+          ))}
+        </div>
+      </CollapsibleContent>
+    </Collapsible>
+  );
+});
+ThoughtDropdown.displayName = 'ThoughtDropdown';
+
+/** Persistent trace item for each tool call - shows name, status, and optional Thought dropdown */
+const ToolTraceItem = memo(({
+  part,
+  rawContentParts = [],
+  isMessageComplete = false,
+}: { part: any; rawContentParts?: readonly any[]; isMessageComplete?: boolean }) => {
+  const toolName = part.toolName ?? part.name ?? 'tool';
+  const toolCallId = part.toolCallId ?? part.id;
+  const rawPart = toolCallId && rawContentParts.length > 0
+  ? (rawContentParts as any[]).find((p: any) => (p.toolCallId ?? p.id) === toolCallId && p.result !== undefined) 
+    ?? (rawContentParts as any[]).find((p: any) => (p.toolCallId ?? p.id) === toolCallId) 
+    ?? part
+  : part;
+  const rawHasResult = rawPart.result !== undefined;
+  // Only show "Done" when tool has result (avoids showing Done while streaming)
+  const showDone = rawHasResult;
+  const displayName = humanizeToolName(toolName);
+  const args = part.args ?? {};
+  const reasoning = typeof args.reasoning === 'string' ? args.reasoning : undefined;
+  const reason = typeof args.reason === 'string' ? args.reason : undefined;
+
+  return (
+    <div className="mt-2 mb-1 flex flex-col gap-0">
+      <div className="flex items-center gap-2 text-slate-500">
+        <ToolIcon toolName={toolName} />
+        <span className="text-xs font-medium">{displayName}</span>
+        {!showDone && (
+          <Loader2 className="w-3 h-3 animate-spin text-slate-400 flex-shrink-0" />
+        )}
+        {showDone && (
+          <span className="text-xs text-slate-400">— Done</span>
+        )}
+      </div>
+      <ThoughtDropdown reasoning={reasoning} reason={reason} defaultOpen={false} />
+    </div>
+  );
+});
+ToolTraceItem.displayName = 'ToolTraceItem';
 
 const CustomMessage = () => {
   // Ignore the deprecation warning for now; it is safe to use.
@@ -96,7 +187,7 @@ const CustomMessage = () => {
   const hasText = contentParts.some((c: any) => c.type === 'text' && c.text.length > 0);
 
   // Check for Tools
-  const activeToolPart = contentParts.find((c: any) => c.type === 'tool-call' || c.type === 'tool-use');
+  const activeToolPart = contentParts.find((c: any) => (c.type === 'tool-call' || c.type === 'tool-use') && c.result === undefined);
   const toolName = (activeToolPart as any)?.toolName || (activeToolPart as any)?.name;
 
   // --- LOGIC: CALCULATE SPINNER STATE ---
@@ -147,9 +238,20 @@ const CustomMessage = () => {
         {/* CONTENT AREA */}
         <div className="text-slate-800 text-sm leading-relaxed w-full">
 
-          {/* 1. RENDER ACTUAL CONTENT (Text & Tools) */}
+          {/* 1. RENDER CONTENT (Text + Tool trace + Thought dropdown) */}
           <MessagePrimitive.Content
-            components={COMPONENT_CONFIG}
+            components={{
+              Text: AI_Text_Renderer,
+              tools: {
+                Fallback: (props: any) => (
+                  <ToolTraceItem
+                    part={props}
+                    rawContentParts={contentParts}
+                    isMessageComplete={!isRunning}
+                  />
+                ),
+              },
+            }}
           />
 
           {/* 2. RENDER STATUS SPINNER (Manually handled) */}

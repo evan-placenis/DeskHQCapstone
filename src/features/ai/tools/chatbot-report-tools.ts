@@ -12,8 +12,8 @@ export const reportTools = (
   getProjectImageIDS: tool({
     description: 'List all available images IDS for this project. Call this FIRST to get the Image IDs needed for other tools.',
     inputSchema: z.object({
+      reason: z.string().describe('Brief plan for using this tool. Must fill out first.'),
       unused: z.string().optional(),
-      reasoning: z.string().optional().describe('A "scratchpad" to think out loud and let the user know what you are thinking.'),
     }),
     execute: async () => {
       try {
@@ -61,7 +61,7 @@ export const reportTools = (
     description: 'Get signed, accessible image URLs for selected images. Mandatory step before vision analysis.',
     inputSchema: z.object({
       imageIds: z.array(z.string()).describe('Array of image IDs to get URLs for'),
-      reasoning: z.string().optional().describe('A "scratchpad" to think out loud and let the user know what you are thinking.'),
+      reason: z.string().optional().describe('A "scratchpad" to think out loud and let the user know what you are thinking.'),
     }),
     execute: async ({ imageIds }) => {
       try {
@@ -152,7 +152,7 @@ export const reportTools = (
   getProjectSpecs: tool({
     description: 'Get project details, specifications, and context. Use this to understand the project before writing the report.',
     inputSchema: z.object({
-      reasoning: z.string().optional().describe('A "scratchpad" to think out loud and let the user know what you are thinking.'),
+      reason: z.string().optional().describe('A "scratchpad" to think out loud and let the user know what you are thinking.'),
     }),
     execute: async () => {
       try {
@@ -184,7 +184,7 @@ export const reportTools = (
     description: 'Get the current report structure and sections. Use this to understand what sections already exist.',
     inputSchema: z.object({
       reportId: z.string().optional().describe('The report ID if available'),
-      reasoning: z.string().optional().describe('A "scratchpad" to think out loud and let the user know what you are thinking.'),
+      reason: z.string().optional().describe('A "scratchpad" to think out loud and let the user know what you are thinking.'),
     }),
     execute: async ({ reportId }) => {
       try {
@@ -220,13 +220,13 @@ export const reportTools = (
     description:
       'Write or update a report section with markdown content. Use this to build sections incrementally as you write the report. The section will be saved to the database immediately so you can reference it later. You can call this multiple times for different sections.',
     inputSchema: z.object({
+      reason: z.string().describe('Brief plan for using this tool Must fill out first.'),
       reportId: z.string().describe('The report ID (get it from getReportStructure or it was provided in context)'),
       sectionId: z.string().describe('Unique ID for this section (e.g., "executive-summary", "observations-1")'),
       heading: z.string().describe('The section heading/title'),
       description: z.string().optional().describe('Optional description or intro text for the section'),
       content: z.string().describe('The markdown content for this section'),
       order: z.number().optional().describe('Order/position of this section (0-based)'),
-      reasoning: z.string().optional().describe('A "scratchpad" to think out loud and let the user know what you are thinking.'),
     }),
     execute: async ({ reportId, sectionId, heading, content, order }) => {
       try {

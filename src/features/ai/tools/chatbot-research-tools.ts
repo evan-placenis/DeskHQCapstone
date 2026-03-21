@@ -12,6 +12,7 @@ export const researchTools = (projectId: string) => ({
     description:
       'Search the internal project memory/database for EXTERNAL information (standards, past project data, reference material). Do NOT use this for questions about the current report - use read_specific_sections or read_full_report instead.',
     inputSchema: z.object({
+      reason: z.string().describe('Brief plan for using this tool Must fill out first.'),
       query: z.string().describe('The question or topic to search for'),
     }),
     execute: async ({ query }) => {
@@ -35,6 +36,7 @@ export const researchTools = (projectId: string) => ({
   searchWeb: tool({
     description: 'Search the live web using Exa. Use this if Internal Memory fails.',
     inputSchema: z.object({
+      reason: z.string().describe('Brief plan for using this tool Must fill out first.'),
       query: z.string().describe('The search query optimized for a search engine'),
     }),
     execute: async ({ query }) => {
