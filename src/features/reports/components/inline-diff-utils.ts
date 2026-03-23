@@ -81,8 +81,8 @@ export function applyLibraryDiff(
   // 3. Mathematical Diff
   const delta = diffPatcher.diff(oldNodes, newNodes);
 
-  console.log("=== 1. RAW DELTA ===");
-  console.log(JSON.stringify(delta, null, 2));
+  // console.log("=== 1. RAW DELTA ===");
+  // console.log(JSON.stringify(delta, null, 2));
 
   // 4. Translate and Insert
   const diffNodes = translateDeltaToTipTap(oldNodes, newNodes, delta, changeId);
@@ -110,8 +110,8 @@ function translateDeltaToTipTap(oldNodes: any[], newNodes: any[], delta: any, ch
     while (delta[`_${oldIndex}`]) {
       const delChange = delta[`_${oldIndex}`];
       
-      // 🔬 SURGICAL LOG 2A: DELETIONS
-      console.log(`[Diff] 🗑️ Deletion caught at oldIndex: ${oldIndex}`);
+      // // 🔬 SURGICAL LOG 2A: DELETIONS
+      // console.log(`[Diff] 🗑️ Deletion caught at oldIndex: ${oldIndex}`);
       
       result.push(recursivelyApplyMark(delChange[0], 'deletion', changeId));
       oldIndex++; // Move our pointer forward in the old document
@@ -133,8 +133,8 @@ function translateDeltaToTipTap(oldNodes: any[], newNodes: any[], delta: any, ch
     
     // CASE B: ADDITION (Array of length 1: [newThing])
     else if (Array.isArray(change) && change.length === 1) {
-      // 🔬 SURGICAL LOG 2B: ADDITIONS
-      console.log(`[Diff] 🟩 Addition caught at newIndex: ${newIndex}`);
+      // // 🔬 SURGICAL LOG 2B: ADDITIONS
+      // console.log(`[Diff] 🟩 Addition caught at newIndex: ${newIndex}`);
       
       result.push(recursivelyApplyMark(change[0], 'addition', changeId));
       // NOTE: We do NOT increment oldIndex here because an addition 
@@ -143,8 +143,8 @@ function translateDeltaToTipTap(oldNodes: any[], newNodes: any[], delta: any, ch
     
     // CASE C: REPLACEMENT (Array of length 2: [oldThing, newThing])
     else if (Array.isArray(change) && change.length === 2) {
-      // 🔬 SURGICAL LOG 2C: REPLACEMENTS
-      console.log(`[Diff] 🔄 Replacement caught (Old: ${oldIndex} -> New: ${newIndex})`);
+      // // 🔬 SURGICAL LOG 2C: REPLACEMENTS
+      // console.log(`[Diff] 🔄 Replacement caught (Old: ${oldIndex} -> New: ${newIndex})`);
 
       // If both old and new are Text nodes, do a surgical word-level diff!
       if (oldNode?.type === 'text' && newNode?.type === 'text') {
@@ -160,8 +160,8 @@ function translateDeltaToTipTap(oldNodes: any[], newNodes: any[], delta: any, ch
     
     // CASE D: MODIFICATION (Deep Object Diff)
     else if (typeof change === 'object') {
-      // 🔬 SURGICAL LOG 2D: MODIFICATIONS
-      console.log(`[Diff] 🪚 Deep Modification at index: ${newIndex}`);
+      // // 🔬 SURGICAL LOG 2D: MODIFICATIONS
+      // console.log(`[Diff] 🪚 Deep Modification at index: ${newIndex}`);
 
       // If a block node (like a table) changed inside, RECURSE into it.
       if (change.content) {
@@ -196,7 +196,7 @@ function translateDeltaToTipTap(oldNodes: any[], newNodes: any[], delta: any, ch
   // ------------------------------------------------------------------
   while (oldIndex < oldNodes.length) {
     if (delta[`_${oldIndex}`]) {
-      console.log(`[Diff] 🗑️ Trailing Deletion caught at oldIndex: ${oldIndex}`);
+      // console.log(`[Diff] 🗑️ Trailing Deletion caught at oldIndex: ${oldIndex}`);
       result.push(recursivelyApplyMark(delta[`_${oldIndex}`][0], 'deletion', changeId));
     }
     oldIndex++;
@@ -291,88 +291,119 @@ function performInlineTextDiff(oldNode: any, newNode: any, changeId: string): an
 
 // ─── Public API ───────────────────────────────────────────────────────────────
 
-
-/** * resolveChange: The only surgical function you need.
- * It finds all nodes in the tree with a specific ID and resolves them.
+/**
+ * The core engine. Mutates a single transaction without dispatching it.
  */
-export function resolveChange(editor: Editor, changeId: string, action: 'accept' | 'reject') {
-  editor.commands.command(({ tr, dispatch }) => {
-    if (!dispatch) return true;
+function processBlockOnTransaction(tr: any, blockStart: number, action: 'accept' | 'reject') {
+  const blockNode = tr.doc.nodeAt(blockStart);
+  if (!blockNode) return;
+  
+  const blockEnd = blockStart + blockNode.nodeSize;
+  const toDelete: { from: number; to: number }[] = [];
+  const toUnmark: { from: number; to: number; type: any }[] = [];
+  const touchedBlocks = new Set<number>(); 
 
-    const toDelete: { from: number; to: number }[] = [];
-    const toUnmark: { from: number; to: number; type: any }[] = [];
+  tr.doc.nodesBetween(blockStart, blockEnd, (node: any, pos: number) => {
+    if (!node.isText) return;
 
-    // Walk the entire document tree
-    tr.doc.descendants((node, pos) => {
-      const addMark = node.marks?.find(m => m.type.name === 'addition' && m.attrs.changeId === changeId);
-      const delMark = node.marks?.find(m => m.type.name === 'deletion' && m.attrs.changeId === changeId);
+    const addMark = node.marks?.find((m: any) => m.type.name === 'addition');
+    const delMark = node.marks?.find((m: any) => m.type.name === 'deletion');
 
-      if (addMark) {
-        action === 'accept' 
-          ? toUnmark.push({ from: pos, to: pos + node.nodeSize, type: addMark.type })
-          : toDelete.push({ from: pos, to: pos + node.nodeSize });
-      }
+    if (addMark || delMark) {
+      const $pos = tr.doc.resolve(pos);
+      for (let d = $pos.depth; d > 0; d--) touchedBlocks.add($pos.before(d));
+    }
 
-      if (delMark) {
-        action === 'accept'
-          ? toDelete.push({ from: pos, to: pos + node.nodeSize })
-          : toUnmark.push({ from: pos, to: pos + node.nodeSize, type: delMark.type });
-      }
-    });
+    if (addMark) {
+      action === 'accept' 
+        ? toUnmark.push({ from: pos, to: pos + node.nodeSize, type: addMark.type })
+        : toDelete.push({ from: pos, to: pos + node.nodeSize });
+    }
 
-    // Apply unmarking first (doesn't shift positions)
-    toUnmark.forEach(m => tr.removeMark(m.from, m.to, m.type));
-    // Apply deletions in reverse (keeps indices valid)
-    toDelete.reverse().forEach(r => tr.delete(r.from, r.to));
+    if (delMark) {
+      action === 'accept'
+        ? toDelete.push({ from: pos, to: pos + node.nodeSize })
+        : toUnmark.push({ from: pos, to: pos + node.nodeSize, type: delMark.type });
+    }
+  });
 
-    cleanupEmptyStructures(tr);
+  toUnmark.forEach(m => tr.removeMark(m.from, m.to, m.type));
+  toDelete.reverse().forEach(r => tr.delete(r.from, r.to));
+
+  const sortedBlocks = Array.from(touchedBlocks).sort((a, b) => b - a);
+  sortedBlocks.forEach(originalBlockPos => {
+    const currentPos = tr.mapping.map(originalBlockPos);
+    const node = tr.doc.nodeAt(currentPos);
+
+    if (node && ['paragraph', 'listItem', 'tableRow', 'table', 'bulletList', 'orderedList'].includes(node.type.name)) {
+      const hasNoText = node.textContent.trim() === '';
+      let hasNoAtoms = true;
+      node.descendants((child: any) => {
+        if (child.isAtom || child.type.name === 'image') hasNoAtoms = false;
+      });
+      if (hasNoText && hasNoAtoms) tr.delete(currentPos, currentPos + node.nodeSize);
+    }
+  });
+}
+
+/** 1. Single Pill Click (One block, One Undo Step) */
+export function resolveBlock(editor: any, blockStart: number, action: 'accept' | 'reject') {
+  editor.commands.command(({ tr, dispatch }: { tr: any, dispatch: any }) => {
+    if (dispatch) {
+      processBlockOnTransaction(tr, blockStart, action);
+    }
     return true;
   });
 }
 
-/** * resolveAllChanges: Just a loop that finds every ID and calls resolveChange.
- */
-export function resolveAllChanges(editor: Editor, action: 'accept' | 'reject') {
-  const ids = new Set<string>();
-  editor.state.doc.descendants(node => {
-    node.marks.forEach(m => {
-      if ((m.type.name === 'addition' || m.type.name === 'deletion') && m.attrs.changeId) {
-        ids.add(m.attrs.changeId);
+/** 2. Global Accept/Reject All (Multiple blocks, ONE Undo Step) */
+export function resolveAllChanges(editor: any, action: 'accept' | 'reject') {
+  editor.commands.command(({ tr, dispatch }: { tr: any, dispatch: any }) => {
+    if (!dispatch) return true;
+
+    const blockStarts = new Set<number>();
+    // Notice we use tr.doc here to read the state AT THIS EXACT MOMENT
+    tr.doc.descendants((node: any, pos: number) => {
+      if (!node.isText) return;
+      const hasDiff = node.marks?.some((m: any) => m.type.name === 'addition' || m.type.name === 'deletion');
+      if (hasDiff) {
+        const $pos = tr.doc.resolve(pos);
+        blockStarts.add($pos.before(1)); 
       }
     });
+
+    const sortedBlocks = Array.from(blockStarts).sort((a, b) => b - a);
+    
+    // Process all 10 blocks on the SAME transaction
+    sortedBlocks.forEach(start => processBlockOnTransaction(tr, start, action));
+    
+    return true; // Dispatches once!
   });
-  ids.forEach(id => resolveChange(editor, id, action));
 }
 
-// Pass the Transaction (tr) directly in, not the whole editor
-export function cleanupEmptyStructures(tr: any) {
-  const ghostPositions: { from: number; to: number }[] = [];
+/** 3. Sidebar Action Bridge (Multiple blocks, ONE Undo Step) */
+export function resolveChangeById(editor: any, changeId: string, action: 'accept' | 'reject') {
+  editor.commands.command(({ tr, dispatch }: { tr: any, dispatch: any }) => {
+    if (!dispatch) return true;
 
-  // 1. Scan the document using the current transaction's state
-  tr.doc.descendants((node: any, pos: number) => {
-    if (node.type.name === 'tableRow' || node.type.name === 'listItem') {
-      
-      const hasNoText = node.textContent.trim() === '';
-      let hasNoAtoms = true;
-      
-      node.descendants((child: any) => {
-        if (child.isAtom || child.type.name === 'image') {
-          hasNoAtoms = false;
-        }
-      });
-
-      if (hasNoText && hasNoAtoms) {
-        ghostPositions.push({ from: pos, to: pos + node.nodeSize });
+    const blockStarts = new Set<number>();
+    tr.doc.descendants((node: any, pos: number) => {
+      if (!node.isText) return;
+      const hasMatch = node.marks?.some((m: any) => 
+        (m.type.name === 'addition' || m.type.name === 'deletion') && 
+        m.attrs.changeId === changeId
+      );
+      if (hasMatch) {
+        const $pos = tr.doc.resolve(pos);
+        blockStarts.add($pos.before(1));
       }
-    }
+    });
+
+    const sortedBlocks = Array.from(blockStarts).sort((a, b) => b - a);
+    sortedBlocks.forEach(start => processBlockOnTransaction(tr, start, action));
+    
+    return true; // Dispatches once!
   });
-
-  // 2. Delete from BOTTOM to TOP 
-  for (let i = ghostPositions.length - 1; i >= 0; i--) {
-    const { from, to } = ghostPositions[i];
-    tr.delete(from, to);
-  }
-
 }
 
 /** Strip leading heading from markdown (e.g. "## General\n\ncontent" → "content"). */

@@ -34,7 +34,7 @@ import { AdditionMark, DeletionMark } from './diff-marks'
 import { computeDiffDocument } from './diff-utils'
 import {
     applyLibraryDiff as applyLibraryDiffImpl,
-    resolveChange as resolveChangeImpl,
+    resolveBlock as resolveBlockImpl,
     resolveAllChanges as resolveAllChangesImpl
 } from './inline-diff-utils'
 import { Button } from '@/components/ui/button'
@@ -133,7 +133,7 @@ export interface TiptapEditorHandle {
    
     // Diff Management
     applyLibraryDiff: (range: { from: number; to: number }, aiGeneratedMarkdown: string) => { from: number; to: number } | null;
-    resolveInlineDiff: (changeId: string, action: 'accept' | 'reject') => void;
+    resolveInlineDiff: (blockStart: number, action: 'accept' | 'reject') => void;
     resolveAllChanges: (action: 'accept' | 'reject') => void;
 
     // Tooling/Outline
@@ -208,24 +208,21 @@ export function createChangeManagerExtension(
               const render = () => {
                 overlay.innerHTML = '';
                 const hunks = collectHunks(editorView.state.doc); 
-                
-                // 1. VIEWPORT MATH: Get the bounding box of the editor itself
-                const editorRect = editorView.dom.getBoundingClientRect();
-  
-                hunks.forEach((changeIds, pos) => {
-                  const coords = editorView.coordsAtPos(pos);
+                const overlayRect = overlay.getBoundingClientRect();
+              
+                hunks.forEach((blockStart) => {
+                  const coords = editorView.coordsAtPos(blockStart);
                   if (!coords) return;
                   
-                  // 2. VIEWPORT MATH: Calculate absolute top relative to the editor container
-                  // coords.top is relative to the browser window. We need it relative to the overlay.
-                  const relativeTop = coords.top - editorRect.top + editorView.dom.scrollTop;
-  
+                  const textCenterY = (coords.top + coords.bottom) / 2;
+                  const relativeTop = textCenterY - overlayRect.top;
+              
                   const pill = createPillElement(
-                    Array.from(changeIds), 
-                    relativeTop, // Pass the fixed relativeTop here
+                    [], // No longer need changeIds here
+                    relativeTop, 
                     (action: 'accept' | 'reject') => {
-                      // Resolve the text changes first
-                      changeIds.forEach(id => resolveChangeImpl(editor, id, action));
+                      // We pass the position of the block, not the ID!
+                      resolveBlockImpl(editor, blockStart, action); 
                       
                       if (!docHasChanges(editor.state.doc)) onAllClear.current?.();
                     }
@@ -242,38 +239,24 @@ export function createChangeManagerExtension(
       }
     });
   }
-  /**
- * Scans the doc and returns a Map of:
- * Key: The position where the floating Pill should anchor.
- * Value: A Set of all Change IDs found within that block.
- */
-function collectHunks(doc: any): Map<number, Set<string>> {
-    const hunks = new Map<number, Set<string>>();
-  
+  function collectHunks(doc: any): number[] {
+    const hunkStarts = new Set<number>();
+    
     doc.descendants((node: any, pos: number) => {
-      // We only care about text nodes because that's where our Marks live
       if (!node.isText) return;
-  
-      node.marks?.forEach((mark: any) => {
-        if (mark.type.name === 'addition' || mark.type.name === 'deletion') {
-          const changeId = mark.attrs?.changeId;
-          if (!changeId) return;
-  
-          // Resolve the parent block (Paragraph, ListItem, etc.)
-          const $pos = doc.resolve(pos);
-          // depth 1 is the top-level block in the editor
-          const blockStart = $pos.before(1);
-  
-          if (!hunks.has(blockStart)) {
-            hunks.set(blockStart, new Set());
-          }
-          hunks.get(blockStart)!.add(changeId);
-        }
-      });
+      
+      const hasDiff = node.marks?.some((m: any) => m.type.name === 'addition' || m.type.name === 'deletion');
+      if (hasDiff) {
+        const $pos = doc.resolve(pos);
+        // depth 1 gets the top-level block (Paragraph, Table, BulletList)
+        hunkStarts.add($pos.before(1));
+      }
     });
   
-    return hunks;
+    return Array.from(hunkStarts);
   }
+
+  
 
 /** Creates the floating Accept/Reject pill element for a diff hunk. */
 function createPillElement(
@@ -341,6 +324,8 @@ interface TiptapEditorProps {
     pinnedSelectionRange?: { from: number; to: number } | null;
     /** Called after the last inline diff mark is resolved via a per-paragraph button (not the global banner). */
     onAllDiffChangesResolved?: () => void;
+    /** Called when doc has unresolved diff marks (addition/deletion). Used for external banners; responds to Undo. */
+    onHasUnresolvedEditsChange?: (hasEdits: boolean) => void;
 }
 
 const SURROUNDING_CHARS = 500;
@@ -355,6 +340,7 @@ export const TiptapEditor = forwardRef<TiptapEditorHandle, TiptapEditorProps>(fu
     onSelectionChange,
     pinnedSelectionRange,
     onAllDiffChangesResolved,
+    onHasUnresolvedEditsChange,
 }, ref) {
 
 
@@ -370,13 +356,17 @@ export const TiptapEditor = forwardRef<TiptapEditorHandle, TiptapEditorProps>(fu
     const pinnedRangeRef = useRef<{ from: number; to: number } | null>(null);
     pinnedRangeRef.current = pinnedSelectionRange ?? null;
 
+    const [hasUnresolvedEdits, setHasUnresolvedEdits] = useState(false);
+
     // Determine if we're in review mode
     const isReviewMode = !!diffContent;
 
 
-    // 1. Ref for the all-clear callback
+    // 1. Refs for parent callbacks
     const onAllDiffChangesResolvedRef = useRef(onAllDiffChangesResolved);
     onAllDiffChangesResolvedRef.current = onAllDiffChangesResolved;
+    const onHasUnresolvedEditsChangeRef = useRef(onHasUnresolvedEditsChange);
+    onHasUnresolvedEditsChangeRef.current = onHasUnresolvedEditsChange;
 
     // 2. Stable extension definitions
     const pinnedHighlightExtension = useMemo(() => createPinnedHighlightExtension(() => pinnedRangeRef.current), []);
@@ -473,6 +463,47 @@ export const TiptapEditor = forwardRef<TiptapEditorHandle, TiptapEditorProps>(fu
             setOriginalMarkdown(null);
         }
     }, [diffContent, editor, content]);
+
+    // Track unresolved changes for the UI banner (Instant Undo, Debounced Typing)
+    useEffect(() => {
+        if (!editor) return;
+
+        let timeoutId: NodeJS.Timeout;
+
+        const updateUI = ({ transaction }: { transaction: any }) => {
+            // 1. If nothing changed in the doc, ignore it (selection/cursor moves)
+            if (!transaction.docChanged) return;
+
+            // 2. Check if this is an Undo/Redo
+            const isHistoryOp = !!transaction.getMeta('history$');
+
+            const performCheck = () => {
+                const hasEdits = docHasChanges(editor.state.doc);
+                setHasUnresolvedEdits(hasEdits);
+                onHasUnresolvedEditsChangeRef.current?.(hasEdits);
+            };
+
+            if (isHistoryOp) {
+                // ⚡️ INSTANT: Undo/Redo needs to feel snappy
+                clearTimeout(timeoutId);
+                performCheck();
+            } else {
+                // ⏳ DEBOUNCED: Typing is "dirty" work—wait for a pause
+                clearTimeout(timeoutId);
+                timeoutId = setTimeout(performCheck, 150);
+            }
+        };
+
+        // Run once on mount to catch initial diffs
+        setHasUnresolvedEdits(docHasChanges(editor.state.doc));
+
+        editor.on('transaction', updateUI);
+
+        return () => {
+            editor.off('transaction', updateUI);
+            clearTimeout(timeoutId);
+        };
+    }, [editor]);
 
     // Compute diff markdown when diffContent is provided
     // Returns a Markdown string with HTML span tags for diff marks
@@ -677,9 +708,9 @@ export const TiptapEditor = forwardRef<TiptapEditorHandle, TiptapEditorProps>(fu
                 if (!editor || isReviewMode) return null;
                 return applyLibraryDiffImpl(editor, range, aiGeneratedMarkdown);
             },
-            resolveInlineDiff(changeId: string, action: 'accept' | 'reject') {
+            resolveInlineDiff(blockStart: number, action: 'accept' | 'reject') {
                 if (!editor) return;
-                resolveChangeImpl(editor, changeId, action);
+                resolveBlockImpl(editor, blockStart, action);
             },
             resolveAllChanges(action: 'accept' | 'reject') {
                 if (!editor) return;

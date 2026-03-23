@@ -120,6 +120,8 @@ export function ReportLayout({
   const [isGeneratingEdit, setIsGeneratingEdit] = useState(false);
   // Range of the inline diff currently applied to the editor
   const [inlineDiffRange, setInlineDiffRange] = useState<{ from: number; to: number } | null>(null);
+  // Doc-level unresolved edits (from editor scan; responds to Undo) — used for bottom Accept/Reject banner
+  const [hasUnresolvedEdits, setHasUnresolvedEdits] = useState(false);
 
   // Ref to Tiptap editor for client-context (selection + surrounding) AI edit
   const editorRef = useRef<TiptapEditorHandle | null>(null);
@@ -402,6 +404,7 @@ export function ReportLayout({
         onSelectionChange={handleSelectionChange}
         pinnedSelectionRange={pinnedSelectionContext?.range ?? null}
         onAllDiffChangesResolved={() => setInlineDiffRange(null)}
+        onHasUnresolvedEditsChange={setHasUnresolvedEdits}
       />
 
       {/* AI Chat Sidebar - Extracted to AIChatSidebar component */}
@@ -446,16 +449,24 @@ export function ReportLayout({
         getEditorContext={getEditorContext}
       />
 
-      {/* Accept/reject banner — appears at the bottom once the inline diff is visible in the editor. */}
-      {inlineDiffRange && (
+      {/* Accept/reject banner — appears when inline diff exists or doc has unresolved edits (e.g. after Undo). */}
+      {(inlineDiffRange || hasUnresolvedEdits) && (
         <div
           className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-3 rounded-xl border border-slate-200 bg-white px-5 py-3 shadow-2xl"
           role="status"
           aria-live="polite"
         >
           <span className="text-sm font-medium text-slate-700">
-            AI changes applied — accept or reject?
+            AI changes applied — 
           </span>
+          <Button
+            size="sm"
+            onClick={handleAcceptAllChanges}
+            className="h-8 bg-green-600 text-xs text-white hover:bg-green-700"
+          >
+            <Check className="mr-1.5 h-3 w-3" />
+            Keep All Changes
+          </Button>
           <Button
             variant="outline"
             size="sm"
@@ -463,16 +474,9 @@ export function ReportLayout({
             className="h-8 text-xs hover:border-red-300 hover:bg-red-50 hover:text-red-700"
           >
             <X className="mr-1.5 h-3 w-3" />
-            Reject
+            Undo
           </Button>
-          <Button
-            size="sm"
-            onClick={handleAcceptAllChanges}
-            className="h-8 bg-green-600 text-xs text-white hover:bg-green-700"
-          >
-            <Check className="mr-1.5 h-3 w-3" />
-            Accept
-          </Button>
+          
         </div>
       )}
     </div>
