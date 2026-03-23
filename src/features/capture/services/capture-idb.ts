@@ -31,6 +31,30 @@ export interface IDBSession {
   createdAt: number;
 }
 
+function isImageBlob(value: unknown): value is Blob {
+  return (
+    value instanceof Blob &&
+    value.size > 0 &&
+    typeof value.type === "string" &&
+    value.type.startsWith("image/")
+  );
+}
+
+function toValidPhotoRecord(value: unknown): IDBPhoto | null {
+  if (!value || typeof value !== "object") return null;
+  const rec = value as Partial<IDBPhoto>;
+  if (
+    typeof rec.sessionId !== "string" ||
+    typeof rec.photoId !== "number" ||
+    typeof rec.takenAtMs !== "number" ||
+    typeof rec.uploaded !== "boolean" ||
+    !isImageBlob(rec.blob)
+  ) {
+    return null;
+  }
+  return rec as IDBPhoto;
+}
+
 function openDB(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
     const req = indexedDB.open(DB_NAME, DB_VERSION);
@@ -97,6 +121,10 @@ export const captureIDB = {
     blob: Blob,
     takenAtMs: number
   ): Promise<void> {
+    if (!isImageBlob(blob)) {
+      throw new Error("Invalid photo blob: expected a non-empty image blob.");
+    }
+
     const db = await openDB();
     return new Promise((resolve, reject) => {
       const tx = db.transaction(PHOTOS_STORE, "readwrite");
@@ -145,7 +173,11 @@ export const captureIDB = {
       const req = tx.objectStore(PHOTOS_STORE)
         .index("bySession")
         .getAll(sessionId);
-      req.onsuccess = () => { db.close(); resolve(req.result as IDBPhoto[]); };
+      req.onsuccess = () => {
+        db.close();
+        const rows = Array.isArray(req.result) ? req.result : [];
+        resolve(rows.map(toValidPhotoRecord).filter((p): p is IDBPhoto => p !== null));
+      };
       req.onerror = () => { db.close(); reject(req.error); };
     });
   },
@@ -184,7 +216,10 @@ export const captureIDB = {
 
         photoReq.onsuccess = () => {
           db.close();
-          const photos = photoReq.result as IDBPhoto[];
+          const rows = Array.isArray(photoReq.result) ? photoReq.result : [];
+          const photos = rows
+            .map(toValidPhotoRecord)
+            .filter((p): p is IDBPhoto => p !== null);
           if (photos.length === 0 && incomplete.step === "capture") {
             resolve(null);
           } else {

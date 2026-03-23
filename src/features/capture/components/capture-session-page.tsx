@@ -24,6 +24,15 @@ interface CapturedPhoto {
   previewUrl: string;
 }
 
+function isUsableImageBlob(blob: unknown): blob is Blob {
+  return (
+    blob instanceof Blob &&
+    blob.size > 0 &&
+    typeof blob.type === "string" &&
+    blob.type.startsWith("image/")
+  );
+}
+
 export function CaptureSessionPage({
   onClose,
   onSuccessRedirect,
@@ -87,14 +96,22 @@ export function CaptureSessionPage({
           if (session.transcriptEntries?.length) {
             setTranscriptEntries(session.transcriptEntries);
           }
-          const restoredPhotos = idbPhotos.map((p) => ({
+          const validPhotos = idbPhotos.filter((p) => isUsableImageBlob(p.blob));
+          const invalidPhotos = idbPhotos.filter((p) => !isUsableImageBlob(p.blob));
+          if (invalidPhotos.length > 0) {
+            Promise.all(
+              invalidPhotos.map((p) => captureIDB.removePhoto(session.sessionId, p.photoId))
+            ).catch(() => {});
+          }
+
+          const restoredPhotos = validPhotos.map((p) => ({
             id: p.photoId,
             blob: p.blob,
             takenAtMs: p.takenAtMs,
             previewUrl: URL.createObjectURL(p.blob),
           }));
           setPhotos(restoredPhotos);
-          photoIdRef.current = Math.max(0, ...idbPhotos.map((p) => p.photoId));
+          photoIdRef.current = Math.max(0, ...validPhotos.map((p) => p.photoId));
           setStep("recover");
           return;
         }
@@ -239,7 +256,7 @@ export function CaptureSessionPage({
     ctx.drawImage(video, 0, 0);
     canvas.toBlob(
       (blob) => {
-        if (!blob) return;
+        if (!isUsableImageBlob(blob)) return;
         const takenAtMs = audioStartTimeMs ? Date.now() - audioStartTimeMs : 0;
         const id = ++photoIdRef.current;
         setPhotos((prev) => [
@@ -402,12 +419,17 @@ export function CaptureSessionPage({
         if (allIDB.length > 0) {
           photosToUpload = allIDB
             .filter((p) => !p.uploaded)
+            .filter((p) => isUsableImageBlob(p.blob))
             .map((p) => ({ photoId: p.photoId, blob: p.blob, takenAtMs: p.takenAtMs }));
         } else {
-          photosToUpload = photos.map((p) => ({ photoId: p.id, blob: p.blob, takenAtMs: p.takenAtMs }));
+          photosToUpload = photos
+            .filter((p) => isUsableImageBlob(p.blob))
+            .map((p) => ({ photoId: p.id, blob: p.blob, takenAtMs: p.takenAtMs }));
         }
       } catch {
-        photosToUpload = photos.map((p) => ({ photoId: p.id, blob: p.blob, takenAtMs: p.takenAtMs }));
+        photosToUpload = photos
+          .filter((p) => isUsableImageBlob(p.blob))
+          .map((p) => ({ photoId: p.id, blob: p.blob, takenAtMs: p.takenAtMs }));
       }
 
       setTotalUploadCount(photosToUpload.length);

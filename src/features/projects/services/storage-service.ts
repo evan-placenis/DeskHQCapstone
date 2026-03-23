@@ -3,6 +3,39 @@ import { v4 as uuidv4 } from 'uuid';
 import { SpecImageRecord } from "./storage-spec";
 import * as tus from 'tus-js-client';
 
+function detectImageMime(bytes: Uint8Array): 'image/jpeg' | 'image/png' | 'image/webp' | null {
+    if (bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) {
+        return 'image/jpeg';
+    }
+    if (
+        bytes.length >= 8 &&
+        bytes[0] === 0x89 &&
+        bytes[1] === 0x50 &&
+        bytes[2] === 0x4e &&
+        bytes[3] === 0x47 &&
+        bytes[4] === 0x0d &&
+        bytes[5] === 0x0a &&
+        bytes[6] === 0x1a &&
+        bytes[7] === 0x0a
+    ) {
+        return 'image/png';
+    }
+    if (
+        bytes.length >= 12 &&
+        bytes[0] === 0x52 &&
+        bytes[1] === 0x49 &&
+        bytes[2] === 0x46 &&
+        bytes[3] === 0x46 &&
+        bytes[8] === 0x57 &&
+        bytes[9] === 0x45 &&
+        bytes[10] === 0x42 &&
+        bytes[11] === 0x50
+    ) {
+        return 'image/webp';
+    }
+    return null;
+}
+
 export class StorageService {
     /**
      * Uploads an image to Supabase Storage and records it in the database.
@@ -20,13 +53,26 @@ export class StorageService {
 
         // 1. Prepare the file
         const arrayBuffer = await file.arrayBuffer();
+        if (arrayBuffer.byteLength === 0) {
+            throw new Error("Storage Upload Error: image payload is empty.");
+        }
+
+        const imageBytes = new Uint8Array(arrayBuffer);
+        const detectedMime = detectImageMime(imageBytes);
+        if (!detectedMime) {
+            throw new Error("Storage Upload Error: payload is not a valid supported image.");
+        }
 
 
 
 
         // 3. Prepare Paths
-        // Force .jpg extension since frontend sends JPEGs
-        const fileExt = 'jpg';
+        const fileExt =
+            detectedMime === 'image/png'
+                ? 'png'
+                : detectedMime === 'image/webp'
+                    ? 'webp'
+                    : 'jpg';
         const uniqueFileName = `${uuidv4()}.${fileExt}`;
         const filePath = `${organizationId}/${projectId}/${uniqueFileName}`;
 
@@ -34,7 +80,7 @@ export class StorageService {
             .storage
             .from('project-images')
             .upload(filePath, arrayBuffer, {
-                contentType: 'image/jpeg',
+                contentType: detectedMime,
                 upsert: false
             });
 
@@ -57,7 +103,7 @@ export class StorageService {
                 storage_path: filePath,
                 public_url: publicUrl,
                 file_name: uniqueFileName, // Store the new JPEG name
-                mime_type: 'image/jpeg',
+                mime_type: detectedMime,
                 size_bytes: arrayBuffer.byteLength,
                 folder_name: folderName || null, // Store folder name
                 description: description || null, // Store description
