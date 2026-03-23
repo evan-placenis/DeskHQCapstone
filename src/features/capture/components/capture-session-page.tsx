@@ -8,8 +8,9 @@ import { Project } from "@/lib/types";
 import { supabase } from "@/lib/supabase-browser-client";
 import { apiRoutes } from "@/lib/api-routes";
 import * as tus from "tus-js-client";
+import { captureIDB } from "../services/capture-idb";
 
-type Step = "capture" | "choose-project" | "uploading" | "success";
+type Step = "capture" | "choose-project" | "uploading" | "success" | "recover";
 
 interface TranscriptEntry {
   text: string;
@@ -40,6 +41,9 @@ export function CaptureSessionPage({
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [uploadProgress, setUploadProgress] = useState<"idle" | "uploading" | "done" | "error">("idle");
+  const [uploadedCount, setUploadedCount] = useState(0);
+  const [totalUploadCount, setTotalUploadCount] = useState(0);
+  const [needsNewSession, setNeedsNewSession] = useState(false);
 
   const [transcriptEntries, setTranscriptEntries] = useState<TranscriptEntry[]>([]);
 
@@ -73,18 +77,61 @@ export function CaptureSessionPage({
   useEffect(() => {
     let cancelled = false;
     (async () => {
+      try {
+        const recovered = await captureIDB.getRecoverableSession();
+        if (recovered && !cancelled) {
+          const { session, photos: idbPhotos } = recovered;
+          setSessionId(session.sessionId);
+          setFolderName(session.folderName);
+          if (session.projectId) setSelectedProjectId(session.projectId);
+          if (session.transcriptEntries?.length) {
+            setTranscriptEntries(session.transcriptEntries);
+          }
+          const restoredPhotos = idbPhotos.map((p) => ({
+            id: p.photoId,
+            blob: p.blob,
+            takenAtMs: p.takenAtMs,
+            previewUrl: URL.createObjectURL(p.blob),
+          }));
+          setPhotos(restoredPhotos);
+          photoIdRef.current = Math.max(0, ...idbPhotos.map((p) => p.photoId));
+          setStep("recover");
+          return;
+        }
+      } catch (e) {
+        console.warn("IDB recovery check failed:", e);
+      }
+      if (!cancelled) setNeedsNewSession(true);
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  useEffect(() => {
+    if (!needsNewSession) return;
+    let cancelled = false;
+    (async () => {
       const res = await fetch(apiRoutes.captureSessions.root, { method: "POST" });
       if (!res.ok || cancelled) return;
       const data = await res.json();
       if (data.sessionId && data.folderName) {
         setSessionId(data.sessionId);
         setFolderName(data.folderName);
+        setNeedsNewSession(false);
+        captureIDB.saveSession({
+          sessionId: data.sessionId,
+          folderName: data.folderName,
+          step: "capture",
+          projectId: null,
+          finalized: false,
+          audioUploaded: false,
+          metadataSent: false,
+          transcriptEntries: [],
+          createdAt: Date.now(),
+        }).catch((e) => console.warn("IDB save failed:", e));
       }
     })();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+    return () => { cancelled = true; };
+  }, [needsNewSession]);
 
   useEffect(() => {
     if (!sessionId || step !== "capture") return;
@@ -204,6 +251,8 @@ export function CaptureSessionPage({
             previewUrl: URL.createObjectURL(blob),
           },
         ]);
+        captureIDB.savePhoto(sessionId!, id, blob, takenAtMs)
+          .catch((e) => console.warn("IDB photo save failed:", e));
       },
       "image/jpeg",
       0.9
@@ -216,18 +265,28 @@ export function CaptureSessionPage({
       if (p?.previewUrl) URL.revokeObjectURL(p.previewUrl);
       return prev.filter((x) => x.id !== id);
     });
-  }, []);
+    if (sessionId) {
+      captureIDB.removePhoto(sessionId, id)
+        .catch((e) => console.warn("IDB photo remove failed:", e));
+    }
+  }, [sessionId]);
 
   const handleDone = useCallback(() => {
     stopRecording();
     setStep("choose-project");
+    if (sessionId) {
+      captureIDB.updateSession(sessionId, {
+        step: "choose-project",
+        transcriptEntries,
+      }).catch((e) => console.warn("IDB session update failed:", e));
+    }
     setProjectsLoading(true);
     fetch(apiRoutes.project.list())
       .then((r) => r.json())
       .then((data) => (data.projects ? setProjects(data.projects) : null))
       .catch(() => { })
       .finally(() => setProjectsLoading(false));
-  }, [stopRecording]);
+  }, [stopRecording, sessionId, transcriptEntries]);
 
   const handleCreateProject = useCallback(async () => {
     if (!createName.trim()) return;
@@ -270,6 +329,11 @@ export function CaptureSessionPage({
     setUploadProgress("uploading");
 
     try {
+      await captureIDB.updateSession(sessionId, { step: "uploading", projectId }).catch(() => {});
+
+      const idbState = await captureIDB.getSession(sessionId).catch(() => null);
+
+      // 1. Finalize session (idempotent — safe to call again on retry)
       const finalizeRes = await fetch(apiRoutes.captureSessions.finalize(sessionId), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -281,19 +345,13 @@ export function CaptureSessionPage({
       }
       const finalizeData = await finalizeRes.json();
       const { organizationId, folderName: fn } = finalizeData;
+      await captureIDB.updateSession(sessionId, { finalized: true }).catch(() => {});
 
+      // 2. Audio via TUS (skip if already uploaded in a previous attempt)
       const audioBlob = getAudioBlob();
-      if (audioBlob && audioBlob.size > 0 && (!organizationId || !fn)) {
-        throw new Error("Session setup incomplete. Please try again.");
-      }
-      let audioClientUploaded = false;
+      let audioClientUploaded = idbState?.audioUploaded === true;
 
-      if (audioBlob && audioBlob.size > 0 && (!organizationId || !fn)) {
-        throw new Error("Session setup incomplete. Please try again.");
-      }
-
-      // Always use client-side TUS for audio to support 2–3 hour recordings (bypasses API body limits)
-      if (audioBlob && audioBlob.size > 0 && organizationId && fn) {
+      if (!audioClientUploaded && audioBlob && audioBlob.size > 0 && organizationId && fn) {
         const { data: { session } } = await supabase.auth.getSession();
         const token = session?.access_token;
         if (!token) throw new Error("Not authenticated. Please log in to upload audio.");
@@ -304,7 +362,7 @@ export function CaptureSessionPage({
         const safeFolder = fn.replace(/\//g, "-");
         const fileName = `session-audio-${sessionId}.webm`;
         const filePath = `${organizationId}/${projectId}/${safeFolder}/${fileName}`;
-        const CHUNK_SIZE = 6 * 1024 * 1024; // 6 MB
+        const CHUNK_SIZE = 6 * 1024 * 1024;
         const mimeType = audioBlob.type || "audio/webm";
 
         await new Promise<void>((resolve, reject) => {
@@ -334,29 +392,73 @@ export function CaptureSessionPage({
           upload.start();
         });
         audioClientUploaded = true;
+        await captureIDB.updateSession(sessionId, { audioUploaded: true }).catch(() => {});
       }
 
-      const form = new FormData();
-      if (audioClientUploaded) {
-        form.set("audioClientUploaded", "true");
-      }
-      photos.forEach((p, i) => {
-        form.append("photos", p.blob, `photo-${i}.jpg`);
-        form.append("taken_at_ms", String(p.takenAtMs));
-      });
-      if (transcriptEntries.length > 0) {
-        form.set("transcript_segments", JSON.stringify(transcriptEntries));
-      }
-
-      const uploadRes = await fetch(apiRoutes.captureSessions.upload(sessionId), {
-        method: "POST",
-        body: form,
-      });
-      if (!uploadRes.ok) {
-        const err = await uploadRes.json().catch(() => ({}));
-        throw new Error(err.error || "Upload failed");
+      // 3. Upload photos one at a time (only those not yet uploaded)
+      let photosToUpload: { photoId: number; blob: Blob; takenAtMs: number }[];
+      try {
+        const allIDB = await captureIDB.getPhotos(sessionId);
+        if (allIDB.length > 0) {
+          photosToUpload = allIDB
+            .filter((p) => !p.uploaded)
+            .map((p) => ({ photoId: p.photoId, blob: p.blob, takenAtMs: p.takenAtMs }));
+        } else {
+          photosToUpload = photos.map((p) => ({ photoId: p.id, blob: p.blob, takenAtMs: p.takenAtMs }));
+        }
+      } catch {
+        photosToUpload = photos.map((p) => ({ photoId: p.id, blob: p.blob, takenAtMs: p.takenAtMs }));
       }
 
+      setTotalUploadCount(photosToUpload.length);
+      setUploadedCount(0);
+
+      for (let i = 0; i < photosToUpload.length; i++) {
+        const photo = photosToUpload[i];
+        const form = new FormData();
+        form.append("photos", photo.blob, `photo-${photo.photoId}.jpg`);
+        form.append("taken_at_ms", String(photo.takenAtMs));
+
+        const res = await fetch(apiRoutes.captureSessions.upload(sessionId), {
+          method: "POST",
+          body: form,
+        });
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          throw new Error(err.error || `Photo upload failed (${i + 1}/${photosToUpload.length})`);
+        }
+
+        await captureIDB.markPhotoUploaded(sessionId, photo.photoId).catch(() => {});
+        setUploadedCount(i + 1);
+      }
+
+      // 4. Send metadata (transcript + audio flag) once after all photos
+      const currentTranscript = idbState?.transcriptEntries?.length
+        ? idbState.transcriptEntries
+        : transcriptEntries;
+
+      if (
+        !(idbState?.metadataSent === true) &&
+        (audioClientUploaded || currentTranscript.length > 0)
+      ) {
+        const form = new FormData();
+        if (audioClientUploaded) form.set("audioClientUploaded", "true");
+        if (currentTranscript.length > 0) {
+          form.set("transcript_segments", JSON.stringify(currentTranscript));
+        }
+        const metaRes = await fetch(apiRoutes.captureSessions.upload(sessionId), {
+          method: "POST",
+          body: form,
+        });
+        if (!metaRes.ok) {
+          const err = await metaRes.json().catch(() => ({}));
+          throw new Error(err.error || "Failed to save session metadata");
+        }
+        await captureIDB.updateSession(sessionId, { metadataSent: true }).catch(() => {});
+      }
+
+      // 5. Done — clear local persistence
+      await captureIDB.clearSession(sessionId).catch(() => {});
       setUploadProgress("done");
       setStep("success");
       setTimeout(() => onSuccessRedirect(projectId), 1500);
@@ -375,6 +477,66 @@ export function CaptureSessionPage({
   const filteredProjects = projects.filter((p) =>
     p.name.toLowerCase().includes(searchQuery.toLowerCase())
   );
+
+  const loadProjectsAndGo = useCallback(() => {
+    setStep("choose-project");
+    setProjectsLoading(true);
+    fetch(apiRoutes.project.list())
+      .then((r) => r.json())
+      .then((data) => (data.projects ? setProjects(data.projects) : null))
+      .catch(() => {})
+      .finally(() => setProjectsLoading(false));
+  }, []);
+
+  const discardRecovery = useCallback(async () => {
+    if (sessionId) await captureIDB.clearSession(sessionId).catch(() => {});
+    photos.forEach((p) => URL.revokeObjectURL(p.previewUrl));
+    setPhotos([]);
+    setSelectedProjectId(null);
+    setSessionId(null);
+    setFolderName(null);
+    setTranscriptEntries([]);
+    setStep("capture");
+    setNeedsNewSession(true);
+  }, [sessionId, photos]);
+
+  if (step === "recover") {
+    const hasPendingUpload = !!selectedProjectId;
+    return (
+      <div className="fixed inset-0 bg-slate-900 z-50 flex flex-col items-center justify-center p-6">
+        <Camera className="w-12 h-12 text-theme-primary mb-4" />
+        <h2 className="text-white text-lg font-semibold mb-2">Session Recovery</h2>
+        <p className="text-slate-300 text-center mb-6">
+          We found <span className="text-white font-medium">{photos.length} photo{photos.length !== 1 ? "s" : ""}</span> from
+          your last capture session.
+          {hasPendingUpload
+            ? " Your upload was interrupted — you can retry it now."
+            : " You can continue where you left off."}
+        </p>
+        <div className="flex gap-3 w-full max-w-xs">
+          <Button
+            variant="outline"
+            className="flex-1 rounded-lg text-slate-300 border-slate-600 hover:bg-slate-800"
+            onClick={discardRecovery}
+          >
+            Discard
+          </Button>
+          <Button
+            className="flex-1 rounded-lg bg-theme-action-primary"
+            onClick={() => {
+              if (hasPendingUpload) {
+                doUpload();
+              } else {
+                setStep("capture");
+              }
+            }}
+          >
+            {hasPendingUpload ? "Retry Upload" : "Resume"}
+          </Button>
+        </div>
+      </div>
+    );
+  }
 
   if (!sessionId && step === "capture") {
     return (
@@ -496,15 +658,30 @@ export function CaptureSessionPage({
           </>
         ) : uploadProgress === "error" ? (
           <>
-            <p className="text-red-400 mb-4">{uploadError}</p>
-            <Button variant="outline" className="rounded-lg" onClick={() => setStep("choose-project")}>
+            <p className="text-red-400 text-center mb-2">{uploadError}</p>
+            {uploadedCount > 0 && (
+              <p className="text-slate-400 text-sm mb-4">
+                {uploadedCount} of {uploadedCount + (totalUploadCount - uploadedCount)} photos saved.
+                {totalUploadCount - uploadedCount > 0
+                  ? ` ${totalUploadCount - uploadedCount} remaining.`
+                  : ""}
+              </p>
+            )}
+            <Button className="rounded-lg bg-theme-action-primary mb-2" onClick={doUpload}>
+              Retry Upload
+            </Button>
+            <Button variant="ghost" className="rounded-lg text-slate-400" onClick={() => setStep("choose-project")}>
               Back
             </Button>
           </>
         ) : (
           <>
             <Loader2 className="w-12 h-12 animate-spin text-theme-primary mb-4" />
-            <p className="text-white">Uploading...</p>
+            <p className="text-white">
+              {totalUploadCount > 0
+                ? `Uploading photo ${Math.min(uploadedCount + 1, totalUploadCount)} of ${totalUploadCount}...`
+                : "Uploading..."}
+            </p>
           </>
         )}
       </div>
