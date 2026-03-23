@@ -3,8 +3,8 @@ import { AIChatSidebar, EditSuggestion } from "@/features/chat/components/ai-cha
 import { ReportContent } from "./report-content";
 import { PeerReview, ReportContent as ReportContentType } from "@/lib/types";
 import type { TiptapEditorHandle, SelectionContext } from "./tiptap-editor";
+import { stripLeadingHeading } from "./inline-diff-utils";
 import { Check, X } from "lucide-react";
-import { isStructuralMarkdown, stripLeadingHeading } from "./inline-diff-utils";
 import { Button } from "@/components/ui/button";
 import { apiRoutes } from "@/lib/api-routes";
 
@@ -200,11 +200,7 @@ export function ReportLayout({
 
         suggestedText = suggestedText.trim();
         if (suggestedText && editorRef.current) {
-          const newRange = editorRef.current.applyInlineDiff(
-            editRange,
-            context.selection,
-            suggestedText,
-          );
+          const newRange = editorRef.current.applyLibraryDiff(editRange, suggestedText);
           setInlineDiffRange(newRange);
         }
       } catch (error) {
@@ -219,28 +215,17 @@ export function ReportLayout({
   const handleAcceptAllChanges = useCallback(() => {
     if (!editorRef.current) return;
     editorRef.current.resolveAllChanges('accept');
-    editorRef.current.acceptStructuralChange();
     setInlineDiffRange(null);
   }, []);
 
   const handleRejectAllChanges = useCallback(() => {
     if (!editorRef.current) return;
     editorRef.current.resolveAllChanges('reject');
-    editorRef.current.rejectStructuralChange();
     setInlineDiffRange(null);
   }, []);
 
-  // Smart Dispatcher for propose_structure_insertion tool calls.
-  //
-  // Mode A — Structural markdown (headings / lists / code blocks):
-  //   The AI returned content that can't be diffed word-by-word (e.g. bullet
-  //   points, sub-headings).  Use Tiptap's native markdown parser so the block
-  //   structure is rendered correctly.  Wrapped in replaceRange() → single undo
-  //   step.  No inline diff banner is shown.
-  //
-  // Mode B — Plain prose:
-  //   The AI rewrote running text.  Show a word-level red/green inline diff so
-  //   the user can accept or reject individual changes before committing.
+  // Handles propose_structure_insertion tool calls: replace_section uses
+  // applyLibraryDiff for inline diff; insert anchors use insertAtPosition.
   const handleEditSuggestion = useCallback((suggestion: EditSuggestion) => {
     if (!editorRef.current) return;
     const { suggestedText, originalText, insertAnchor } = suggestion;
@@ -262,18 +247,8 @@ export function ReportLayout({
       // in the editor; re-inserting it would double it or clobber the heading node).
       const bodyContent = stripLeadingHeading(suggestedText);
 
-      if (isStructuralMarkdown(bodyContent)) {
-        // Mode A: structural content — propose visually (green border + right-margin ✓/✗).
-        // The user must explicitly accept or reject; we do NOT silently apply the change.
-        editorRef.current.proposeStructuralChange(range, bodyContent);
-        // No inlineDiffRange banner — structural changes have their own per-block UI.
-        setInlineDiffRange(null);
-      } else {
-        // Mode B: plain prose — word-level inline diff
-        const src = originalText ?? bodyContent;
-        const newRange = editorRef.current.applyInlineDiff(range, src, bodyContent);
-        setInlineDiffRange(newRange);
-      }
+      const newRange = editorRef.current.applyLibraryDiff(range, bodyContent);
+      setInlineDiffRange(newRange);
     } else {
       const pos = editorRef.current.getInsertPositionForAnchor(insertAnchor);
       if (pos != null) {

@@ -1,9 +1,9 @@
 import type { Editor } from '@tiptap/react';
 
-export interface OutlineEntry {
+
+export interface OutlineItem {
   level: number;
   text: string;
-  /** ProseMirror position of the heading node */
   pos: number;
 }
 
@@ -22,8 +22,8 @@ export interface ActiveSectionInfo {
  *   ## Site Observations
  *   ### Structural Elements
  */
-export function extractOutline(editor: Editor): OutlineEntry[] {
-  const entries: OutlineEntry[] = [];
+export function extractOutline(editor: Editor): OutlineItem[] {
+  const entries: OutlineItem[] = [];
   editor.state.doc.descendants((node, pos) => {
     if (node.type.name === 'heading') {
       const level = node.attrs.level as number;
@@ -39,7 +39,7 @@ export function extractOutline(editor: Editor): OutlineEntry[] {
 /**
  * Serialize an outline into a plain-text string suitable for a system prompt.
  */
-export function outlineToString(entries: OutlineEntry[]): string {
+export function outlineToString(entries: OutlineItem[]): string {
   return entries
     .map((e) => `${'#'.repeat(e.level)} ${e.text}`)
     .join('\n');

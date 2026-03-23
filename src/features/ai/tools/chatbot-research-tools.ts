@@ -21,8 +21,12 @@ export const researchTools = (projectId: string) => ({
         console.log(`🧠 [Research Tool] Searching Internal Memory: "${cleanQuery}"`);
         const results = await Container.knowledgeService.search([cleanQuery], projectId);
 
+        const formattedContext = results.map(doc => {
+          return `--- Document: ${doc.source} ---\n${doc.content}\n`;
+        }).join('\n');
+
         if (results && results.length > 0) {
-          return `[MEMORY MATCH FOUND]:\n${results.join('\n\n')}`;
+          return `[MEMORY MATCH FOUND]:\n${formattedContext}`;
         }
 
         return 'No matches found in internal memory.';

@@ -2,343 +2,361 @@
 
 import { diffWordsWithSpace } from 'diff';
 import type { Editor } from '@tiptap/core';
-import type { JSONContent } from '@tiptap/core';
-import type { Node as ProseMirrorNode } from '@tiptap/pm/model';
+import { create } from 'jsondiffpatch';
+import { DiffPatcher } from 'jsondiffpatch';
 
-interface TextSegment {
-  text: string;
-  marks: Array<{ type: string; attrs?: Record<string, unknown> }>;
-}
-
-// ─── Segment extraction ──────────────────────────────────────────────────────
-
-function extractSegmentsFromNode(node: ProseMirrorNode): TextSegment[] {
-  const out: TextSegment[] = [];
-
-  // When the selection is within a single paragraph, doc.slice() returns a Fragment
-  // whose top-level children ARE the text nodes (not the paragraph wrapping them).
-  // We must handle this case before calling descendants() which returns nothing for
-  // leaf text nodes.
-  if (node.isText && node.text) {
-    out.push({
-      text: node.text,
-      marks: node.marks.map((m) => ({
-        type: m.type.name,
-        attrs: m.attrs && Object.keys(m.attrs).length > 0 ? m.attrs : undefined,
-      })),
-    });
-    return out;
-  }
-
-  node.descendants((n) => {
-    if (n.isText && n.text) {
-      out.push({
-        text: n.text,
-        marks: n.marks.map((m) => ({
-          type: m.type.name,
-          attrs: m.attrs && Object.keys(m.attrs).length > 0 ? m.attrs : undefined,
-        })),
-      });
+const diffPatcher = new DiffPatcher({
+  objectHash: (obj: any) => {
+    // The engine now relies entirely on the _idx we stamp onto the objects
+    if (obj.type === 'text') {
+      return `text_${JSON.stringify(obj.marks || [])}_${obj._idx}`;
     }
-  });
-  return out;
-}
-
-function extractSegmentsFromJson(node: JSONContent): TextSegment[] {
-  if (node.type === 'text') {
-    const text = (node.text ?? '').replace(/\n/g, ' ');
-    if (!text) return [];
-    const marks = (node.marks ?? []).map((m: Record<string, unknown>) => ({
-      type: m.type as string,
-      attrs: m.attrs as Record<string, unknown> | undefined,
-    })).filter((m) => m.type);
-    return [{ text, marks }];
-  }
-  return (node.content ?? []).flatMap((c) => extractSegmentsFromJson(c as JSONContent));
-}
+    return `${obj.type}_${obj._idx}`;
+  },
+  arrays: { 
+    detectMove: false // We lock them in place positionally
+  },
+});
 
 /**
- * Hydrates a markdown string into text segments via editor.markdown.parse().
- * **bold** becomes a Strong mark, not literal `**` characters.
+ * Safely extracts the official Tiptap Markdown parser.
  */
-function hydrateMarkdownToSegments(editor: Editor, markdown: string): TextSegment[] {
-  const ed = editor as unknown as {
-    markdown?: { parse: (s: string) => ProseMirrorNode | JSONContent };
-  };
-  if (!ed.markdown?.parse) {
-    return markdown ? [{ text: markdown.replace(/\n/g, ' '), marks: [] }] : [];
+function getMarkdownParser(editor: any) {
+  // The official @tiptap/markdown extension exposes 'editor.markdown'
+  if (editor.markdown && typeof editor.markdown.parse === 'function') {
+    return editor.markdown;
   }
-  const parsed = ed.markdown.parse(markdown);
-  if (!parsed) return [];
-  if (typeof (parsed as ProseMirrorNode).descendants === 'function') {
-    return extractSegmentsFromNode(parsed as ProseMirrorNode);
-  }
-  return extractSegmentsFromJson(parsed as JSONContent);
+
+  // Fallback for older versions or specific configurations
+  const storage = editor.storage.markdown || editor.storage.Markdown;
+  if (storage && typeof storage.parse === 'function') return storage;
+  
+  return null;
 }
 
-function getMarksForSpan(
-  segments: TextSegment[],
-  start: number,
-  len: number,
-): Array<{ type: string; attrs?: Record<string, unknown> }> {
-  let pos = 0;
-  const marks: Array<{ type: string; attrs?: Record<string, unknown> }> = [];
-  const end = start + len;
-  for (const seg of segments) {
-    const segEnd = pos + seg.text.length;
-    if (segEnd > start && pos < end) marks.push(...seg.marks);
-    pos = segEnd;
-  }
-  return marks;
-}
 
-// ─── Apply diff ───────────────────────────────────────────────────────────────
-
-/**
- * Applies a word-level inline diff to the editor within the given range.
- *
- * KEY BEHAVIOURS
- * ──────────────
- * 1. Single-block guard: the range must be within one block node (paragraph,
- *    heading, list item, etc.).  Cross-block replacements would destroy the
- *    block type — e.g. a heading would silently become a paragraph.
- *
- * 2. Hydrate-then-diff: the AI response is parsed by editor.markdown.parse()
- *    first so `**bold**` becomes a Strong mark, not literal asterisks.
- *
- * 3. changeId per hunk: consecutive add/remove chunks share a `changeId`
- *    (e.g. "h1", "h2").  These IDs are stored on the mark attrs so individual
- *    hunks can be accepted/rejected atomically via resolveInlineDiff().
- */
-export function applyInlineDiff(
-  editor: Editor,
+export function applyLibraryDiff(
+  editor: any,
   range: { from: number; to: number },
-  _originalText: string,
-  aiGeneratedText: string,
+  aiGeneratedMarkdown: string
 ): { from: number; to: number } | null {
-  if (!editor.schema.marks['addition'] || !editor.schema.marks['deletion']) return null;
-  const docSize = editor.state.doc.content.size;
-  if (range.from < 0 || range.to > docSize || range.from >= range.to) return null;
+  const changeId = Math.random().toString(36).substring(7);
 
-  // Guard: only apply within a single block node to preserve node type (headings, etc.)
-  const $from = editor.state.doc.resolve(range.from);
-  const $to = editor.state.doc.resolve(range.to);
-  if ($from.parent !== $to.parent) return null;
+  // 1. Get old nodes
+  const oldNodes = editor.state.doc.slice(range.from, range.to).toJSON().content || [];
 
-  // Build segments for both sides
-  const aiSegments = hydrateMarkdownToSegments(editor, aiGeneratedText);
-  const aiPlain = aiSegments.map((s) => s.text).join('');
+  // 2. Parse new nodes
+  const parser = getMarkdownParser(editor);
+  if (!parser) {
+    console.error("DeskHQ Error: Markdown parser missing.");
+    return null;
+  }
+  const newDoc = parser.parse(aiGeneratedMarkdown);
+  let newNodes = newDoc.content || newDoc.toJSON().content || [];
 
-  const slice = editor.state.doc.slice(range.from, range.to);
-  const originalSegments: TextSegment[] = [];
-  slice.content.forEach((node) => originalSegments.push(...extractSegmentsFromNode(node)));
-  const originalPlain = originalSegments.map((s) => s.text).join('');
-
-  const rawChunks = diffWordsWithSpace(originalPlain, aiPlain).filter((c) => c.value.length > 0);
-  if (rawChunks.length === 0) return null;
-
-  // Assign changeId: consecutive add/remove blocks form one hunk and share an id
-  let hunkCounter = 0;
-  let inHunk = false;
-  const chunks = rawChunks.map((c) => {
-    if (c.added || c.removed) {
-      if (!inHunk) { hunkCounter++; inHunk = true; }
-      return { ...c, changeId: `h${hunkCounter}` };
-    }
-    inHunk = false;
-    return { ...c, changeId: null };
-  });
-
-  let origPos = 0;
-  let aiPos = 0;
-  const jsonContent: JSONContent[] = [];
-
-  for (const chunk of chunks) {
-    const text = chunk.value.replace(/\n/g, ' ');
-    if (!text) continue;
-
-    const diffMarks: Array<{ type: string; attrs?: Record<string, unknown> }> = [];
-    if (chunk.added)   diffMarks.push({ type: 'addition', attrs: { changeId: chunk.changeId } });
-    if (chunk.removed) diffMarks.push({ type: 'deletion', attrs: { changeId: chunk.changeId } });
-
-    // Carry over formatting marks (bold, italic, etc.) from the appropriate source
-    const formatMarks = chunk.added
-      ? getMarksForSpan(aiSegments, aiPos, text.length)
-      : getMarksForSpan(originalSegments, origPos, text.length);
-
-    // Deduplicate by mark type: ProseMirror throws if the same mark type appears
-    // more than once on a node (e.g. two consecutive bold segments each contribute
-    // a 'bold' mark when the diff word spans both, giving "bold,bold").
-    const seenMarkTypes = new Set<string>();
-    const allMarks = [...formatMarks, ...diffMarks].filter((m) => {
-      if (seenMarkTypes.has(m.type)) return false;
-      seenMarkTypes.add(m.type);
-      return true;
-    });
-    jsonContent.push({ type: 'text', text, marks: allMarks.length > 0 ? allMarks : undefined });
-
-    if (chunk.added) aiPos += text.length;
-    else origPos += text.length;
+  const oldIsTextOnly = oldNodes.every((n: any) => n.type === 'text');
+  if (oldIsTextOnly && newNodes.length === 1 && newNodes[0].type === 'paragraph') {
+    newNodes = newNodes[0].content || [];
   }
 
-  const ok = editor.commands.insertContentAt(
-    { from: range.from, to: range.to },
-    jsonContent,
-    { updateSelection: false, parseOptions: { preserveWhitespace: 'full' } },
-  );
-  if (!ok) return null;
+  // ------------------------------------------------------------------
+  // THE CORE FIX: THE INDEX STAMP
+  // We recursively walk through the JSON trees and stamp every node 
+  // with its array index. This guarantees jsondiffpatch will align 
+  // them perfectly and do surgical word-level diffs inside the blocks.
+  // ------------------------------------------------------------------
+  const injectIndex = (nodes: any[]) => {
+    if (!Array.isArray(nodes)) return;
+    nodes.forEach((n, i) => {
+      if (n && typeof n === 'object') {
+        n._idx = i;
+        if (n.content) injectIndex(n.content);
+      }
+    });
+  };
+  
+  injectIndex(oldNodes);
+  injectIndex(newNodes);
 
-  const totalLength = chunks.reduce((sum, c) => sum + c.value.length, 0);
-  return { from: range.from, to: range.from + totalLength };
+  // 3. Mathematical Diff
+  const delta = diffPatcher.diff(oldNodes, newNodes);
+
+  console.log("=== 1. RAW DELTA ===");
+  console.log(JSON.stringify(delta, null, 2));
+
+  // 4. Translate and Insert
+  const diffNodes = translateDeltaToTipTap(oldNodes, newNodes, delta, changeId);
+  editor.commands.insertContentAt(range, diffNodes);
+
+  return { from: range.from, to: range.from + diffNodes.length };
 }
 
-// ─── Shared resolution logic ──────────────────────────────────────────────────
+function translateDeltaToTipTap(oldNodes: any[], newNodes: any[], delta: any, changeId: string): any[] {
+  // If there's no delta, nothing changed. Return the new nodes exactly as they are.
+  if (!delta) return newNodes;
 
-function dispatchResolution(
-  editor: Editor,
-  action: 'accept' | 'reject',
-  matchMark: (markName: string, changeId: string | null) => boolean,
-): void {
-  const { state } = editor;
-  const additionMark = state.schema.marks['addition'];
-  const deletionMark = state.schema.marks['deletion'];
-  if (!additionMark || !deletionMark) return;
+  const result: any[] = [];
+  let oldIndex = 0; // Tracks our position in the ORIGINAL document
 
-  const toDelete: Array<{ from: number; to: number }> = [];
-  const toUnmark: Array<{ from: number; to: number; isAddition: boolean }> = [];
+  // We loop through the NEW document, matching it against the delta
+  for (let newIndex = 0; newIndex < newNodes.length; newIndex++) {
+    
+    // ------------------------------------------------------------------
+    // STEP 1: CATCH DELETIONS (The "_X" keys)
+    // jsondiffpatch marks deletions with an underscore (e.g., "_0", "_1").
+    // We use a `while` loop because there might be multiple deleted items
+    // in a row before we get to the next piece of kept/new content.
+    // ------------------------------------------------------------------
+    while (delta[`_${oldIndex}`]) {
+      const delChange = delta[`_${oldIndex}`];
+      
+      // 🔬 SURGICAL LOG 2A: DELETIONS
+      console.log(`[Diff] 🗑️ Deletion caught at oldIndex: ${oldIndex}`);
+      
+      result.push(recursivelyApplyMark(delChange[0], 'deletion', changeId));
+      oldIndex++; // Move our pointer forward in the old document
+    }
 
-  state.doc.descendants((node, pos) => {
-    if (!node.isText) return;
-    for (const mark of node.marks) {
-      const changeId = (mark.attrs?.changeId as string | null) ?? null;
-      if (mark.type === additionMark && matchMark('addition', changeId)) {
-        if (action === 'accept') toUnmark.push({ from: pos, to: pos + node.nodeSize, isAddition: true });
-        else                     toDelete.push({ from: pos, to: pos + node.nodeSize });
-      } else if (mark.type === deletionMark && matchMark('deletion', changeId)) {
-        if (action === 'accept') toDelete.push({ from: pos, to: pos + node.nodeSize });
-        else                     toUnmark.push({ from: pos, to: pos + node.nodeSize, isAddition: false });
+    // ------------------------------------------------------------------
+    // STEP 2: PROCESS THE CURRENT NODE
+    // We check the delta using the current numeric index (e.g., "0", "1")
+    // ------------------------------------------------------------------
+    const change = delta[newIndex.toString()];
+    const newNode = newNodes[newIndex];
+    const oldNode = oldNodes[oldIndex];
+
+    // CASE A: UNCHANGED
+    if (change === undefined) {
+      result.push(newNode);
+      oldIndex++;
+    } 
+    
+    // CASE B: ADDITION (Array of length 1: [newThing])
+    else if (Array.isArray(change) && change.length === 1) {
+      // 🔬 SURGICAL LOG 2B: ADDITIONS
+      console.log(`[Diff] 🟩 Addition caught at newIndex: ${newIndex}`);
+      
+      result.push(recursivelyApplyMark(change[0], 'addition', changeId));
+      // NOTE: We do NOT increment oldIndex here because an addition 
+      // doesn't "consume" anything from the old document.
+    } 
+    
+    // CASE C: REPLACEMENT (Array of length 2: [oldThing, newThing])
+    else if (Array.isArray(change) && change.length === 2) {
+      // 🔬 SURGICAL LOG 2C: REPLACEMENTS
+      console.log(`[Diff] 🔄 Replacement caught (Old: ${oldIndex} -> New: ${newIndex})`);
+
+      // If both old and new are Text nodes, do a surgical word-level diff!
+      if (oldNode?.type === 'text' && newNode?.type === 'text') {
+        result.push(...performInlineTextDiff(oldNode, newNode, changeId));
+      } else {
+        // If they are blocks (like a table turning into a list), 
+        // delete the whole old block and add the whole new block.
+        result.push(recursivelyApplyMark(change[0], 'deletion', changeId));
+        result.push(recursivelyApplyMark(change[1], 'addition', changeId));
+      }
+      oldIndex++;
+    } 
+    
+    // CASE D: MODIFICATION (Deep Object Diff)
+    else if (typeof change === 'object') {
+      // 🔬 SURGICAL LOG 2D: MODIFICATIONS
+      console.log(`[Diff] 🪚 Deep Modification at index: ${newIndex}`);
+
+      // If a block node (like a table) changed inside, RECURSE into it.
+      if (change.content) {
+        result.push({
+          ...newNode,
+          content: translateDeltaToTipTap(
+            oldNode?.content || [], 
+            newNode?.content || [], 
+            change.content, 
+            changeId
+          )
+        });
+      } 
+      // If it's a text node that was modified (attributes changed, etc.)
+      else if (newNode?.type === 'text' && oldNode) {
+        result.push(...performInlineTextDiff(oldNode, newNode, changeId));
+      } 
+      // Catch-all: If we can't recurse, treat it as a Replacement
+      else {
+        result.push(recursivelyApplyMark(oldNode, 'deletion', changeId));
+        result.push(recursivelyApplyMark(newNode, 'addition', changeId));
+      }
+      oldIndex++;
+    }
+  }
+
+  // ------------------------------------------------------------------
+  // STEP 3: CATCH LEFTOVER DELETIONS
+  // If the AI deleted the very last items in a list/paragraph, the 
+  // 'newNodes' loop will finish before we catch them. This cleans them up.
+  // ------------------------------------------------------------------
+  while (oldIndex < oldNodes.length) {
+    if (delta[`_${oldIndex}`]) {
+      console.log(`[Diff] 🗑️ Trailing Deletion caught at oldIndex: ${oldIndex}`);
+      result.push(recursivelyApplyMark(delta[`_${oldIndex}`][0], 'deletion', changeId));
+    }
+    oldIndex++;
+  }
+
+  return result;
+}
+// ─── 1. The Recursive Marker (For Structural Changes) ────────────────────────
+
+/**
+ * Recursively walks a TipTap/ProseMirror JSON node and applies a specific mark
+ * to every single text node inside it.
+ */
+function recursivelyApplyMark(node: any, markType: string, changeId: string): any {
+  // 1. Base Case: Text nodes OR inline "atom" nodes (like images/hardBreaks)
+  // We check for !node.content to catch nodes that can't have children but can have marks.
+  const isText = node.type === 'text';
+  const isAtom = !node.content && node.type !== 'paragraph' && node.type !== 'tableRow';
+
+  if (isText || isAtom) {
+    const marks = node.marks ? [...node.marks] : [];
+    
+    // Check for existing mark by string name (JSON) or .name property (Live Node)
+    const hasMark = marks.some(m => 
+      (typeof m.type === 'string' ? m.type === markType : m.type.name === markType)
+    );
+
+    if (!hasMark) {
+      marks.push({ type: markType, attrs: { changeId } });
+    }
+    
+    return { ...node, marks: marks.length > 0 ? marks : undefined };
+  }
+
+  // 2. Recursive Case: Structural nodes (Paragraphs, Lists, Tables)
+  if (node.content && Array.isArray(node.content)) {
+    return {
+      ...node,
+      content: node.content.map((child: any) => 
+        recursivelyApplyMark(child, markType, changeId)
+      ),
+    };
+  }
+
+  return node;
+}
+// ─── 3. Helper: Inline Word Differ ───────────────────────────────────────────
+function performInlineTextDiff(oldNode: any, newNode: any, changeId: string): any[] {
+  // 1. Defensive check
+  if (!oldNode || typeof oldNode.text !== 'string') {
+    return [recursivelyApplyMark(newNode, 'addition', changeId)];
+  }
+
+  const oldText = oldNode.text || '';
+  const newText = newNode.text || '';
+  
+  if (oldText === newText) return [newNode];
+
+  // 2. Run the word-level diff
+  const chunks = diffWordsWithSpace(oldText, newText).filter(c => c.value.length > 0);
+  
+  return chunks.map(chunk => {
+    // Logic: If it's NOT removed (meaning it's added or unchanged), use NEW marks.
+    // If it IS removed, use OLD marks to preserve original formatting during deletion.
+    const baseMarks = !chunk.removed ? (newNode.marks || []) : (oldNode.marks || []);
+    
+    // Clone marks to avoid mutating originals
+    const marks = [...baseMarks];
+
+    // 3. Apply the appropriate change mark
+    if (chunk.added) {
+      // Avoid pushing duplicate addition marks if already present
+      if (!marks.some(m => m.type === 'addition')) {
+        marks.push({ type: 'addition', attrs: { changeId } });
+      }
+    } else if (chunk.removed) {
+      if (!marks.some(m => m.type === 'deletion')) {
+        marks.push({ type: 'deletion', attrs: { changeId } });
       }
     }
+
+    return {
+      type: 'text',
+      text: chunk.value,
+      marks: marks.length > 0 ? marks : undefined
+    };
   });
-
-  const tr = state.tr;
-  // Delete from end-to-start so earlier positions are not invalidated
-  [...toDelete].sort((a, b) => b.from - a.from).forEach(({ from, to }) => tr.delete(from, to));
-  toUnmark.forEach(({ from, to, isAddition }) => {
-    const mf = tr.mapping.map(from);
-    const mt = tr.mapping.map(to);
-    if (mf < mt) tr.removeMark(mf, mt, isAddition ? additionMark : deletionMark);
-  });
-  editor.view.dispatch(tr);
 }
 
-// ─── Smart Dispatcher helpers ────────────────────────────────────────────────
 
-/**
- * Returns true when the text contains block-level markdown that Tiptap needs
- * to parse natively: headings (`# …`), unordered lists (`- …`, `* …`, `+ …`),
- * ordered lists (`1. …`), or fenced code blocks (` ``` `).
- *
- * Plain prose (even with **bold** or _italic_) returns false, meaning
- * `applyInlineDiff` is safe to use.
- */
-export function isStructuralMarkdown(text: string): boolean {
-  const t = text.trim();
-  return (
-    /^#{1,6}\s+\S/m.test(t) ||   // headings
-    /^[-*+]\s+\S/m.test(t) ||    // unordered list items
-    /^\d+\.\s+\S/m.test(t) ||    // ordered list items
-    /^```/m.test(t)               // fenced code blocks
-  );
-}
 
-/**
- * Removes a leading heading line from AI-generated content so it is not
- * doubled when inserted into a section whose heading is already in the editor.
- *
- * e.g. "## General Assessment\n\nNew body…" → "New body…"
- * If no leading heading is present the text is returned unchanged.
- */
-export function stripLeadingHeading(text: string): string {
-  return text.replace(/^#{1,6}\s+[^\n]*\n?/, '').trimStart();
-}
 
 // ─── Public API ───────────────────────────────────────────────────────────────
 
-/** Accept all inline diff marks in range. */
-export function acceptInlineDiff(editor: Editor, range: { from: number; to: number }): void {
-  const { state } = editor;
-  const additionMark = state.schema.marks['addition'];
-  const deletionMark = state.schema.marks['deletion'];
-  if (!additionMark || !deletionMark) return;
 
-  const toDelete: Array<{ from: number; to: number }> = [];
-  const toUnmark: Array<{ from: number; to: number }> = [];
-
-  state.doc.nodesBetween(range.from, range.to, (node, pos) => {
-    if (!node.isText) return;
-    if (node.marks.some((m) => m.type === deletionMark)) {
-      toDelete.push({ from: pos, to: pos + node.nodeSize });
-    } else if (node.marks.some((m) => m.type === additionMark)) {
-      toUnmark.push({ from: pos, to: pos + node.nodeSize });
-    }
-  });
-
-  const tr = state.tr;
-  [...toDelete].sort((a, b) => b.from - a.from).forEach(({ from, to }) => tr.delete(from, to));
-  toUnmark.forEach(({ from, to }) => {
-    const mf = tr.mapping.map(from);
-    const mt = tr.mapping.map(to);
-    if (mf < mt) tr.removeMark(mf, mt, additionMark);
-  });
-  editor.view.dispatch(tr);
-}
-
-/** Reject all inline diff marks in range. */
-export function rejectInlineDiff(editor: Editor, range: { from: number; to: number }): void {
-  const { state } = editor;
-  const additionMark = state.schema.marks['addition'];
-  const deletionMark = state.schema.marks['deletion'];
-  if (!additionMark || !deletionMark) return;
-
-  const toDelete: Array<{ from: number; to: number }> = [];
-  const toUnmark: Array<{ from: number; to: number }> = [];
-
-  state.doc.nodesBetween(range.from, range.to, (node, pos) => {
-    if (!node.isText) return;
-    if (node.marks.some((m) => m.type === additionMark)) {
-      toDelete.push({ from: pos, to: pos + node.nodeSize });
-    } else if (node.marks.some((m) => m.type === deletionMark)) {
-      toUnmark.push({ from: pos, to: pos + node.nodeSize });
-    }
-  });
-
-  const tr = state.tr;
-  [...toDelete].sort((a, b) => b.from - a.from).forEach(({ from, to }) => tr.delete(from, to));
-  toUnmark.forEach(({ from, to }) => {
-    const mf = tr.mapping.map(from);
-    const mt = tr.mapping.map(to);
-    if (mf < mt) tr.removeMark(mf, mt, deletionMark);
-  });
-  editor.view.dispatch(tr);
-}
-
-/**
- * Atomic: accept or reject a single change by its changeId.
- * Used by the per-hunk floating Accept/Reject buttons.
+/** * resolveChange: The only surgical function you need.
+ * It finds all nodes in the tree with a specific ID and resolves them.
  */
-export function resolveInlineDiff(
-  editor: Editor,
-  changeId: string,
-  action: 'accept' | 'reject',
-): void {
-  dispatchResolution(editor, action, (_, id) => id === changeId);
+export function resolveChange(editor: Editor, changeId: string, action: 'accept' | 'reject') {
+  editor.commands.command(({ tr, dispatch }) => {
+    if (!dispatch) return true;
+
+    const toDelete: { from: number; to: number }[] = [];
+    const toUnmark: { from: number; to: number; type: any }[] = [];
+
+    // Walk the entire document tree
+    tr.doc.descendants((node, pos) => {
+      const addMark = node.marks?.find(m => m.type.name === 'addition' && m.attrs.changeId === changeId);
+      const delMark = node.marks?.find(m => m.type.name === 'deletion' && m.attrs.changeId === changeId);
+
+      if (addMark) {
+        action === 'accept' 
+          ? toUnmark.push({ from: pos, to: pos + node.nodeSize, type: addMark.type })
+          : toDelete.push({ from: pos, to: pos + node.nodeSize });
+      }
+
+      if (delMark) {
+        action === 'accept'
+          ? toDelete.push({ from: pos, to: pos + node.nodeSize })
+          : toUnmark.push({ from: pos, to: pos + node.nodeSize, type: delMark.type });
+      }
+    });
+
+    // Apply unmarking first (doesn't shift positions)
+    toUnmark.forEach(m => tr.removeMark(m.from, m.to, m.type));
+    // Apply deletions in reverse (keeps indices valid)
+    toDelete.reverse().forEach(r => tr.delete(r.from, r.to));
+
+    cleanupEmptyStructures(tr);
+    return true;
+  });
 }
 
-/**
- * Global: accept or reject every inline diff change in the document.
- * Used by the Accept All / Reject All banner.
+/** * resolveAllChanges: Just a loop that finds every ID and calls resolveChange.
  */
-export function resolveAllChanges(editor: Editor, action: 'accept' | 'reject'): void {
-  dispatchResolution(editor, action, () => true);
+export function resolveAllChanges(editor: Editor, action: 'accept' | 'reject') {
+  const ids = new Set<string>();
+  editor.state.doc.descendants(node => {
+    node.marks.forEach(m => {
+      if ((m.type.name === 'addition' || m.type.name === 'deletion') && m.attrs.changeId) {
+        ids.add(m.attrs.changeId);
+      }
+    });
+  });
+  ids.forEach(id => resolveChange(editor, id, action));
+}
+
+function cleanupEmptyStructures(tr: any) {
+const toRemove: { from: number; to: number }[] = [];
+tr.doc.descendants((node: any, pos: number) => {
+  const isStructural = ['listItem', 'bulletList', 'orderedList', 'table', 'tableRow', 'tableCell'].includes(node.type.name);
+  if (isStructural && node.content.size === 0) {
+  toRemove.push({ from: pos, to: pos + node.nodeSize });
+  }
+});
+toRemove.reverse().forEach(r => {
+  if (tr.doc.nodeAt(r.from)) tr.delete(r.from, r.to);
+});
+}
+
+/** Strip leading heading from markdown (e.g. "## General\n\ncontent" → "content"). */
+export function stripLeadingHeading(text: string): string {
+  return text.replace(/^#{1,6}\s+[^\n]*\n?/, '').trimStart();
 }

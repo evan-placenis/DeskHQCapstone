@@ -6,7 +6,7 @@ export const referenceTools = (client: SupabaseClient) => ({
   findBestPracticeExample: tool({
     description: 'Search for a "Gold Standard" example of a specific report section to mimic its style, tone, and formatting.',
     inputSchema: z.object({
-      reason: z.string().describe('Brief plan for this insertion. Must fill out first.'),
+      reason: z.string().describe('Brief Reasoning. Must fill out first.'),
       category: z.string().describe('The trade or topic (e.g., "Roofing", "Electrical", "Executive Summary")'),
     }),
     execute: async ({ category }) => {

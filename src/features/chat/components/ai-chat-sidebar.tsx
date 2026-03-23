@@ -42,6 +42,8 @@ import {
 
 
 
+
+
 // 1. PERFORMANCE FIX: Define this OUTSIDE the main component
 
 // By defining these OUTSIDE, they never change identity.
@@ -93,6 +95,7 @@ const ThoughtDropdown = memo(({
 }) => {
   const content = reasoning?.trim() || reason?.trim();
   if (!content) return null;
+  
 
   return (
     <Collapsible defaultOpen={defaultOpen} className="mt-1 group">
@@ -124,18 +127,37 @@ const ToolTraceItem = memo(({
 }: { part: any; rawContentParts?: readonly any[]; isMessageComplete?: boolean }) => {
   const toolName = part.toolName ?? part.name ?? 'tool';
   const toolCallId = part.toolCallId ?? part.id;
+
+  // 1. Check if there is an explicit 'tool-result' part in the array
+  const hasSeparateResultPart = rawContentParts.some((p: any) =>
+    (p.type === 'tool-result' || p.type === 'tool-return') &&
+    (p.toolCallId === toolCallId || p.id === toolCallId)
+  );
+
+  // 2. Safely find the tool part, ensuring result is NOT null
   const rawPart = toolCallId && rawContentParts.length > 0
   ? (rawContentParts as any[]).find((p: any) => (p.toolCallId ?? p.id) === toolCallId && p.result !== undefined) 
     ?? (rawContentParts as any[]).find((p: any) => (p.toolCallId ?? p.id) === toolCallId) 
     ?? part
   : part;
-  const rawHasResult = rawPart.result !== undefined;
-  // Only show "Done" when tool has result (avoids showing Done while streaming)
-  const showDone = rawHasResult;
+
+  // 3. Tool is done if we have a valid inline result OR a separate result part
+  const showDone = hasSeparateResultPart || (rawPart.result !== undefined && rawPart.result !== null);
+
   const displayName = humanizeToolName(toolName);
   const args = part.args ?? {};
   const reasoning = typeof args.reasoning === 'string' ? args.reasoning : undefined;
   const reason = typeof args.reason === 'string' ? args.reason : undefined;
+
+  // useEffect(() => {
+  //   console.log(`[DEBUG - Trace] ${toolName} (${toolCallId}):`, {
+  //     showDone,
+  //     hasSeparateResultPart,
+  //     rawResult: rawPart?.result,
+  //     rawState: rawPart?.state,
+  //     partType: rawPart?.type
+  //   });
+  // }, [toolName, toolCallId, showDone, hasSeparateResultPart, rawPart]);
 
   return (
     <div className="mt-2 mb-1 flex flex-col gap-0">
@@ -167,10 +189,6 @@ const CustomMessage = () => {
     return () => setMounted(false);
   }, []);
 
-  if (!message || !mounted) {
-    return null;
-  }
-
   const isUser = message.role === 'user';
 
   // --- RAW CHECKS (Fast enough to run every render, safer than memo) ---
@@ -186,9 +204,63 @@ const CustomMessage = () => {
   // Check for ANY visible text
   const hasText = contentParts.some((c: any) => c.type === 'text' && c.text.length > 0);
 
-  // Check for Tools
-  const activeToolPart = contentParts.find((c: any) => (c.type === 'tool-call' || c.type === 'tool-use') && c.result === undefined);
-  const toolName = (activeToolPart as any)?.toolName || (activeToolPart as any)?.name;
+  // --- NEW GLOBAL SPINNER LOGIC ---
+  // Type for tool-call parts (AI SDK uses toolName or name, toolCallId or id)
+  type ToolCallPart = { type: string; toolName?: string; name?: string; toolCallId?: string; id?: string; result?: unknown; };
+  const isToolCallPart = (p: unknown): p is ToolCallPart =>
+    (p as { type?: string })?.type === 'tool-call' || (p as { type?: string })?.type === 'tool-use';
+
+
+  const allToolParts = contentParts.filter(isToolCallPart) as ToolCallPart[];
+
+  // FIX: Filter out tools that are already done. Only keep tools currently running.
+  const activeRunningTools = allToolParts.filter((toolPart) => {
+    // Safely get the ID for the current tool call
+    const targetId = toolPart.toolCallId || toolPart.id;
+
+    // If the tool doesn't even have an ID yet, it's brand new and streaming. Keep it!
+    if (!targetId) return true;
+
+    // --- THE BULLETPROOF CHECKS (Matching ToolTraceItem's logic) ---
+
+    // Check 1: Does ANY part in the entire content array share this ID *AND* have a result?
+    const hasResultInAnyPart = contentParts.some((p: any) => {
+      const pId = p.toolCallId ?? p.id;
+      return pId === targetId && p.result !== undefined && p.result !== null;
+    });
+
+    // Check 2: Is there a dedicated tool-result part for this ID?
+    const hasToolResultType = contentParts.some((p: any) => {
+      const pId = p.toolCallId ?? p.id;
+      return (p.type === 'tool-result' || p.type === 'tool-return') && pId === targetId;
+    });
+
+    // Check 3: Is the state explicitly marked as 'result'?
+    const isStateResult = (toolPart as any).state === 'result';
+
+    // If ANY of these are true, the tool is completely finished.
+    const isFinished = hasResultInAnyPart || hasToolResultType || isStateResult;
+
+    return !isFinished; // Keep ONLY if it hasn't finished yet
+  });
+  // Get the genuinely active tool (ignoring any that have already finished)
+  const currentActiveTool = activeRunningTools[activeRunningTools.length - 1];// We no longer need `toolIsFinished`. If activeRunningTools has items, a tool is actively running.
+  const toolName = currentActiveTool?.toolName || currentActiveTool?.name;
+  const isToolRunning = activeRunningTools.length > 0;
+
+//  // --- DEBUG LOGGING: GLOBAL SPINNER ---
+//  useEffect(() => {
+//   if (isRunning && toolName) {
+//     console.log('[DEBUG - Spinner] Active Tool State:', {
+//       toolName,
+//       isToolRunning,
+//       rawStateToolName: currentActiveTool?.toolName,
+//       partKeys: currentActiveTool ? Object.keys(currentActiveTool) : []
+//     });
+//   }
+// }, [isRunning, toolName, isToolRunning, currentActiveTool]);
+
+
 
   // --- LOGIC: CALCULATE SPINNER STATE ---
   let loadingState = null;
@@ -197,7 +269,6 @@ const CustomMessage = () => {
   if (!isUser && isRunning) {
 
     // PRIORITY 1: If we have text, FORCE HIDE the spinner.
-    // This fixes the bug where spinner stayed while typing.
     if (hasText) {
       loadingState = null;
     }
@@ -210,6 +281,11 @@ const CustomMessage = () => {
     else {
       loadingState = "Reasoning...";
     }
+  }
+
+  // --- EARLY RETURN (Must be placed AFTER all hooks!) ---
+  if (!message || !mounted) {
+    return null;
   }
 
 
@@ -261,6 +337,8 @@ const CustomMessage = () => {
 
         </div>
       </div>
+
+      
     </MessagePrimitive.Root>
   );
 };
@@ -572,6 +650,12 @@ export function AIChatSidebar({
                       : typeof anchor === 'object' && anchor?.afterHeading
                         ? { afterHeading: anchor.afterHeading }
                         : 'end_of_report';
+                // Fallback to live editor state when AI doesn't return originalContent (e.g. to save tokens)
+                const ctx = getEditorContext?.();
+                const fallbackOriginalText =
+                  insertAnchor && typeof insertAnchor === 'object' && 'replaceSection' in insertAnchor
+                    ? (ctx?.activeSectionMarkdown ?? '')
+                    : '';
                 const sectionLabel = insertAnchor === 'start_of_report'
                   ? 'Start of report'
                   : insertAnchor === 'end_of_report'
@@ -580,7 +664,7 @@ export function AIChatSidebar({
                       ? `Replace "${insertAnchor.replaceSection}"`
                       : `After "${(insertAnchor as { afterHeading: string }).afterHeading}"`;
                 onEditSuggestion({
-                  originalText: originalContent ?? '',
+                  originalText: originalContent || fallbackOriginalText,
                   suggestedText: content,
                   reason,
                   status: 'PENDING',
@@ -607,13 +691,16 @@ export function AIChatSidebar({
               (typeof toolResult === 'string' ? toolResult : null) ||
               messageContent) as string;
 
+            const ctx = getEditorContext?.();
+            const liveOldValue = ctx?.activeSectionMarkdown ?? '';
+
             if (useTiptap && activeSectionId === "main-content" && onSetDiffContent) {
               onSetDiffContent(suggestedText);
             } else {
               onSuggestionAccept({
                 messageId: (lastMessage as any).id || String(Date.now()),
                 sectionId: activeSectionId,
-                oldValue: '',
+                oldValue: liveOldValue,
                 newValue: suggestedText,
                 source: "ai"
               });

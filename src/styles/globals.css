@@ -720,4 +720,27 @@ html {
   body {
     scroll-behavior: auto !important;
   }
+
+  /* This class is applied by the Decoration.node in the ChangeManager */
+.diff-hunk-block {
+  transition: background-color 0.2s ease;
+  position: relative;
+}
+/* .diff-hunk-active {
+  border-left: 3px solid #16a34a !important;
+  background-color: rgba(240, 253, 244, 0.5); // sublte green tint
+  margin-left: -4px;
+  padding-left: 4px;
+  border-radius: 0 4px 4px 0;
+} */
+
+/* Optional: add a subtle animation when a change appears */
+@keyframes highlight-fade {
+  from { background-color: #dcfce7; }
+  to { background-color: #f0fdf450; }
+}
+
+.diff-hunk-block {
+  animation: highlight-fade 1s ease-out;
+}
 }

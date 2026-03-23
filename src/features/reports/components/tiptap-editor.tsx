@@ -14,7 +14,7 @@ import {
     extractSectionsByHeading,
     getPositionForInsertAnchor,
     getRangeForReplaceSection as getRangeForReplaceSectionImpl,
-    type OutlineEntry,
+    type OutlineItem,
     type ActiveSectionInfo,
     type InsertAnchor,
 } from '@/features/reports/components/editor-context'
@@ -32,7 +32,11 @@ import Audio from '@tiptap/extension-audio'
 import { ReportImageComponent } from './report-image-component'
 import { AdditionMark, DeletionMark } from './diff-marks'
 import { computeDiffDocument } from './diff-utils'
-import { applyInlineDiff, acceptInlineDiff, rejectInlineDiff, resolveInlineDiff, resolveAllChanges } from './inline-diff-utils'
+import {
+    applyLibraryDiff as applyLibraryDiffImpl,
+    resolveChange as resolveChangeImpl,
+    resolveAllChanges as resolveAllChangesImpl,
+} from './inline-diff-utils'
 import { Button } from '@/components/ui/button'
 import {
     DropdownMenu,
@@ -115,6 +119,7 @@ export interface SelectionContext {
     fullMarkdown: string;
 }
 
+
 export interface TiptapEditorHandle {
     getSelectionContext: () => SelectionContext | null;
     /** Replace the given range with new markdown (parsed and inserted). Use when accepting an AI edit. */
@@ -125,407 +130,20 @@ export interface TiptapEditorHandle {
     getInsertPositionForAnchor: (anchor: InsertAnchor) => number | null;
     /** Get range (from, to) for replacing a section by heading name. */
     getRangeForReplaceSection: (heading: string) => { from: number; to: number } | null;
-    /** Collapse the selection so the next getSelectionContext() returns null (e.g. after using selection for an edit). */
-    clearSelection: () => void;
-    /** Map: returns the document outline (all headings) as structured entries */
-    getDocumentOutline: () => OutlineEntry[];
-    /** Map: returns the document outline as a plain-text string for system prompts */
-    getDocumentOutlineString: () => string;
-    /** Lens: returns the heading + markdown of the section the cursor is currently in */
-    getActiveSection: () => ActiveSectionInfo | null;
-    /** Tool helper: extract markdown for specific sections by heading name */
-    getSectionsByHeading: (headings: string[]) => Record<string, string>;
-    /** Tool helper: return the full document markdown */
-    getFullMarkdown: () => string;
-    /**
-     * Applies a word-level inline diff to the editor at the given range.
-     * Added words are marked green (addition), removed words are marked red
-     * strikethrough (deletion). Returns the new range covering all diff nodes,
-     * or null when the operation cannot be applied (e.g. multi-block selection).
-     */
-    applyInlineDiff: (
-        range: { from: number; to: number },
-        originalText: string,
-        aiGeneratedText: string,
-    ) => { from: number; to: number } | null;
-    /** Accept all inline diff marks in range: deletes deletion-marked text, un-marks addition-marked text. */
-    acceptInlineDiff: (range: { from: number; to: number }) => void;
-    /** Reject all inline diff marks in range: deletes addition-marked text, un-marks deletion-marked text. */
-    rejectInlineDiff: (range: { from: number; to: number }) => void;
-    /** Atomic: accept or reject a single change by changeId. */
+   
+    // Diff Management
+    applyLibraryDiff: (range: { from: number; to: number }, aiGeneratedMarkdown: string) => { from: number; to: number } | null;
     resolveInlineDiff: (changeId: string, action: 'accept' | 'reject') => void;
-    /** Global: accept or reject all inline diff changes in the document. */
     resolveAllChanges: (action: 'accept' | 'reject') => void;
-    /**
-     * Replace a range with new structural markdown and enter "pending structural
-     * change" mode: the new blocks are highlighted green and a right-margin
-     * ✓/✗ pill lets the user accept or reject the change.
-     */
-    proposeStructuralChange: (range: { from: number; to: number }, newMarkdown: string) => void;
-    /** Commit the pending structural change (keep new content, remove highlight). */
-    acceptStructuralChange: () => void;
-    /** Discard the pending structural change (restore original markdown). */
-    rejectStructuralChange: () => void;
-    /** True when a structural proposal is waiting for the user to accept/reject. */
-    hasPendingStructuralChange: () => boolean;
-}
 
-// ─── Structural diff ─────────────────────────────────────────────────────────
+    // Tooling/Outline
+    getDocumentOutline: () => OutlineItem[];
+    getDocumentOutlineString: () => string;
+    getActiveSection: () => ActiveSectionInfo | null;
+    getSectionsByHeading: (headings: string[]) => Record<string, string>;
+    getFullMarkdown: () => string;
+    clearSelection: () => void;
 
-interface PendingStructural {
-    from: number;
-    to: number;
-    oldMarkdown: string;
-    /** Positions of the individual blocks that are new/changed (for targeted decoration). */
-    changedRanges: Array<{ from: number; to: number }>;
-}
-
-/** ProseMirror plugin key — used to read/write structural-diff state via meta. */
-const structuralDiffKey = new PluginKey<PendingStructural | null>('structuralDiff');
-
-/**
- * Extension that handles STRUCTURAL changes (bullet lists, headings, code blocks).
- *
- * When `proposeStructuralChange()` is called, the new content is inserted into
- * the editor and the affected blocks are decorated with a green left border.
- * A right-margin pill (same style as inline-diff pill) shows ✓/✗ buttons.
- *
- * Accept → keep new content, remove decoration.
- * Reject → restore old markdown, remove decoration.
- *
- * Plugin state maps positions through transactions so the decoration stays
- * aligned even if the user makes other edits while the proposal is pending.
- */
-function createStructuralDiffExtension(
-    onAllClear: React.MutableRefObject<(() => void) | undefined>,
-) {
-    return Extension.create({
-        name: 'structuralDiff',
-        addProseMirrorPlugins() {
-            const getEditor = () => this.editor;
-
-            // Plugin 1: state + node decorations
-            const statePlugin = new Plugin<PendingStructural | null>({
-                key: structuralDiffKey,
-                state: {
-                    init: () => null,
-                    apply(tr, prev) {
-                        const meta = tr.getMeta(structuralDiffKey) as
-                            | { action: 'propose'; from: number; to: number; oldMarkdown: string; changedRanges: Array<{ from: number; to: number }> }
-                            | { action: 'clear' }
-                            | undefined;
-                        if (meta?.action === 'propose') {
-                            return {
-                                from: meta.from,
-                                to: meta.to,
-                                oldMarkdown: meta.oldMarkdown,
-                                changedRanges: meta.changedRanges,
-                            };
-                        }
-                        if (meta?.action === 'clear') return null;
-                        // Map all positions through the transaction so decorations stay
-                        // aligned when the user makes other edits while the proposal is pending.
-                        if (prev && tr.docChanged) {
-                            return {
-                                from: tr.mapping.map(prev.from),
-                                to: tr.mapping.map(prev.to),
-                                oldMarkdown: prev.oldMarkdown,
-                                changedRanges: prev.changedRanges.map((r) => ({
-                                    from: tr.mapping.map(r.from),
-                                    to: tr.mapping.map(r.to),
-                                })),
-                            };
-                        }
-                        return prev;
-                    },
-                },
-                props: {
-                    decorations(state) {
-                        const pending = structuralDiffKey.getState(state);
-                        if (!pending) return DecorationSet.empty;
-                        const docSize = state.doc.content.size;
-
-                        // Decorate only the individual changed blocks, not the whole range.
-                        const decos: Decoration[] = [];
-                        for (const r of pending.changedRanges) {
-                            if (r.from >= r.to || r.to > docSize || r.from < 0) continue;
-                            decos.push(
-                                Decoration.node(r.from, r.to, {
-                                    style:
-                                        'background-color:#f0fdf4;' +
-                                        'border-left:3px solid #16a34a;' +
-                                        'padding-left:6px;' +
-                                        'margin-left:-6px;' +
-                                        'border-radius:0 2px 2px 0;',
-                                }),
-                            );
-                        }
-                        return DecorationSet.create(state.doc, decos);
-                    },
-                },
-            });
-
-            // Plugin 2: right-margin accept/reject overlay (same pattern as hunkWidgetExtension)
-            const overlayPlugin = new Plugin({
-                view(editorView) {
-                    const overlay = document.createElement('div');
-                    overlay.setAttribute('aria-hidden', 'true');
-                    overlay.style.cssText =
-                        'position:absolute;top:0;right:0;bottom:0;left:0;' +
-                        'pointer-events:none;overflow:visible;z-index:21;';
-
-                    const parent = editorView.dom.parentElement;
-                    if (parent) {
-                        if (getComputedStyle(parent).position === 'static') {
-                            parent.style.position = 'relative';
-                        }
-                        parent.appendChild(overlay);
-                    }
-
-                    function render() {
-                        while (overlay.firstChild) overlay.removeChild(overlay.firstChild);
-
-                        const pending = structuralDiffKey.getState(editorView.state);
-                        if (!pending) return;
-                        const editor = getEditor();
-                        if (!editor) return;
-
-                        const { from, to, oldMarkdown } = pending;
-                        const docSize = editorView.state.doc.content.size;
-                        if (from >= to || to > docSize) return;
-
-                        const parentEl = editorView.dom.parentElement;
-                        if (!parentEl) return;
-                        const parentRect = parentEl.getBoundingClientRect();
-
-                        // Vertically centre on the MIDPOINT of the proposed range so the
-                        // pill appears near the middle of the changed blocks rather than
-                        // anchoring to the very top of a potentially long section.
-                        const midRaw = Math.floor((from + to) / 2);
-                        const safePos = Math.max(1, Math.min(midRaw, docSize - 1));
-                        let coords: { top: number; bottom: number } | null = null;
-                        try { coords = editorView.coordsAtPos(safePos); } catch { /* fall through */ }
-                        // Fallback: try the start of the range if midpoint isn't a valid text pos
-                        if (!coords) {
-                            try { coords = editorView.coordsAtPos(Math.max(1, Math.min(from, docSize - 1))); } catch { return; }
-                        }
-                        if (!coords) return;
-
-                        const top = coords.top - parentRect.top + parentEl.scrollTop;
-                        const lineH = coords.bottom - coords.top;
-
-                        const pill = document.createElement('div');
-                        pill.style.cssText =
-                            `position:absolute;right:4px;top:${top + lineH / 2}px;` +
-                            'transform:translateY(-50%);' +
-                            'display:inline-flex;gap:3px;align-items:center;' +
-                            'background:white;border:1px solid #bbf7d0;border-radius:4px;' +
-                            'padding:2px 4px;box-shadow:0 1px 3px rgba(0,0,0,.12);' +
-                            'pointer-events:auto;user-select:none;';
-
-                        // "Structure" label
-                        const lbl = document.createElement('span');
-                        lbl.textContent = 'Structure';
-                        lbl.style.cssText =
-                            'font-size:9px;color:#16a34a;font-weight:600;' +
-                            'white-space:nowrap;padding-right:2px;';
-                        pill.appendChild(lbl);
-
-                        const mkBtn = (
-                            label: string, title: string, bg: string, isAccept: boolean,
-                        ) => {
-                            const btn = document.createElement('button');
-                            btn.type = 'button';
-                            btn.textContent = label;
-                            btn.title = title;
-                            btn.style.cssText =
-                                `font-size:10px;padding:1px 5px;height:16px;background:${bg};` +
-                                'color:#fff;border:none;border-radius:3px;cursor:pointer;' +
-                                'line-height:1;font-weight:600;';
-                            btn.addEventListener('mousedown', (e) => {
-                                e.preventDefault();
-                                e.stopPropagation();
-                                // Clear plugin state first (stops decoration immediately)
-                                editorView.dispatch(
-                                    editorView.state.tr.setMeta(structuralDiffKey, { action: 'clear' }),
-                                );
-                                if (!isAccept) {
-                                    // Reject: restore old content
-                                    const currentTo = Math.min(to, editorView.state.doc.content.size);
-                                    editor.commands.insertContentAt(
-                                        { from, to: currentTo },
-                                        oldMarkdown || ' ',
-                                        { contentType: 'markdown', updateSelection: false },
-                                    );
-                                }
-                                onAllClear.current?.();
-                            });
-                            return btn;
-                        };
-
-                        pill.appendChild(mkBtn('✓', 'Accept structural change', '#16a34a', true));
-                        pill.appendChild(mkBtn('✗', 'Reject structural change', '#dc2626', false));
-                        overlay.appendChild(pill);
-                    }
-
-                    return {
-                        update() { render(); },
-                        destroy() { overlay.remove(); },
-                    };
-                },
-            });
-
-            return [statePlugin, overlayPlugin];
-        },
-    });
-}
-
-// ─── Inline hunk widget ───────────────────────────────────────────────────────
-
-/**
- * Extension that renders one Accept (✓) / Reject (✗) button pair per paragraph
- * that contains inline diff marks, positioned in the RIGHT MARGIN of the editor
- * so they never overlap text.
- *
- * Uses the ProseMirror plugin view() lifecycle + coordsAtPos() to place an
- * absolutely-positioned overlay sibling alongside the editor DOM — the same
- * technique Tiptap's BubbleMenu uses.  The overlay is destroyed on unmount.
- *
- * onAllClear is called (via a ref) when no diff marks remain, allowing the
- * parent to hide the global Accept All / Reject All banner.
- */
-function createHunkWidgetExtension(onAllClear: React.MutableRefObject<(() => void) | undefined>) {
-    return Extension.create({
-        name: 'hunkWidget',
-        addProseMirrorPlugins() {
-            const getEditor = () => this.editor;
-
-            return [
-                new Plugin({
-                    view(editorView) {
-                        // Create an overlay div that lives BESIDE the editor (sibling of .ProseMirror).
-                        // pointer-events:none on the overlay itself; individual buttons restore it.
-                        const overlay = document.createElement('div');
-                        overlay.setAttribute('aria-hidden', 'true');
-                        overlay.style.cssText =
-                            'position:absolute;top:0;right:0;bottom:0;left:0;' +
-                            'pointer-events:none;overflow:visible;z-index:20;';
-
-                        const parent = editorView.dom.parentElement;
-                        if (parent) {
-                            // Ensure the parent is a positioning context for our absolute overlay.
-                            if (getComputedStyle(parent).position === 'static') {
-                                parent.style.position = 'relative';
-                            }
-                            parent.appendChild(overlay);
-                        }
-
-                        // ── Shared helper: collect per-block diff info ───────────────────
-                        type BlockEntry = { lastMarkPos: number; ids: Set<string> };
-
-                        function collectBlocks(doc: ReturnType<typeof editorView.state.doc.type.schema.topNodeType.create>): Map<number, BlockEntry> {
-                            const blocks = new Map<number, BlockEntry>();
-                            (doc as any).descendants((node: any, pos: number) => {
-                                if (!node.isText) return;
-                                for (const mark of node.marks as any[]) {
-                                    const n: string = mark.type.name;
-                                    if (n !== 'addition' && n !== 'deletion') continue;
-                                    const changeId: string | null = mark.attrs?.changeId ?? null;
-                                    if (!changeId) continue;
-                                    const $pos = (doc as any).resolve(pos);
-                                    if ($pos.depth < 1) continue;
-                                    const pd: number = $pos.depth - 1;
-                                    const blockStart: number = $pos.start(pd);
-                                    const markEnd: number = pos + node.nodeSize;
-                                    const entry = blocks.get(blockStart);
-                                    if (!entry) {
-                                        blocks.set(blockStart, { lastMarkPos: markEnd, ids: new Set([changeId]) });
-                                    } else {
-                                        entry.ids.add(changeId);
-                                        if (markEnd > entry.lastMarkPos) entry.lastMarkPos = markEnd;
-                                    }
-                                }
-                            });
-                            return blocks;
-                        }
-
-                        // ── Render buttons into the overlay ──────────────────────────────
-                        function render() {
-                            // Clear previous buttons
-                            while (overlay.firstChild) overlay.removeChild(overlay.firstChild);
-
-                            const editor = getEditor();
-                            if (!editor) return;
-
-                            const { state } = editorView;
-                            const blocks = collectBlocks(state.doc as any);
-                            if (blocks.size === 0) return;
-
-                            const parentEl = editorView.dom.parentElement;
-                            if (!parentEl) return;
-                            const parentRect = parentEl.getBoundingClientRect();
-
-                            blocks.forEach(({ lastMarkPos, ids }) => {
-                                const safePos = Math.min(lastMarkPos, state.doc.content.size - 1);
-                                let coords: { top: number; bottom: number } | null = null;
-                                try { coords = editorView.coordsAtPos(Math.max(0, safePos)); } catch { return; }
-                                if (!coords) return;
-
-                                // Top relative to the parent element, corrected for its scroll.
-                                const top = coords.top - parentRect.top + parentEl.scrollTop;
-                                // Vertical midpoint of the line (coordsAtPos gives top of glyph)
-                                const lineHeight = coords.bottom - coords.top;
-
-                                const pill = document.createElement('div');
-                                pill.style.cssText =
-                                    `position:absolute;right:4px;` +
-                                    `top:${top + lineHeight / 2}px;` +
-                                    `transform:translateY(-50%);` +
-                                    `display:inline-flex;gap:3px;align-items:center;` +
-                                    `background:white;border:1px solid #e2e8f0;border-radius:4px;` +
-                                    `padding:2px 4px;box-shadow:0 1px 3px rgba(0,0,0,.12);` +
-                                    `pointer-events:auto;user-select:none;`;
-
-                                const mkBtn = (label: string, title: string, bg: string, action: 'accept' | 'reject') => {
-                                    const btn = document.createElement('button');
-                                    btn.type = 'button';
-                                    btn.textContent = label;
-                                    btn.title = title;
-                                    btn.style.cssText =
-                                        `font-size:10px;padding:1px 5px;height:16px;background:${bg};` +
-                                        `color:#fff;border:none;border-radius:3px;cursor:pointer;line-height:1;font-weight:600;`;
-                                    btn.addEventListener('mousedown', (e) => {
-                                        e.preventDefault();
-                                        e.stopPropagation();
-                                        ids.forEach((id) => resolveInlineDiff(editor, id, action));
-                                        // Check if any diff marks remain and fire onAllClear if not
-                                        let hasDiff = false;
-                                        editor.state.doc.descendants((n) => {
-                                            if (hasDiff) return false;
-                                            if (n.marks?.some(
-                                                (m) => m.type.name === 'addition' || m.type.name === 'deletion',
-                                            )) hasDiff = true;
-                                        });
-                                        if (!hasDiff) onAllClear.current?.();
-                                    });
-                                    return btn;
-                                };
-
-                                pill.appendChild(mkBtn('✓', 'Accept changes in this paragraph', '#16a34a', 'accept'));
-                                pill.appendChild(mkBtn('✗', 'Reject changes in this paragraph', '#dc2626', 'reject'));
-                                overlay.appendChild(pill);
-                            });
-                        }
-
-                        return {
-                            update() { render(); },
-                            destroy() { overlay.remove(); },
-                        };
-                    },
-                }),
-            ];
-        },
-    });
 }
 
 /** Extension that shows a persistent highlight for a pinned selection range (survives blur when user clicks into chat) */
@@ -551,6 +169,147 @@ function createPinnedHighlightExtension(getRange: () => { from: number; to: numb
         },
     });
 }
+/**
+ * The consolidated Manager. Handles the green borders, the pills, and the logic.
+ */
+export function createChangeManagerExtension(
+    onAllClear: React.MutableRefObject<(() => void) | undefined>
+  ) {
+    return Extension.create({
+      name: 'changeManager',
+      addProseMirrorPlugins() {
+        const { editor } = this;
+        return [
+          new Plugin({
+            key: new PluginKey('changeManager'),
+            props: {
+              decorations(state) {
+                const decos: Decoration[] = [];
+                state.doc.descendants((node, pos) => {
+                  const hasDiff = node.marks?.some(m => m.type.name === 'addition' || m.type.name === 'deletion');
+                  if (hasDiff) {
+                    const $pos = state.doc.resolve(pos);
+                    // Highlight the whole block (Paragraph/ListItem)
+                    const blockStart = $pos.before(1);
+                    const blockEnd = $pos.after(1);
+                    decos.push(Decoration.node(blockStart, blockEnd, { class: 'diff-hunk-active' }));
+                  }
+                });
+                return DecorationSet.create(state.doc, decos);
+              },
+            },
+            view(editorView) {
+              const overlay = document.createElement('div');
+              overlay.className = 'tiptap-diff-overlay';
+              overlay.style.cssText = 'position:absolute;top:0;right:0;bottom:0;left:0;pointer-events:none;z-index:20;';
+              editorView.dom.parentElement?.appendChild(overlay);
+  
+              const render = () => {
+                overlay.innerHTML = '';
+                const hunks = collectHunks(editorView.state.doc); // Using your existing collectBlocks logic
+                hunks.forEach((changeIds, pos) => {
+                  const coords = editorView.coordsAtPos(pos);
+                  if (!coords) return;
+                  const pill = createPillElement(Array.from(changeIds), coords.top, (action: 'accept' | 'reject') => {
+                    changeIds.forEach(id => resolveChangeImpl(editor, id, action));
+                    if (!docHasChanges(editor.state.doc)) onAllClear.current?.();
+                  });
+                  overlay.appendChild(pill);
+                });
+              };
+              return { update: render, destroy: () => overlay.remove() };
+            }
+          })
+        ];
+      }
+    });
+  }
+
+  /**
+ * Scans the doc and returns a Map of:
+ * Key: The position where the floating Pill should anchor.
+ * Value: A Set of all Change IDs found within that block.
+ */
+function collectHunks(doc: any): Map<number, Set<string>> {
+    const hunks = new Map<number, Set<string>>();
+  
+    doc.descendants((node: any, pos: number) => {
+      // We only care about text nodes because that's where our Marks live
+      if (!node.isText) return;
+  
+      node.marks?.forEach((mark: any) => {
+        if (mark.type.name === 'addition' || mark.type.name === 'deletion') {
+          const changeId = mark.attrs?.changeId;
+          if (!changeId) return;
+  
+          // Resolve the parent block (Paragraph, ListItem, etc.)
+          const $pos = doc.resolve(pos);
+          // depth 1 is the top-level block in the editor
+          const blockStart = $pos.before(1);
+  
+          if (!hunks.has(blockStart)) {
+            hunks.set(blockStart, new Set());
+          }
+          hunks.get(blockStart)!.add(changeId);
+        }
+      });
+    });
+  
+    return hunks;
+  }
+
+/** Creates the floating Accept/Reject pill element for a diff hunk. */
+function createPillElement(
+    changeIds: string[], // Keeping this in case you want to show a count later
+    top: number,
+    onAction: (action: 'accept' | 'reject') => void,
+  ): HTMLElement {
+    const pill = document.createElement('div');
+    
+    // Added 'pointer-events-auto' so it's clickable inside the transparent overlay
+    pill.className = 'flex items-center gap-1 px-1.5 py-1 rounded border border-slate-200 bg-white shadow-sm pointer-events-auto';
+    
+    // Using transform: translateY(-50%) makes the vertical alignment much more forgiving
+    pill.style.cssText = `position:absolute;top:${top}px;right:8px;z-index:30;transform:translateY(-50%);`;
+  
+    const mkBtn = (label: 'accept' | 'reject', icon: string, colorClass: string) => {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.innerHTML = icon;
+      btn.title = label.charAt(0).toUpperCase() + label.slice(1);
+      btn.className = `p-1 rounded transition-colors ${colorClass}`;
+      
+      // Prevent the editor from losing focus or moving the cursor on click
+      btn.addEventListener('mousedown', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        onAction(label);
+      });
+      
+      return btn;
+    };
+  
+    const checkIcon = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>';
+    const xIcon = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
+  
+    pill.appendChild(mkBtn('accept', checkIcon, 'hover:bg-green-50 text-green-600'));
+    pill.appendChild(mkBtn('reject', xIcon, 'hover:bg-red-50 text-red-600'));
+  
+    return pill;
+  }
+  
+function docHasChanges(doc: any) {
+let hasChanges = false;
+doc.descendants((node: any) => {
+    if (node.marks?.some((m: any) => m.type.name === 'addition' || m.type.name === 'deletion')) {
+    hasChanges = true;
+    return false;
+    }
+});
+return hasChanges;
+}
+
+
 
 interface TiptapEditorProps {
     content: string; // This expects the Markdown string from your processNode
@@ -580,6 +339,8 @@ export const TiptapEditor = forwardRef<TiptapEditorHandle, TiptapEditorProps>(fu
     pinnedSelectionRange,
     onAllDiffChangesResolved,
 }, ref) {
+
+
     // Store the original markdown when entering review mode to prevent infinite loops
     const originalMarkdownRef = useRef<string | null>(null);
     const [originalMarkdown, setOriginalMarkdown] = useState<string | null>(null);
@@ -595,24 +356,14 @@ export const TiptapEditor = forwardRef<TiptapEditorHandle, TiptapEditorProps>(fu
     // Determine if we're in review mode
     const isReviewMode = !!diffContent;
 
-    const pinnedHighlightExtension = useMemo(
-        () => createPinnedHighlightExtension(() => pinnedRangeRef.current),
-        [] // ref is stable; we update .current and dispatch to force re-render
-    );
 
-    // Keep a ref to onAllDiffChangesResolved so createHunkWidgetExtension never
-    // needs to be recreated when the callback identity changes between renders.
+    // 1. Ref for the all-clear callback
     const onAllDiffChangesResolvedRef = useRef(onAllDiffChangesResolved);
     onAllDiffChangesResolvedRef.current = onAllDiffChangesResolved;
 
-    // Hunk widget extension is stable — createHunkWidgetExtension uses this.editor
-    // (bound by Tiptap at mount time) and the ref above for the callback.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    const hunkWidgetExtension = useMemo(() => createHunkWidgetExtension(onAllDiffChangesResolvedRef), []);
-
-    // Structural diff extension shares the same onAllClear callback.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    const structuralDiffExtension = useMemo(() => createStructuralDiffExtension(onAllDiffChangesResolvedRef), []);
+    // 2. Stable extension definitions
+    const pinnedHighlightExtension = useMemo(() => createPinnedHighlightExtension(() => pinnedRangeRef.current), []);
+    const changeManagerExtension = useMemo(() => createChangeManagerExtension(onAllDiffChangesResolvedRef), []);
 
     const editor = useEditor({
         immediatelyRender: false,
@@ -641,8 +392,7 @@ export const TiptapEditor = forwardRef<TiptapEditorHandle, TiptapEditorProps>(fu
             TableHeader,
             TableCell,
             pinnedHighlightExtension,
-            hunkWidgetExtension,
-            structuralDiffExtension,
+            changeManagerExtension,
         ],
         content: content,
         contentType: 'markdown',
@@ -903,149 +653,20 @@ export const TiptapEditor = forwardRef<TiptapEditorHandle, TiptapEditorProps>(fu
                     return '';
                 }
             },
-            applyInlineDiff(range, originalText, aiGeneratedText) {
+            applyLibraryDiff(
+                range: { from: number; to: number },
+                aiGeneratedMarkdown: string,
+            ) {
                 if (!editor || isReviewMode) return null;
-                return applyInlineDiff(editor, range, originalText, aiGeneratedText);
+                return applyLibraryDiffImpl(editor, range, aiGeneratedMarkdown);
             },
-            acceptInlineDiff(range) {
+            resolveInlineDiff(changeId: string, action: 'accept' | 'reject') {
                 if (!editor) return;
-                acceptInlineDiff(editor, range);
+                resolveChangeImpl(editor, changeId, action);
             },
-            rejectInlineDiff(range) {
+            resolveAllChanges(action: 'accept' | 'reject') {
                 if (!editor) return;
-                rejectInlineDiff(editor, range);
-            },
-            resolveInlineDiff(changeId, action) {
-                if (!editor) return;
-                resolveInlineDiff(editor, changeId, action);
-            },
-            resolveAllChanges(action) {
-                if (!editor) return;
-                resolveAllChanges(editor, action);
-            },
-
-            proposeStructuralChange(range: { from: number; to: number }, newMarkdown: string) {
-                if (!editor || isReviewMode) return;
-
-                // Auto-accept any previous pending structural change before proposing a new one.
-                const existing = structuralDiffKey.getState(editor.state);
-                if (existing) {
-                    editor.view.dispatch(
-                        editor.state.tr.setMeta(structuralDiffKey, { action: 'clear' }),
-                    );
-                }
-
-                // Snapshot the text content of every textblock BEFORE insertion so we can
-                // later identify which blocks are genuinely new or changed.
-                const oldTextSet = new Set<string>();
-                editor.state.doc.nodesBetween(range.from, range.to, (n) => {
-                    if (n.isTextblock) oldTextSet.add(n.textContent);
-                    return true;
-                });
-
-                // Capture old content as markdown so we can restore it on reject.
-                let oldMarkdown = '';
-                try {
-                    const slice = editor.state.doc.slice(range.from, range.to);
-                    oldMarkdown =
-                        (editor as any).markdown?.serialize?.({
-                            type: 'doc',
-                            content: slice.content.toJSON(),
-                        }) ?? '';
-                } catch {
-                    try {
-                        oldMarkdown = editor.state.doc.textBetween(range.from, range.to);
-                    } catch {
-                        oldMarkdown = '';
-                    }
-                }
-
-                // Record doc content size BEFORE the insertion so we can calculate the new range.
-                const contentSizeBefore = editor.state.doc.content.size;
-
-                // Apply the replacement atomically.
-                editor.commands.insertContentAt(
-                    { from: range.from, to: range.to },
-                    newMarkdown,
-                    { contentType: 'markdown', updateSelection: false },
-                );
-
-                // Calculate the end position of the newly inserted content.
-                const contentSizeAfter = editor.state.doc.content.size;
-                const newTo = range.to + (contentSizeAfter - contentSizeBefore);
-
-                // Walk the new content and collect only the blocks that are new or changed.
-                // For each changed textblock: if it lives inside a listItem, decorate the
-                // listItem (so the bullet dot is highlighted too); otherwise decorate itself.
-                const changedRanges: Array<{ from: number; to: number }> = [];
-                const seenPos = new Set<number>();
-
-                editor.state.doc.nodesBetween(range.from, newTo, (node, pos, parent) => {
-                    if (!node.isTextblock) return true;
-                    if (!oldTextSet.has(node.textContent)) {
-                        let decorateFrom = pos;
-                        let decorateTo = pos + node.nodeSize;
-                        // Bubble up to listItem so the bullet/number indicator is also green.
-                        // The paragraph is always the first child of a listItem, so the
-                        // listItem's opening bracket is at pos-1.
-                        if (parent?.type.name === 'listItem') {
-                            decorateFrom = pos - 1;
-                            decorateTo = decorateFrom + parent.nodeSize;
-                        }
-                        if (!seenPos.has(decorateFrom)) {
-                            seenPos.add(decorateFrom);
-                            changedRanges.push({ from: decorateFrom, to: decorateTo });
-                        }
-                    }
-                    return false; // don't recurse into textblocks
-                });
-
-                // Fall back to decorating the whole range when nothing differed textually
-                // (e.g. formatting-only change).
-                const effectiveChangedRanges =
-                    changedRanges.length > 0
-                        ? changedRanges
-                        : [{ from: range.from, to: newTo }];
-
-                // Store in plugin state so positions are mapped through future transactions.
-                editor.view.dispatch(
-                    editor.state.tr.setMeta(structuralDiffKey, {
-                        action: 'propose',
-                        from: range.from,
-                        to: newTo,
-                        oldMarkdown,
-                        changedRanges: effectiveChangedRanges,
-                    }),
-                );
-            },
-
-            acceptStructuralChange() {
-                if (!editor) return;
-                editor.view.dispatch(
-                    editor.state.tr.setMeta(structuralDiffKey, { action: 'clear' }),
-                );
-            },
-
-            rejectStructuralChange() {
-                if (!editor || isReviewMode) return;
-                const pending = structuralDiffKey.getState(editor.state);
-                if (!pending) return;
-                const { from, to, oldMarkdown } = pending;
-                // Clear state first so the decoration disappears immediately.
-                editor.view.dispatch(
-                    editor.state.tr.setMeta(structuralDiffKey, { action: 'clear' }),
-                );
-                const currentTo = Math.min(to, editor.state.doc.content.size);
-                editor.commands.insertContentAt(
-                    { from, to: currentTo },
-                    oldMarkdown || ' ',
-                    { contentType: 'markdown', updateSelection: false },
-                );
-            },
-
-            hasPendingStructuralChange() {
-                if (!editor) return false;
-                return structuralDiffKey.getState(editor.state) !== null;
+                resolveAllChangesImpl(editor, action);
             },
         }),
         [editor, isReviewMode]
@@ -1110,7 +731,7 @@ export const TiptapEditor = forwardRef<TiptapEditorHandle, TiptapEditorProps>(fu
                                 className="h-8 text-xs bg-green-600 hover:bg-green-700 text-white"
                             >
                                 <Check className="w-3 h-3 mr-1.5" />
-                                Accept Changes
+                                Keep All
                             </Button>
                         </div>
                     </div>

@@ -16,6 +16,7 @@ const changeIdAttr = {
  */
 export const AdditionMark = Mark.create({
   name: 'addition',
+  priority: 1000,
 
   addAttributes() {
     return changeIdAttr;
@@ -50,6 +51,7 @@ export const AdditionMark = Mark.create({
  */
 export const DeletionMark = Mark.create({
   name: 'deletion',
+  priority: 1000,
 
   addAttributes() {
     return changeIdAttr;

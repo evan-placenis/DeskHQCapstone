@@ -78,6 +78,7 @@
     "embla-carousel-react": "^8.6.0",
     "exa-js": "^2.1.1",
     "input-otp": "^1.1.0",
+    "jsondiffpatch": "^0.7.3",
     "lucide-react": "^0.330.0",
     "mammoth": "^1.6.0",
     "next": "^16.1.4",
