@@ -179,10 +179,11 @@ function translateDeltaToTipTap(oldNodes: any[], newNodes: any[], delta: any, ch
       else if (newNode?.type === 'text' && oldNode) {
         result.push(...performInlineTextDiff(oldNode, newNode, changeId));
       } 
-      // Catch-all: If we can't recurse, treat it as a Replacement
+       // THE FIX: If it's a block node whose text 'content' DID NOT change,
+      // it means only invisible metadata (like 'attrs') shifted. 
+      // We accept the new node silently. No red/green needed!
       else {
-        result.push(recursivelyApplyMark(oldNode, 'deletion', changeId));
-        result.push(recursivelyApplyMark(newNode, 'addition', changeId));
+        result.push(newNode);
       }
       oldIndex++;
     }
@@ -343,17 +344,35 @@ export function resolveAllChanges(editor: Editor, action: 'accept' | 'reject') {
   ids.forEach(id => resolveChange(editor, id, action));
 }
 
-function cleanupEmptyStructures(tr: any) {
-const toRemove: { from: number; to: number }[] = [];
-tr.doc.descendants((node: any, pos: number) => {
-  const isStructural = ['listItem', 'bulletList', 'orderedList', 'table', 'tableRow', 'tableCell'].includes(node.type.name);
-  if (isStructural && node.content.size === 0) {
-  toRemove.push({ from: pos, to: pos + node.nodeSize });
+// Pass the Transaction (tr) directly in, not the whole editor
+export function cleanupEmptyStructures(tr: any) {
+  const ghostPositions: { from: number; to: number }[] = [];
+
+  // 1. Scan the document using the current transaction's state
+  tr.doc.descendants((node: any, pos: number) => {
+    if (node.type.name === 'tableRow' || node.type.name === 'listItem') {
+      
+      const hasNoText = node.textContent.trim() === '';
+      let hasNoAtoms = true;
+      
+      node.descendants((child: any) => {
+        if (child.isAtom || child.type.name === 'image') {
+          hasNoAtoms = false;
+        }
+      });
+
+      if (hasNoText && hasNoAtoms) {
+        ghostPositions.push({ from: pos, to: pos + node.nodeSize });
+      }
+    }
+  });
+
+  // 2. Delete from BOTTOM to TOP 
+  for (let i = ghostPositions.length - 1; i >= 0; i--) {
+    const { from, to } = ghostPositions[i];
+    tr.delete(from, to);
   }
-});
-toRemove.reverse().forEach(r => {
-  if (tr.doc.nodeAt(r.from)) tr.delete(r.from, r.to);
-});
+
 }
 
 /** Strip leading heading from markdown (e.g. "## General\n\ncontent" → "content"). */

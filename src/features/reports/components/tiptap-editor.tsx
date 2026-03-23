@@ -35,7 +35,7 @@ import { computeDiffDocument } from './diff-utils'
 import {
     applyLibraryDiff as applyLibraryDiffImpl,
     resolveChange as resolveChangeImpl,
-    resolveAllChanges as resolveAllChangesImpl,
+    resolveAllChanges as resolveAllChangesImpl
 } from './inline-diff-utils'
 import { Button } from '@/components/ui/button'
 import {
@@ -183,13 +183,13 @@ export function createChangeManagerExtension(
           new Plugin({
             key: new PluginKey('changeManager'),
             props: {
+              // ... Your existing decorations() logic stays exactly the same ...
               decorations(state) {
                 const decos: Decoration[] = [];
                 state.doc.descendants((node, pos) => {
                   const hasDiff = node.marks?.some(m => m.type.name === 'addition' || m.type.name === 'deletion');
                   if (hasDiff) {
                     const $pos = state.doc.resolve(pos);
-                    // Highlight the whole block (Paragraph/ListItem)
                     const blockStart = $pos.before(1);
                     const blockEnd = $pos.after(1);
                     decos.push(Decoration.node(blockStart, blockEnd, { class: 'diff-hunk-active' }));
@@ -201,22 +201,40 @@ export function createChangeManagerExtension(
             view(editorView) {
               const overlay = document.createElement('div');
               overlay.className = 'tiptap-diff-overlay';
+              // Note: Make sure editorView.dom.parentElement has 'position: relative' in its CSS!
               overlay.style.cssText = 'position:absolute;top:0;right:0;bottom:0;left:0;pointer-events:none;z-index:20;';
               editorView.dom.parentElement?.appendChild(overlay);
   
               const render = () => {
                 overlay.innerHTML = '';
-                const hunks = collectHunks(editorView.state.doc); // Using your existing collectBlocks logic
+                const hunks = collectHunks(editorView.state.doc); 
+                
+                // 1. VIEWPORT MATH: Get the bounding box of the editor itself
+                const editorRect = editorView.dom.getBoundingClientRect();
+  
                 hunks.forEach((changeIds, pos) => {
                   const coords = editorView.coordsAtPos(pos);
                   if (!coords) return;
-                  const pill = createPillElement(Array.from(changeIds), coords.top, (action: 'accept' | 'reject') => {
-                    changeIds.forEach(id => resolveChangeImpl(editor, id, action));
-                    if (!docHasChanges(editor.state.doc)) onAllClear.current?.();
-                  });
+                  
+                  // 2. VIEWPORT MATH: Calculate absolute top relative to the editor container
+                  // coords.top is relative to the browser window. We need it relative to the overlay.
+                  const relativeTop = coords.top - editorRect.top + editorView.dom.scrollTop;
+  
+                  const pill = createPillElement(
+                    Array.from(changeIds), 
+                    relativeTop, // Pass the fixed relativeTop here
+                    (action: 'accept' | 'reject') => {
+                      // Resolve the text changes first
+                      changeIds.forEach(id => resolveChangeImpl(editor, id, action));
+                      
+                      if (!docHasChanges(editor.state.doc)) onAllClear.current?.();
+                    }
+                  );
+                  
                   overlay.appendChild(pill);
                 });
               };
+              
               return { update: render, destroy: () => overlay.remove() };
             }
           })
@@ -224,7 +242,6 @@ export function createChangeManagerExtension(
       }
     });
   }
-
   /**
  * Scans the doc and returns a Map of:
  * Key: The position where the floating Pill should anchor.
@@ -731,7 +748,7 @@ export const TiptapEditor = forwardRef<TiptapEditorHandle, TiptapEditorProps>(fu
                                 className="h-8 text-xs bg-green-600 hover:bg-green-700 text-white"
                             >
                                 <Check className="w-3 h-3 mr-1.5" />
-                                Keep All
+                                Accept
                             </Button>
                         </div>
                     </div>

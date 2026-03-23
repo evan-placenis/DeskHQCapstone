@@ -41,9 +41,6 @@ import {
 } from "@/components/ui/collapsible";
 
 
-
-
-
 // 1. PERFORMANCE FIX: Define this OUTSIDE the main component
 
 // By defining these OUTSIDE, they never change identity.
