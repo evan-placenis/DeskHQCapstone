@@ -15,9 +15,10 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription, SheetTr
 import { Page } from "@/app/pages/config/routes";
 import { User } from "@/lib/types";
 import { Cpu, Settings, LogOut, BarChart3, Home, Shield, UserCog, Wrench, Menu, Activity } from "lucide-react";
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { MobileBottomNav } from "./mobile-bottom-nav";
 import InstallButton from "@/components/ui/install-button";
+import { cn } from "@/components/ui/utils";
 
 interface AppHeaderProps {
   currentPage: Page;
@@ -31,6 +32,26 @@ interface AppHeaderProps {
 
 export function AppHeader({ currentPage, currentUser, onNavigate, onLogout, onRoleSwitch, onRecordClick, pageTitle }: AppHeaderProps) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+
+  const navActive = useMemo(
+    () => ({
+      dashboard:
+        currentPage === "dashboard" ||
+        currentPage === "project" ||
+        currentPage === "report" ||
+        currentPage === "audio-timeline",
+      analytics: currentPage === "analytics",
+      mystats: currentPage === "mystats",
+      reviewer: currentPage === "reviewer",
+    }),
+    [currentPage]
+  );
+
+  const navButtonClass = (active: boolean) =>
+    cn(
+      "rounded-lg hover:bg-theme-primary-10 hover:text-theme-primary",
+      active && "bg-theme-primary-10 text-theme-primary font-medium"
+    );
 
   const getRoleBadge = (role: string) => {
     switch (role) {
@@ -91,8 +112,8 @@ export function AppHeader({ currentPage, currentUser, onNavigate, onLogout, onRo
           {/* Desktop Navigation */}
           <nav className="hidden lg:flex items-center gap-1">
             <Button
-              variant={currentPage === "dashboard" ? "secondary" : "ghost"}
-              className="rounded-lg hover:bg-theme-primary-10 hover:text-theme-primary"
+              variant="ghost"
+              className={navButtonClass(navActive.dashboard)}
               onClick={() => handleNavigation("dashboard")}
             >
               <Home className="w-4 h-4 mr-2" />
@@ -102,8 +123,8 @@ export function AppHeader({ currentPage, currentUser, onNavigate, onLogout, onRo
             {/* Analytics - Only for managers */}
             {currentUser?.role === "manager" && (
               <Button
-                variant={currentPage === "analytics" ? "secondary" : "ghost"}
-                className="rounded-lg hover:bg-theme-primary-10 hover:text-theme-primary"
+                variant="ghost"
+                className={navButtonClass(navActive.analytics)}
                 onClick={() => handleNavigation("analytics")}
               >
                 <BarChart3 className="w-4 h-4 mr-2" />
@@ -113,8 +134,8 @@ export function AppHeader({ currentPage, currentUser, onNavigate, onLogout, onRo
             
             {/* My Stats - Always visible for all users */}
             <Button
-              variant={currentPage === "mystats" ? "secondary" : "ghost"}
-              className="rounded-lg hover:bg-theme-primary-10 hover:text-theme-primary"
+              variant="ghost"
+              className={navButtonClass(navActive.mystats)}
               onClick={() => handleNavigation("mystats")}
             >
               <Activity className="w-4 h-4 mr-2" />
@@ -122,8 +143,8 @@ export function AppHeader({ currentPage, currentUser, onNavigate, onLogout, onRo
             </Button>
             
             <Button
-              variant={currentPage === "reviewer" ? "secondary" : "ghost"}
-              className="rounded-lg hover:bg-theme-primary-10 hover:text-theme-primary"
+              variant="ghost"
+              className={navButtonClass(navActive.reviewer)}
               onClick={() => handleNavigation("reviewer")}
             >
               <UserCog className="w-4 h-4 mr-2" />
