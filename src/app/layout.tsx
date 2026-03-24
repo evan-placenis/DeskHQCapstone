@@ -4,6 +4,7 @@ import "@/styles/index.css";
 import "@/styles/globals.css";
 import "@/styles/cursor-overrides.css";
 import { AuthProvider } from "@/app/context/auth-context";
+import { CaptureRecoveryGate } from "@/features/capture/components/capture-recovery-gate";
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -24,6 +25,7 @@ export default function RootLayout({
         className={inter.className}
       >
         <AuthProvider>
+          <CaptureRecoveryGate />
           {children}
         </AuthProvider>
       </body>

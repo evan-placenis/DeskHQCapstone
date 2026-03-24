@@ -9,8 +9,9 @@ import { supabase } from "@/lib/supabase-browser-client";
 import { apiRoutes } from "@/lib/api-routes";
 import * as tus from "tus-js-client";
 import { captureIDB } from "../services/capture-idb";
+import { CAPTURE_RECOVERY_ACTION_KEY } from "../services/capture-recovery-bridge";
 
-type Step = "capture" | "choose-project" | "uploading" | "success" | "recover";
+type Step = "capture" | "choose-project" | "uploading" | "success";
 
 interface TranscriptEntry {
   text: string;
@@ -65,6 +66,8 @@ export function CaptureSessionPage({
   const recognitionRef = useRef<any>(null);
   const recordingStartMsRef = useRef<number>(0);
   const isRecordingRef = useRef(false);
+  /** Set when user chose "Retry Upload" from the global recovery gate (sessionStorage). */
+  const shouldAutoRetryUploadRef = useRef(false);
 
   const [projects, setProjects] = useState<Project[]>([]);
   const [projectsLoading, setProjectsLoading] = useState(false);
@@ -112,7 +115,21 @@ export function CaptureSessionPage({
           }));
           setPhotos(restoredPhotos);
           photoIdRef.current = Math.max(0, ...validPhotos.map((p) => p.photoId));
-          setStep("recover");
+
+          let action: string | null = null;
+          try {
+            action = sessionStorage.getItem(CAPTURE_RECOVERY_ACTION_KEY);
+            if (action) sessionStorage.removeItem(CAPTURE_RECOVERY_ACTION_KEY);
+          } catch {
+            /* ignore */
+          }
+
+          if (action === "retry-upload" && session.projectId) {
+            shouldAutoRetryUploadRef.current = true;
+            setStep("uploading");
+          } else {
+            setStep("capture");
+          }
           return;
         }
       } catch (e) {
@@ -490,6 +507,13 @@ export function CaptureSessionPage({
     }
   }, [sessionId, selectedProjectId, photos, transcriptEntries, getAudioBlob, onSuccessRedirect]);
 
+  useEffect(() => {
+    if (!shouldAutoRetryUploadRef.current) return;
+    if (!sessionId || !selectedProjectId) return;
+    shouldAutoRetryUploadRef.current = false;
+    void doUpload();
+  }, [sessionId, selectedProjectId, doUpload]);
+
   const formatDuration = (s: number) => {
     const m = Math.floor(s / 60);
     const sec = s % 60;
@@ -509,56 +533,6 @@ export function CaptureSessionPage({
       .catch(() => {})
       .finally(() => setProjectsLoading(false));
   }, []);
-
-  const discardRecovery = useCallback(async () => {
-    if (sessionId) await captureIDB.clearSession(sessionId).catch(() => {});
-    photos.forEach((p) => URL.revokeObjectURL(p.previewUrl));
-    setPhotos([]);
-    setSelectedProjectId(null);
-    setSessionId(null);
-    setFolderName(null);
-    setTranscriptEntries([]);
-    setStep("capture");
-    setNeedsNewSession(true);
-  }, [sessionId, photos]);
-
-  if (step === "recover") {
-    const hasPendingUpload = !!selectedProjectId;
-    return (
-      <div className="fixed inset-0 bg-slate-900 z-50 flex flex-col items-center justify-center p-6">
-        <Camera className="w-12 h-12 text-theme-primary mb-4" />
-        <h2 className="text-white text-lg font-semibold mb-2">Session Recovery</h2>
-        <p className="text-slate-300 text-center mb-6">
-          We found <span className="text-white font-medium">{photos.length} photo{photos.length !== 1 ? "s" : ""}</span> from
-          your last capture session.
-          {hasPendingUpload
-            ? " Your upload was interrupted — you can retry it now."
-            : " You can continue where you left off."}
-        </p>
-        <div className="flex gap-3 w-full max-w-xs">
-          <Button
-            variant="outline"
-            className="flex-1 rounded-lg text-slate-300 border-slate-600 hover:bg-slate-800"
-            onClick={discardRecovery}
-          >
-            Discard
-          </Button>
-          <Button
-            className="flex-1 rounded-lg bg-theme-action-primary"
-            onClick={() => {
-              if (hasPendingUpload) {
-                doUpload();
-              } else {
-                setStep("capture");
-              }
-            }}
-          >
-            {hasPendingUpload ? "Retry Upload" : "Resume"}
-          </Button>
-        </div>
-      </div>
-    );
-  }
 
   if (!sessionId && step === "capture") {
     return (
