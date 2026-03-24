@@ -318,7 +318,7 @@ export function TechnicianAnalyticsPage({
   return (
     <div className="min-h-screen bg-slate-50">
       <AppHeader
-        currentPage={currentUser.role === "manager" ? "mystats" : "analytics"}
+        currentPage="mystats"
         currentUser={currentUser}
         onNavigate={onNavigate}
         onLogout={onLogout}

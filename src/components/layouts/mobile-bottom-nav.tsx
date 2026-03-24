@@ -1,7 +1,8 @@
 "use client";
 
-import { Home, Mic, BarChart3, ClipboardCheck, Activity, Camera } from "lucide-react";
+import { Home, BarChart3, ClipboardCheck, Activity, Camera, type LucideIcon } from "lucide-react";
 import { Page } from "@/app/pages/config/routes";
+import { cn } from "@/components/ui/utils";
 
 interface MobileBottomNavProps {
   currentPage: Page;
@@ -10,41 +11,50 @@ interface MobileBottomNavProps {
   currentUser?: { role: "manager" | "technician"; name: string; email: string };
 }
 
+type NavItem = {
+  id: Page | "capture";
+  icon: LucideIcon;
+  label: string;
+  onClick: () => void;
+  /** Larger Home icon for technicians (no Analytics column). */
+  isExtraLarge?: boolean;
+};
+
 export function MobileBottomNav({ currentPage, onNavigate, onRecordClick, currentUser }: MobileBottomNavProps) {
   const isManager = currentUser?.role === "manager";
-  
-  // Build nav items based on user role
-  const navItems = [
+
+  const navItems: NavItem[] = [
     {
-      id: "dashboard" as Page,
+      id: "dashboard",
       icon: Home,
       label: "Home",
       onClick: () => onNavigate("dashboard"),
-      // Home is extra big for technicians (when analytics is hidden)
       isExtraLarge: !isManager,
     },
-    // Analytics - Only visible for managers
-    ...(isManager ? [{
-      id: "analytics" as Page,
-      icon: BarChart3,
-      label: "Analytics",
-      onClick: () => onNavigate("analytics"),
-    }] : []),
+    ...(isManager
+      ? [
+          {
+            id: "analytics" as Page,
+            icon: BarChart3,
+            label: "Analytics",
+            onClick: () => onNavigate("analytics"),
+          } satisfies NavItem,
+        ]
+      : []),
     {
       id: "capture",
       icon: Camera,
       label: "Capture",
       onClick: onRecordClick || (() => alert("Capture feature coming soon!")),
-      isSpecial: true,
     },
     {
-      id: "mystats" as Page,
+      id: "mystats",
       icon: Activity,
       label: "My Stats",
       onClick: () => onNavigate("mystats"),
     },
     {
-      id: "reviewer" as Page,
+      id: "reviewer",
       icon: ClipboardCheck,
       label: "Reviewer",
       onClick: () => onNavigate("reviewer"),
@@ -53,47 +63,57 @@ export function MobileBottomNav({ currentPage, onNavigate, onRecordClick, curren
 
   const isActive = (itemId: string) => {
     if (itemId === "dashboard") {
-      return currentPage === "dashboard" || currentPage === "project" || currentPage === "report" || currentPage === "audio-timeline";
+      return (
+        currentPage === "dashboard" ||
+        currentPage === "project" ||
+        currentPage === "report" ||
+        currentPage === "audio-timeline"
+      );
+    }
+    if (itemId === "capture") {
+      return currentPage === "capture" || currentPage === "capture-session";
     }
     return currentPage === itemId;
   };
 
   return (
     <nav className="lg:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 z-50 safe-area-bottom">
-      <div className={`grid ${isManager ? 'grid-cols-5' : 'grid-cols-4'} items-center px-2 py-2`}>
-        {navItems.map((item, index) => {
+      <div className={`grid ${isManager ? "grid-cols-5" : "grid-cols-4"} items-end px-2 py-2`}>
+        {navItems.map((item) => {
           const Icon = item.icon;
           const active = isActive(item.id);
+          const iconLg = item.isExtraLarge && !active;
 
-          if (item.isSpecial) {
-            // Special Record button - centered properly
-            return (
-              <button
-                key={item.id}
-                onClick={item.onClick}
-                className={`flex flex-col items-center justify-center relative -mt-2 ${
-                  !isManager ? 'col-start-2' : ''
-                }`}
-              >
-                <div className="w-12 h-12 rounded-full bg-theme-action-primary hover:bg-theme-action-primary-hover shadow-lg flex items-center justify-center transition-all active:scale-95">
-                  <Icon className="w-5 h-5 text-white" />
-                </div>
-                <span className="text-[10px] text-slate-600 mt-0.5">{item.label}</span>
-              </button>
-            );
-          }
-
-          // Regular navigation buttons - with extra large option for technician's home button
           return (
             <button
               key={item.id}
+              type="button"
               onClick={item.onClick}
-              className={`flex flex-col items-center justify-center py-2 transition-colors ${
-                active ? "text-theme-action-primary" : "text-slate-500"
-              }`}
+              className={cn(
+                "flex flex-col items-center justify-center py-1.5 min-w-0 transition-colors",
+                item.id === "capture" && !isManager && "col-start-2"
+              )}
             >
-              <Icon className={`${item.isExtraLarge ? "w-7 h-7" : "w-6 h-6"} ${active ? "text-theme-action-primary" : "text-slate-500"}`} />
-              <span className={`text-[10px] mt-1 ${active ? "text-theme-action-primary font-medium" : "text-slate-600"}`}>
+              {/* Gray circle only for the active route — inactive tabs are icon-only like Home in the mock */}
+              <div
+                className={cn(
+                  "flex items-center justify-center rounded-full transition-all active:scale-95",
+                  active ? "h-12 w-12 bg-slate-200 shadow-sm" : "h-10 w-10"
+                )}
+              >
+                <Icon
+                  className={cn(
+                    iconLg ? "w-7 h-7" : "w-6 h-6",
+                    active ? "text-slate-800" : "text-slate-500"
+                  )}
+                />
+              </div>
+              <span
+                className={cn(
+                  "mt-0.5 text-[10px] text-center leading-tight max-w-full truncate px-0.5",
+                  active ? "font-semibold text-slate-900" : "text-slate-600"
+                )}
+              >
                 {item.label}
               </span>
             </button>
