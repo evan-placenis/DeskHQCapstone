@@ -701,8 +701,7 @@ export function CaptureSessionPage({
           variant="ghost"
           size="sm"
           onClick={handleDone}
-          disabled={photos.length === 0}
-          className="text-theme-primary hover:bg-slate-800 rounded-lg h-9 px-4 disabled:opacity-50"
+          className="text-theme-primary hover:bg-slate-800 rounded-lg h-9 px-4"
         >
           Done
         </Button>
