@@ -2,12 +2,13 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Camera, X, Mic, Loader2, CheckCircle2, Search, Plus, Check } from "lucide-react";
+import { Camera, X, Mic, Loader2, CheckCircle2, Search, Plus, Check, Pause, Play } from "lucide-react";
 import { Project } from "@/lib/types";
 import { supabase } from "@/lib/supabase-browser-client";
 import { apiRoutes } from "@/lib/api-routes";
 import * as tus from "tus-js-client";
 import { captureIDB } from "../services/capture-idb";
+import { useCaptureSession } from "../hooks/use-capture-session";
 import { CAPTURE_RECOVERY_ACTION_KEY } from "../services/capture-recovery-bridge";
 import { saveImageBlobsToDeviceViaShare } from "@/features/projects/utils/save-photos-to-device";
 import {
@@ -52,9 +53,6 @@ export function CaptureSessionPage({
   const [step, setStep] = useState<Step>("capture");
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [folderName, setFolderName] = useState<string | null>(null);
-  const [isRecording, setIsRecording] = useState(false);
-  const [audioStartTimeMs, setAudioStartTimeMs] = useState<number>(0);
-  const [durationSec, setDurationSec] = useState(0);
   const [photos, setPhotos] = useState<CapturedPhoto[]>([]);
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [uploadError, setUploadError] = useState<string | null>(null);
@@ -64,31 +62,6 @@ export function CaptureSessionPage({
   const [needsNewSession, setNeedsNewSession] = useState(false);
 
   const [transcriptEntries, setTranscriptEntries] = useState<TranscriptEntry[]>([]);
-
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const streamRef = useRef<MediaStream | null>(null);
-  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-  const audioChunksRef = useRef<Blob[]>([]);
-  const durationIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const photoIdRef = useRef(0);
-  const recognitionRef = useRef<any>(null);
-  const recordingStartMsRef = useRef<number>(0);
-  const isRecordingRef = useRef(false);
-  /** Set when user chose "Retry Upload" from the global recovery gate (sessionStorage). */
-  const shouldAutoRetryUploadRef = useRef(false);
-  const photosRef = useRef<CapturedPhoto[]>([]);
-  /** After first mic audio chunk, we persist `localAudioCaptured` in IDB once per recording. */
-  const audioChunkPersistedRef = useRef(false);
-
-  useEffect(() => { photosRef.current = photos; }, [photos]);
-
-  useEffect(() => {
-    if (!sessionId) return;
-    const t = setTimeout(() => {
-      captureIDB.updateSession(sessionId, { transcriptEntries }).catch(() => {});
-    }, 400);
-    return () => clearTimeout(t);
-  }, [sessionId, transcriptEntries]);
 
   const [projects, setProjects] = useState<Project[]>([]);
   const [projectsLoading, setProjectsLoading] = useState(false);
@@ -102,12 +75,53 @@ export function CaptureSessionPage({
   const [postDoneSavePromptOpen, setPostDoneSavePromptOpen] = useState(false);
   const [postDoneSaveBusy, setPostDoneSaveBusy] = useState(false);
 
-  const supportedMimeType = useCallback(() => {
-    if (typeof MediaRecorder === "undefined") return null;
-    if (MediaRecorder.isTypeSupported("audio/webm")) return "audio/webm";
-    if (MediaRecorder.isTypeSupported("audio/mp4")) return "audio/mp4";
-    return null;
-  }, []);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const [captureStream, setCaptureStream] = useState<MediaStream | null>(null);
+  const photoIdRef = useRef(0);
+  const recognitionRef = useRef<any>(null);
+  const isRecordingRef = useRef(false);
+  const isPausedRef = useRef(false);
+  /** Set when user chose "Retry Upload" from the global recovery gate (sessionStorage). */
+  const shouldAutoRetryUploadRef = useRef(false);
+  const photosRef = useRef<CapturedPhoto[]>([]);
+  /** Final merged audio after Done (used for TUS upload and retry). */
+  const finalizedAudioBlobRef = useRef<Blob | null>(null);
+
+  const onFirstAudioChunk = useCallback(() => {
+    if (sessionId) {
+      captureIDB.updateSession(sessionId, { localAudioCaptured: true }).catch(() => {});
+    }
+  }, [sessionId]);
+
+  const {
+    isRecording,
+    isPaused,
+    durationSec,
+    startSession,
+    pauseSession,
+    resumeSession,
+    endSession,
+    getEncodedTimelineMs,
+  } = useCaptureSession(captureStream, { onFirstAudioChunk });
+
+  useEffect(() => { photosRef.current = photos; }, [photos]);
+
+  useEffect(() => {
+    isRecordingRef.current = isRecording;
+  }, [isRecording]);
+
+  useEffect(() => {
+    isPausedRef.current = isPaused;
+  }, [isPaused]);
+
+  useEffect(() => {
+    if (!sessionId) return;
+    const t = setTimeout(() => {
+      captureIDB.updateSession(sessionId, { transcriptEntries }).catch(() => {});
+    }, 400);
+    return () => clearTimeout(t);
+  }, [sessionId, transcriptEntries]);
 
   useEffect(() => {
     let cancelled = false;
@@ -218,6 +232,7 @@ export function CaptureSessionPage({
     streamPromise
       .then((stream) => {
         streamRef.current = stream;
+        setCaptureStream(stream);
         if (videoRef.current) videoRef.current.srcObject = stream;
         setCameraError(null);
       })
@@ -227,97 +242,86 @@ export function CaptureSessionPage({
     return () => {
       streamRef.current?.getTracks().forEach((t) => t.stop());
       streamRef.current = null;
+      setCaptureStream(null);
     };
   }, [sessionId, step]);
 
-  const startRecording = useCallback(() => {
-    const mime = supportedMimeType();
-    if (!mime || !streamRef.current) return;
-    const audioTrack = streamRef.current.getAudioTracks()[0];
-    const audioStream = audioTrack ? new MediaStream([audioTrack]) : new MediaStream();
-    const recorder = new MediaRecorder(audioStream, { mimeType: mime });
-    audioChunksRef.current = [];
-    audioChunkPersistedRef.current = false;
-    recorder.ondataavailable = (e) => {
-      if (!e.data.size) return;
-      audioChunksRef.current.push(e.data);
-      const sid = sessionId;
-      if (sid && !audioChunkPersistedRef.current) {
-        audioChunkPersistedRef.current = true;
-        captureIDB.updateSession(sid, { localAudioCaptured: true }).catch(() => {});
-      }
-    };
-    recorder.start(1000);
-    mediaRecorderRef.current = recorder;
-
-    const startMs = Date.now();
-    recordingStartMsRef.current = startMs;
-    setAudioStartTimeMs(startMs);
-    setDurationSec(0);
-    setTranscriptEntries([]);
-    durationIntervalRef.current = setInterval(() => setDurationSec((s) => s + 1), 1000);
-    setIsRecording(true);
-    isRecordingRef.current = true;
+  const startSpeechRecognition = useCallback(() => {
+    recognitionRef.current?.stop();
+    recognitionRef.current = null;
 
     const SpeechRecognitionCtor =
       (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-    if (SpeechRecognitionCtor) {
-      const recognition = new SpeechRecognitionCtor();
-      recognition.continuous = true;
-      recognition.interimResults = false;
-      recognition.lang = "en-US";
+    if (!SpeechRecognitionCtor) return;
 
-      const fatalErrors = new Set(["not-allowed", "service-not-allowed", "aborted"]);
-      recognition.onerror = (e: any) => {
-        if (fatalErrors.has(e.error)) {
-          isRecordingRef.current = false;
-        }
-        if (e.error !== "no-speech") console.warn("SpeechRecognition error:", e.error);
-      };
+    const recognition = new SpeechRecognitionCtor();
+    recognition.continuous = true;
+    recognition.interimResults = false;
+    recognition.lang = "en-US";
 
-      recognition.onend = () => {
-        if (isRecordingRef.current && recognitionRef.current === recognition) {
-          setTimeout(() => recognition.start(), 100);
-        }
-      };
+    const fatalErrors = new Set(["not-allowed", "service-not-allowed", "aborted"]);
+    recognition.onerror = (e: any) => {
+      if (fatalErrors.has(e.error)) {
+        isRecordingRef.current = false;
+      }
+      if (e.error !== "no-speech") console.warn("SpeechRecognition error:", e.error);
+    };
 
-      recognition.onresult = (event: any) => {
-        for (let i = event.resultIndex; i < event.results.length; i++) {
-          if (event.results[i].isFinal) {
-            const text = event.results[i][0].transcript.trim();
-            if (text) {
-              setTranscriptEntries((prev) => [
-                ...prev,
-                { text, timestampMs: Date.now() - recordingStartMsRef.current },
-              ]);
-            }
+    recognition.onend = () => {
+      if (
+        isRecordingRef.current &&
+        !isPausedRef.current &&
+        recognitionRef.current === recognition
+      ) {
+        setTimeout(() => {
+          try {
+            recognition.start();
+          } catch {
+            /* ignore */
+          }
+        }, 100);
+      }
+    };
+
+    recognition.onresult = (event: any) => {
+      for (let i = event.resultIndex; i < event.results.length; i++) {
+        if (event.results[i].isFinal) {
+          const text = event.results[i][0].transcript.trim();
+          if (text) {
+            const timestampMs = getEncodedTimelineMs();
+            setTranscriptEntries((prev) => [...prev, { text, timestampMs }]);
           }
         }
-      };
+      }
+    };
 
+    try {
       recognition.start();
-      recognitionRef.current = recognition;
+    } catch {
+      /* ignore */
     }
-  }, [supportedMimeType, sessionId]);
+    recognitionRef.current = recognition;
+  }, [getEncodedTimelineMs]);
 
-  const stopRecording = useCallback(() => {
-    isRecordingRef.current = false;
-    if (durationIntervalRef.current) {
-      clearInterval(durationIntervalRef.current);
-      durationIntervalRef.current = null;
-    }
-    mediaRecorderRef.current?.stop();
-    mediaRecorderRef.current = null;
+  const startCapture = useCallback(() => {
+    if (!captureStream) return;
+    finalizedAudioBlobRef.current = null;
+    setTranscriptEntries([]);
+    startSession();
+    isRecordingRef.current = true;
+    startSpeechRecognition();
+  }, [captureStream, startSession, startSpeechRecognition]);
+
+  const pauseCapture = useCallback(() => {
     recognitionRef.current?.stop();
     recognitionRef.current = null;
-    setIsRecording(false);
-    const hasAudio =
-      audioChunksRef.current.length > 0 &&
-      audioChunksRef.current.some((c) => c.size > 0);
-    if (sessionId && hasAudio) {
-      captureIDB.updateSession(sessionId, { localAudioCaptured: true }).catch(() => {});
-    }
-  }, [sessionId]);
+    pauseSession();
+  }, [pauseSession]);
+
+  const resumeCapture = useCallback(() => {
+    resumeSession();
+    startSpeechRecognition();
+  }, [resumeSession, startSpeechRecognition]);
 
   const takePhoto = useCallback(() => {
     const video = videoRef.current;
@@ -331,7 +335,7 @@ export function CaptureSessionPage({
     canvas.toBlob(
       (blob) => {
         if (!isUsableImageBlob(blob)) return;
-        const takenAtMs = audioStartTimeMs ? Date.now() - audioStartTimeMs : 0;
+        const takenAtMs = getEncodedTimelineMs();
         const id = ++photoIdRef.current;
         setPhotos((prev) => [
           ...prev,
@@ -348,7 +352,7 @@ export function CaptureSessionPage({
       "image/jpeg",
       0.9
     );
-  }, [sessionId, audioStartTimeMs]);
+  }, [sessionId, getEncodedTimelineMs]);
 
   const removePhoto = useCallback((id: number) => {
     setPhotos((prev) => {
@@ -401,14 +405,25 @@ export function CaptureSessionPage({
     }
   }, [photos, proceedToChooseProject]);
 
-  const handleDone = useCallback(() => {
-    stopRecording();
+  const handleDone = useCallback(async () => {
+    recognitionRef.current?.stop();
+    recognitionRef.current = null;
+    isRecordingRef.current = false;
+
+    if (isRecording) {
+      const blob = await endSession();
+      finalizedAudioBlobRef.current = blob.size > 0 ? blob : null;
+      if (sessionId && finalizedAudioBlobRef.current) {
+        captureIDB.updateSession(sessionId, { localAudioCaptured: true }).catch(() => {});
+      }
+    }
+
     if (photos.length === 0) {
       proceedToChooseProject();
       return;
     }
     setPostDoneSavePromptOpen(true);
-  }, [stopRecording, photos.length, proceedToChooseProject]);
+  }, [isRecording, endSession, sessionId, photos.length, proceedToChooseProject]);
 
   const handleCreateProject = useCallback(async () => {
     if (!createName.trim()) return;
@@ -437,11 +452,7 @@ export function CaptureSessionPage({
     }
   }, [createName, createClientName, createAddress]);
 
-  const getAudioBlob = useCallback(() => {
-    if (audioChunksRef.current.length === 0) return null;
-    const mime = supportedMimeType();
-    return new Blob(audioChunksRef.current, { type: mime || "audio/webm" });
-  }, [supportedMimeType]);
+  const getAudioBlob = useCallback(() => finalizedAudioBlobRef.current, []);
 
   const doUpload = useCallback(async () => {
     const projectId = selectedProjectId;
@@ -821,7 +832,7 @@ export function CaptureSessionPage({
         <Button
           variant="ghost"
           size="sm"
-          onClick={handleDone}
+          onClick={() => void handleDone()}
           className="text-theme-primary hover:bg-slate-800 rounded-lg h-9 px-4"
         >
           Done
@@ -830,7 +841,9 @@ export function CaptureSessionPage({
 
       {isRecording && (
         <div className="flex items-center gap-2 px-3 py-2 bg-slate-800/80 border-b border-slate-700">
-          <div className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
+          <div
+            className={`w-2 h-2 rounded-full bg-red-500 ${isPaused ? "" : "animate-pulse"}`}
+          />
           <span className="text-white font-mono text-sm">{formatDuration(durationSec)}</span>
         </div>
       )}
@@ -850,22 +863,45 @@ export function CaptureSessionPage({
             </div>
           )}
           {!cameraError && (
-            <div className="absolute bottom-6 left-0 right-0 flex justify-center">
+            <div className="absolute bottom-6 left-0 right-0 flex items-center justify-center gap-4 px-4">
               {!isRecording ? (
                 <Button
-                  onClick={startRecording}
+                  onClick={startCapture}
                   className="w-14 h-14 rounded-full bg-theme-action-primary hover:bg-theme-action-primary-hover"
                 >
                   <Mic className="w-6 h-6" />
                 </Button>
               ) : (
                 <>
+                  {!isPaused ? (
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      onClick={pauseCapture}
+                      className="w-12 h-12 rounded-full shrink-0 bg-slate-700 text-white hover:bg-slate-600 border-0"
+                      aria-label="Pause recording"
+                    >
+                      <Pause className="w-5 h-5" />
+                    </Button>
+                  ) : (
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      onClick={resumeCapture}
+                      className="w-12 h-12 rounded-full shrink-0 bg-slate-700 text-white hover:bg-slate-600 border-0"
+                      aria-label="Resume recording"
+                    >
+                      <Play className="w-5 h-5" />
+                    </Button>
+                  )}
                   <button
+                    type="button"
                     onClick={takePhoto}
-                    className="w-16 h-16 rounded-full bg-white border-4 border-slate-300 shadow-xl flex items-center justify-center active:scale-95"
+                    className="w-16 h-16 rounded-full bg-white border-4 border-slate-300 shadow-xl flex items-center justify-center active:scale-95 shrink-0"
                   >
                     <div className="w-14 h-14 rounded-full bg-white" />
                   </button>
+                  <div className="w-12 h-12 shrink-0" aria-hidden />
                 </>
               )}
             </div>
