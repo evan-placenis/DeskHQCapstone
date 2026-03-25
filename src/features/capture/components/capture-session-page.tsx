@@ -14,7 +14,6 @@ import {
   AlertDialog,
   AlertDialogCancel,
   AlertDialogContent,
-  AlertDialogDescription,
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
@@ -780,13 +779,8 @@ export function CaptureSessionPage({
         <AlertDialogContent className="z-[100] sm:max-w-md">
           <AlertDialogHeader>
             <AlertDialogTitle>Save photos to this device?</AlertDialogTitle>
-            <AlertDialogDescription>
-              Yes opens the share sheet so you can save copies (e.g. to Photos) first. No skips that step.
-              Either way, you&apos;ll choose a project next, upload these photos, and then you&apos;ll be redirected
-              to the project when the upload finishes—same path for both choices.
-            </AlertDialogDescription>
           </AlertDialogHeader>
-          <AlertDialogFooter className="gap-2 sm:gap-0">
+          <AlertDialogFooter className="gap-3 sm:gap-4">
             <AlertDialogCancel
               disabled={postDoneSaveBusy}
               className="mt-0"
