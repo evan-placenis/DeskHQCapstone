@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef, useCallback, useEffect } from "react";
 
 export function pickSupportedAudioMimeType(): string | null {
   if (typeof MediaRecorder === "undefined") return null;
@@ -8,15 +8,21 @@ export function pickSupportedAudioMimeType(): string | null {
 }
 
 export type UseCaptureSessionOptions = {
-  /** Called once when the first non-empty audio chunk is available (e.g. persist recovery flag). */
-  onFirstAudioChunk?: () => void;
+  onAudioChunkPersist?: (payload: {
+    chunkIndex: number;
+    blob: Blob;
+    encodedDurationMs: number;
+    mimeType: string;
+  }) => void;
+  /** Called when starting a brand-new recording (not continuing after recovery). */
+  onFreshSessionStart?: () => void;
 };
 
 export function useCaptureSession(
   stream: MediaStream | null,
   options?: UseCaptureSessionOptions
 ) {
-  const { onFirstAudioChunk } = options ?? {};
+  const { onAudioChunkPersist, onFreshSessionStart } = options ?? {};
   const [isRecording, setIsRecording] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
   const [durationMs, setDurationMs] = useState(0);
@@ -24,6 +30,9 @@ export function useCaptureSession(
   const sessionStartMs = useRef<number | null>(null);
   const totalPausedMs = useRef(0);
   const currentPauseStartMs = useRef<number | null>(null);
+  const baseTimelineMsRef = useRef(0);
+  const chunkIndexRef = useRef(0);
+  const isPausedRef = useRef(false);
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
@@ -31,15 +40,28 @@ export function useCaptureSession(
   const outputMimeRef = useRef<string>("audio/webm");
   const firstChunkReportedRef = useRef(false);
 
-  const getEncodedTimelineMs = useCallback(() => {
-    if (!sessionStartMs.current) return 0;
+  useEffect(() => {
+    isPausedRef.current = isPaused;
+  }, [isPaused]);
+
+  const computeTimelineMs = useCallback(() => {
+    if (!sessionStartMs.current) {
+      return baseTimelineMsRef.current;
+    }
     const now = Date.now();
     let activePauseDuration = 0;
-    if (isPaused && currentPauseStartMs.current) {
+    if (isPausedRef.current && currentPauseStartMs.current) {
       activePauseDuration = now - currentPauseStartMs.current;
     }
-    return now - sessionStartMs.current - totalPausedMs.current - activePauseDuration;
-  }, [isPaused]);
+    return (
+      baseTimelineMsRef.current +
+      (now - sessionStartMs.current - totalPausedMs.current - activePauseDuration)
+    );
+  }, []);
+
+  const getEncodedTimelineMs = useCallback(() => {
+    return computeTimelineMs();
+  }, [computeTimelineMs]);
 
   const stopTimer = useCallback(() => {
     if (timerIntervalRef.current) {
@@ -50,11 +72,11 @@ export function useCaptureSession(
 
   const startTimer = useCallback(() => {
     if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
-    setDurationMs(getEncodedTimelineMs());
+    setDurationMs(computeTimelineMs());
     timerIntervalRef.current = setInterval(() => {
-      setDurationMs(getEncodedTimelineMs());
+      setDurationMs(computeTimelineMs());
     }, 1000);
-  }, [getEncodedTimelineMs]);
+  }, [computeTimelineMs]);
 
   const initializeRecorder = useCallback(() => {
     if (!stream) return;
@@ -70,33 +92,55 @@ export function useCaptureSession(
 
     recorder.ondataavailable = (e) => {
       if (e.data.size === 0) return;
+      const chunkIndex = chunkIndexRef.current;
+      chunkIndexRef.current = chunkIndex + 1;
       audioChunksRef.current.push(e.data);
+      const encodedMs = computeTimelineMs();
       if (!firstChunkReportedRef.current) {
         firstChunkReportedRef.current = true;
-        onFirstAudioChunk?.();
       }
+      onAudioChunkPersist?.({
+        chunkIndex,
+        blob: e.data,
+        encodedDurationMs: encodedMs,
+        mimeType: outputMimeRef.current,
+      });
     };
 
     mediaRecorderRef.current = recorder;
     recorder.start(1000);
-  }, [stream, onFirstAudioChunk]);
+  }, [stream, computeTimelineMs, onAudioChunkPersist]);
 
-  const startSession = useCallback(() => {
-    if (!stream) return;
-    const mime = pickSupportedAudioMimeType();
-    if (!mime) return;
+  const startSession = useCallback(
+    (opts?: { continue?: boolean }) => {
+      const cont = opts?.continue === true;
+      if (!stream) return;
+      const mime = pickSupportedAudioMimeType();
+      if (!mime) return;
 
-    sessionStartMs.current = Date.now();
-    totalPausedMs.current = 0;
-    currentPauseStartMs.current = null;
-    audioChunksRef.current = [];
-    firstChunkReportedRef.current = false;
+      if (!cont) {
+        onFreshSessionStart?.();
+        sessionStartMs.current = null;
+        totalPausedMs.current = 0;
+        currentPauseStartMs.current = null;
+        baseTimelineMsRef.current = 0;
+        audioChunksRef.current = [];
+        chunkIndexRef.current = 0;
+        firstChunkReportedRef.current = false;
+      } else {
+        totalPausedMs.current = 0;
+        currentPauseStartMs.current = null;
+        /* chunkIndexRef preserved (hydration / prior segment); do not reset to array length — that can collide with IDB keys after recovery. */
+      }
 
-    initializeRecorder();
-    setIsRecording(true);
-    setIsPaused(false);
-    startTimer();
-  }, [stream, initializeRecorder, startTimer]);
+      sessionStartMs.current = Date.now();
+      initializeRecorder();
+      setIsRecording(true);
+      setIsPaused(false);
+      startTimer();
+    },
+    [stream, initializeRecorder, startTimer, onFreshSessionStart]
+  );
 
   const pauseSession = useCallback(() => {
     if (!isRecording || isPaused) return;
@@ -116,7 +160,7 @@ export function useCaptureSession(
         currentPauseStartMs.current -
         sessionStartMs.current -
         totalPausedMs.current;
-      setDurationMs(Math.max(0, frozenMs));
+      setDurationMs(Math.max(0, baseTimelineMsRef.current + frozenMs));
     }
   }, [isRecording, isPaused, stopTimer]);
 
@@ -131,6 +175,40 @@ export function useCaptureSession(
     setIsPaused(false);
     startTimer();
   }, [isRecording, isPaused, initializeRecorder, startTimer]);
+
+  const hydrateFromRecovery = useCallback(
+    (
+      chunks: Blob[],
+      mimeType: string,
+      encodedDurationMs: number,
+      nextChunkIndex: number
+    ) => {
+      stopTimer();
+      mediaRecorderRef.current = null;
+      sessionStartMs.current = null;
+      totalPausedMs.current = 0;
+      currentPauseStartMs.current = null;
+      isPausedRef.current = false;
+      setIsPaused(false);
+      setIsRecording(false);
+
+      audioChunksRef.current = [...chunks];
+      chunkIndexRef.current = Math.max(0, nextChunkIndex);
+      baseTimelineMsRef.current = Math.max(0, encodedDurationMs);
+      outputMimeRef.current = mimeType || pickSupportedAudioMimeType() || "audio/webm";
+      firstChunkReportedRef.current = chunks.length > 0;
+      setDurationMs(encodedDurationMs);
+    },
+    [stopTimer]
+  );
+
+  const getChunkCount = useCallback(() => audioChunksRef.current.length, []);
+
+  const getMergedAudioBlob = useCallback((): Blob | null => {
+    if (audioChunksRef.current.length === 0) return null;
+    const mime = outputMimeRef.current || "audio/webm";
+    return new Blob(audioChunksRef.current, { type: mime });
+  }, []);
 
   const endSession = useCallback(async (): Promise<Blob> => {
     stopTimer();
@@ -156,7 +234,13 @@ export function useCaptureSession(
     setIsPaused(false);
     sessionStartMs.current = null;
 
-    return new Blob(audioChunksRef.current, { type: mime });
+    const blob = new Blob(audioChunksRef.current, { type: mime });
+    audioChunksRef.current = [];
+    chunkIndexRef.current = 0;
+    baseTimelineMsRef.current = 0;
+    setDurationMs(0);
+
+    return blob;
   }, [stopTimer]);
 
   return {
@@ -168,5 +252,8 @@ export function useCaptureSession(
     resumeSession,
     endSession,
     getEncodedTimelineMs,
+    hydrateFromRecovery,
+    getMergedAudioBlob,
+    getChunkCount,
   };
 }

@@ -8,7 +8,7 @@ import { supabase } from "@/lib/supabase-browser-client";
 import { apiRoutes } from "@/lib/api-routes";
 import * as tus from "tus-js-client";
 import { captureIDB } from "../services/capture-idb";
-import { useCaptureSession } from "../hooks/use-capture-session";
+import { pickSupportedAudioMimeType, useCaptureSession } from "../hooks/use-capture-session";
 import { CAPTURE_RECOVERY_ACTION_KEY } from "../services/capture-recovery-bridge";
 import { saveImageBlobsToDeviceViaShare } from "@/features/projects/utils/save-photos-to-device";
 import {
@@ -87,10 +87,38 @@ export function CaptureSessionPage({
   const photosRef = useRef<CapturedPhoto[]>([]);
   /** Final merged audio after Done (used for TUS upload and retry). */
   const finalizedAudioBlobRef = useRef<Blob | null>(null);
+  /** Merged blob from IDB when the hook has not been hydrated yet (e.g. choose-project / upload-only recovery). */
+  const recoveryAudioBlobRef = useRef<Blob | null>(null);
+  const pendingRecoveryHydrateRef = useRef<{
+    chunks: Blob[];
+    mimeType: string;
+    durationMs: number;
+    nextChunkIndex: number;
+  } | null>(null);
 
-  const onFirstAudioChunk = useCallback(() => {
+  const onAudioChunkPersist = useCallback(
+    (payload: {
+      chunkIndex: number;
+      blob: Blob;
+      encodedDurationMs: number;
+      mimeType: string;
+    }) => {
+      if (!sessionId) return;
+      captureIDB.saveAudioChunk(sessionId, payload.chunkIndex, payload.blob).catch(() => {});
+      captureIDB
+        .updateSession(sessionId, {
+          localAudioCaptured: true,
+          audioEncodedDurationMs: payload.encodedDurationMs,
+          audioMimeType: payload.mimeType,
+        })
+        .catch(() => {});
+    },
+    [sessionId]
+  );
+
+  const onFreshSessionStart = useCallback(() => {
     if (sessionId) {
-      captureIDB.updateSession(sessionId, { localAudioCaptured: true }).catch(() => {});
+      captureIDB.clearAudioChunks(sessionId).catch(() => {});
     }
   }, [sessionId]);
 
@@ -103,7 +131,13 @@ export function CaptureSessionPage({
     resumeSession,
     endSession,
     getEncodedTimelineMs,
-  } = useCaptureSession(captureStream, { onFirstAudioChunk });
+    hydrateFromRecovery,
+    getMergedAudioBlob,
+    getChunkCount,
+  } = useCaptureSession(captureStream, {
+    onAudioChunkPersist,
+    onFreshSessionStart,
+  });
 
   useEffect(() => { photosRef.current = photos; }, [photos]);
 
@@ -153,6 +187,25 @@ export function CaptureSessionPage({
           }));
           setPhotos(restoredPhotos);
           photoIdRef.current = Math.max(0, ...validPhotos.map((p) => p.photoId));
+
+          try {
+            const { blobs: audioChunks, nextChunkIndex } =
+              await captureIDB.getAudioChunksWithMeta(session.sessionId);
+            if (audioChunks.length > 0) {
+              const mime =
+                session.audioMimeType || pickSupportedAudioMimeType() || "audio/webm";
+              const durationMs = session.audioEncodedDurationMs ?? 0;
+              recoveryAudioBlobRef.current = new Blob(audioChunks, { type: mime });
+              pendingRecoveryHydrateRef.current = {
+                chunks: audioChunks,
+                mimeType: mime,
+                durationMs,
+                nextChunkIndex,
+              };
+            }
+          } catch (e) {
+            console.warn("IDB audio recovery load failed:", e);
+          }
 
           let action: string | null = null;
           try {
@@ -246,6 +299,20 @@ export function CaptureSessionPage({
     };
   }, [sessionId, step]);
 
+  useEffect(() => {
+    if (!captureStream || !sessionId || step !== "capture") return;
+    const pending = pendingRecoveryHydrateRef.current;
+    if (!pending) return;
+    pendingRecoveryHydrateRef.current = null;
+    hydrateFromRecovery(
+      pending.chunks,
+      pending.mimeType,
+      pending.durationMs,
+      pending.nextChunkIndex
+    );
+    recoveryAudioBlobRef.current = null;
+  }, [captureStream, sessionId, step, hydrateFromRecovery]);
+
   const startSpeechRecognition = useCallback(() => {
     recognitionRef.current?.stop();
     recognitionRef.current = null;
@@ -305,12 +372,33 @@ export function CaptureSessionPage({
 
   const startCapture = useCallback(() => {
     if (!captureStream) return;
-    finalizedAudioBlobRef.current = null;
-    setTranscriptEntries([]);
-    startSession();
+    if (pendingRecoveryHydrateRef.current) {
+      const p = pendingRecoveryHydrateRef.current;
+      pendingRecoveryHydrateRef.current = null;
+      hydrateFromRecovery(
+        p.chunks,
+        p.mimeType,
+        p.durationMs,
+        p.nextChunkIndex
+      );
+      recoveryAudioBlobRef.current = null;
+    }
+    const cont = getChunkCount() > 0;
+    if (!cont) {
+      finalizedAudioBlobRef.current = null;
+      recoveryAudioBlobRef.current = null;
+      setTranscriptEntries([]);
+    }
+    startSession({ continue: cont });
     isRecordingRef.current = true;
     startSpeechRecognition();
-  }, [captureStream, startSession, startSpeechRecognition]);
+  }, [
+    captureStream,
+    hydrateFromRecovery,
+    getChunkCount,
+    startSession,
+    startSpeechRecognition,
+  ]);
 
   const pauseCapture = useCallback(() => {
     recognitionRef.current?.stop();
@@ -416,6 +504,9 @@ export function CaptureSessionPage({
       if (sessionId && finalizedAudioBlobRef.current) {
         captureIDB.updateSession(sessionId, { localAudioCaptured: true }).catch(() => {});
       }
+    } else {
+      const merged = getMergedAudioBlob() ?? recoveryAudioBlobRef.current;
+      finalizedAudioBlobRef.current = merged && merged.size > 0 ? merged : null;
     }
 
     if (photos.length === 0) {
@@ -423,7 +514,7 @@ export function CaptureSessionPage({
       return;
     }
     setPostDoneSavePromptOpen(true);
-  }, [isRecording, endSession, sessionId, photos.length, proceedToChooseProject]);
+  }, [isRecording, endSession, getMergedAudioBlob, sessionId, photos.length, proceedToChooseProject]);
 
   const handleCreateProject = useCallback(async () => {
     if (!createName.trim()) return;
@@ -452,7 +543,12 @@ export function CaptureSessionPage({
     }
   }, [createName, createClientName, createAddress]);
 
-  const getAudioBlob = useCallback(() => finalizedAudioBlobRef.current, []);
+  const getAudioBlob = useCallback(() => {
+    if (finalizedAudioBlobRef.current) return finalizedAudioBlobRef.current;
+    const hookBlob = getMergedAudioBlob();
+    if (hookBlob && hookBlob.size > 0) return hookBlob;
+    return recoveryAudioBlobRef.current;
+  }, [getMergedAudioBlob]);
 
   const doUpload = useCallback(async () => {
     const projectId = selectedProjectId;

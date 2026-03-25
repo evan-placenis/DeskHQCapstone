@@ -6,9 +6,10 @@
 
 const DB_NAME = "deskhq-capture";
 /** Must never be lower than the version already on disk for this origin (opens with VersionError). */
-const DB_VERSION = 2;
+const DB_VERSION = 3;
 const PHOTOS_STORE = "photos";
 const SESSIONS_STORE = "sessions";
+const AUDIO_CHUNKS_STORE = "audioChunks";
 
 const MAX_SESSION_AGE_MS = 24 * 60 * 60 * 1000;
 
@@ -32,6 +33,16 @@ export interface IDBSession {
   createdAt: number;
   /** True once mic recording produced at least one audio chunk (persisted for recovery). */
   localAudioCaptured?: boolean;
+  /** Last known encoded timeline position (ms), updated as chunks are saved. */
+  audioEncodedDurationMs?: number;
+  /** MIME type of recorded segments (for merging recovered chunks). */
+  audioMimeType?: string;
+}
+
+export interface IDBAudioChunk {
+  sessionId: string;
+  chunkIndex: number;
+  blob: Blob;
 }
 
 /** Session is worth recovering only if it has photos, audio, speech transcript, or progressed past empty capture. */
@@ -84,6 +95,12 @@ function openDB(): Promise<IDBDatabase> {
       }
       if (!db.objectStoreNames.contains(SESSIONS_STORE)) {
         db.createObjectStore(SESSIONS_STORE, { keyPath: "sessionId" });
+      }
+      if (!db.objectStoreNames.contains(AUDIO_CHUNKS_STORE)) {
+        const store = db.createObjectStore(AUDIO_CHUNKS_STORE, {
+          keyPath: ["sessionId", "chunkIndex"],
+        });
+        store.createIndex("bySession", "sessionId", { unique: false });
       }
     };
     req.onsuccess = () => resolve(req.result);
@@ -182,6 +199,84 @@ export const captureIDB = {
     });
   },
 
+  async saveAudioChunk(
+    sessionId: string,
+    chunkIndex: number,
+    blob: Blob
+  ): Promise<void> {
+    if (!(blob instanceof Blob) || blob.size === 0) return;
+    const db = await openDB();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(AUDIO_CHUNKS_STORE, "readwrite");
+      tx.objectStore(AUDIO_CHUNKS_STORE).put({
+        sessionId,
+        chunkIndex,
+        blob,
+      });
+      tx.oncomplete = () => { db.close(); resolve(); };
+      tx.onerror = () => { db.close(); reject(tx.error); };
+    });
+  },
+
+  /**
+   * Loads ordered audio blobs and the next chunk index for IDB (max stored index + 1).
+   * Use `nextChunkIndex` when resuming recording so new chunks never overwrite recovered keys.
+   */
+  async getAudioChunksWithMeta(sessionId: string): Promise<{
+    blobs: Blob[];
+    nextChunkIndex: number;
+  }> {
+    const db = await openDB();
+    const rows = await new Promise<IDBAudioChunk[]>((resolve, reject) => {
+      const tx = db.transaction(AUDIO_CHUNKS_STORE, "readonly");
+      const req = tx.objectStore(AUDIO_CHUNKS_STORE)
+        .index("bySession")
+        .getAll(sessionId);
+      req.onsuccess = () => {
+        db.close();
+        const list = (req.result as IDBAudioChunk[]) || [];
+        resolve(list);
+      };
+      req.onerror = () => {
+        db.close();
+        reject(req.error);
+      };
+    });
+    rows.sort((a, b) => a.chunkIndex - b.chunkIndex);
+    const maxIdx =
+      rows.length === 0 ? -1 : Math.max(...rows.map((r) => r.chunkIndex));
+    const blobs = rows
+      .map((r) => r.blob)
+      .filter((b) => b instanceof Blob && b.size > 0);
+    return {
+      blobs,
+      nextChunkIndex: maxIdx + 1,
+    };
+  },
+
+  async getAudioChunks(sessionId: string): Promise<Blob[]> {
+    const { blobs } = await captureIDB.getAudioChunksWithMeta(sessionId);
+    return blobs;
+  },
+
+  async clearAudioChunks(sessionId: string): Promise<void> {
+    const db = await openDB();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(AUDIO_CHUNKS_STORE, "readwrite");
+      const store = tx.objectStore(AUDIO_CHUNKS_STORE);
+      const cursorReq = store.index("bySession").openCursor(sessionId);
+      cursorReq.onsuccess = () => {
+        const cursor = cursorReq.result;
+        if (cursor) {
+          cursor.delete();
+          cursor.continue();
+        }
+      };
+      tx.oncomplete = () => { db.close(); resolve(); };
+      tx.onerror = () => { db.close(); reject(tx.error); };
+    });
+  },
+
   async getPhotos(sessionId: string): Promise<IDBPhoto[]> {
     const db = await openDB();
     return new Promise((resolve, reject) => {
@@ -236,7 +331,12 @@ export const captureIDB = {
 
     for (const candidate of candidates) {
       const photos = await captureIDB.getPhotos(candidate.sessionId);
-      if (sessionHasRecoverableContent(candidate, photos)) {
+      const audioChunks = await captureIDB.getAudioChunks(candidate.sessionId);
+      const hasPersistedAudio = audioChunks.length > 0;
+      if (
+        sessionHasRecoverableContent(candidate, photos) ||
+        hasPersistedAudio
+      ) {
         return { session: candidate, photos };
       }
       await captureIDB.clearSession(candidate.sessionId);
@@ -269,9 +369,12 @@ export const captureIDB = {
   async clearAllCaptureData(): Promise<void> {
     const db = await openDB();
     return new Promise((resolve, reject) => {
-      const tx = db.transaction([SESSIONS_STORE, PHOTOS_STORE], "readwrite");
+      const tx = db.transaction([SESSIONS_STORE, PHOTOS_STORE, AUDIO_CHUNKS_STORE], "readwrite");
       tx.objectStore(SESSIONS_STORE).clear();
       tx.objectStore(PHOTOS_STORE).clear();
+      if (db.objectStoreNames.contains(AUDIO_CHUNKS_STORE)) {
+        tx.objectStore(AUDIO_CHUNKS_STORE).clear();
+      }
       tx.oncomplete = () => { db.close(); resolve(); };
       tx.onerror = () => { db.close(); reject(tx.error); };
     });
@@ -280,21 +383,34 @@ export const captureIDB = {
   async clearSession(sessionId: string): Promise<void> {
     const db = await openDB();
     return new Promise((resolve, reject) => {
-      const tx = db.transaction(
-        [SESSIONS_STORE, PHOTOS_STORE],
-        "readwrite"
-      );
+      const stores: string[] = [SESSIONS_STORE, PHOTOS_STORE];
+      if (db.objectStoreNames.contains(AUDIO_CHUNKS_STORE)) {
+        stores.push(AUDIO_CHUNKS_STORE);
+      }
+      const tx = db.transaction(stores, "readwrite");
       tx.objectStore(SESSIONS_STORE).delete(sessionId);
 
       const photoStore = tx.objectStore(PHOTOS_STORE);
-      const cursorReq = photoStore.index("bySession").openCursor(sessionId);
-      cursorReq.onsuccess = () => {
-        const cursor = cursorReq.result;
+      const photoCursorReq = photoStore.index("bySession").openCursor(sessionId);
+      photoCursorReq.onsuccess = () => {
+        const cursor = photoCursorReq.result;
         if (cursor) {
           cursor.delete();
           cursor.continue();
         }
       };
+
+      if (db.objectStoreNames.contains(AUDIO_CHUNKS_STORE)) {
+        const audioStore = tx.objectStore(AUDIO_CHUNKS_STORE);
+        const audioCursorReq = audioStore.index("bySession").openCursor(sessionId);
+        audioCursorReq.onsuccess = () => {
+          const cursor = audioCursorReq.result;
+          if (cursor) {
+            cursor.delete();
+            cursor.continue();
+          }
+        };
+      }
 
       tx.oncomplete = () => { db.close(); resolve(); };
       tx.onerror = () => { db.close(); reject(tx.error); };
