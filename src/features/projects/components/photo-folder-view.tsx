@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback } from "react";
+import { useCallback, useState } from "react";
 import { Grid } from "react-window";
 import { AutoSizer } from "react-virtualized-auto-sizer";
 import { Badge } from "@/components/ui/badge";
@@ -18,9 +18,12 @@ import {
   ChevronDown,
   FolderOpen,
   Check,
-  Volume2
+  Volume2,
+  ImageDown,
+  Loader2,
 } from "lucide-react";
 import { Photo, PhotoFolder } from "@/lib/types";
+import { savePhotosToDeviceViaShare } from "@/features/projects/utils/save-photos-to-device";
 
 const VIRTUALIZE_THRESHOLD = 24;//24;
 const GAP = 8;
@@ -244,6 +247,8 @@ export function PhotoFolderView({
   gridSize = 2,
   onGridSizeChange,
 }: PhotoFolderViewProps) {
+  const [savingFolderId, setSavingFolderId] = useState<number | null>(null);
+
   // Define grid classes based on gridSize
   const getGridCols = () => {
     switch (gridSize) {
@@ -283,7 +288,43 @@ export function PhotoFolderView({
                   </CollapsibleTrigger>
 
                   {/* Action Buttons - Below on Mobile, Same Line on Desktop */}
-                  <div className="flex items-center gap-2">
+                  <div className="flex flex-wrap items-center gap-2 justify-end sm:justify-start">
+                    {mode === "view" && folderPhotos.length > 0 && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="rounded-lg flex-1 sm:flex-none h-8 text-xs sm:text-sm"
+                        disabled={savingFolderId === folder.id}
+                        title="Save all photos in this folder to your device (Photos / Camera Roll)"
+                        onClick={async (e) => {
+                          e.stopPropagation();
+                          setSavingFolderId(folder.id);
+                          try {
+                            await savePhotosToDeviceViaShare(folderPhotos);
+                          } catch (err) {
+                            if (err instanceof DOMException && err.name === "AbortError") {
+                              return;
+                            }
+                            console.error("Save all photos failed:", err);
+                            alert(
+                              err instanceof Error
+                                ? err.message
+                                : "Could not save photos. Try again or save images one at a time."
+                            );
+                          } finally {
+                            setSavingFolderId(null);
+                          }
+                        }}
+                      >
+                        {savingFolderId === folder.id ? (
+                          <Loader2 className="w-3.5 h-3.5 sm:w-4 sm:h-4 mr-1.5 sm:mr-2 animate-spin shrink-0" />
+                        ) : (
+                          <ImageDown className="w-3.5 h-3.5 sm:w-4 sm:h-4 mr-1.5 sm:mr-2 shrink-0" />
+                        )}
+                        <span className="hidden sm:inline">Save all to camera roll</span>
+                        <span className="sm:hidden">Save all</span>
+                      </Button>
+                    )}
                     {mode === "view" && onAudioTimelineClick && (
                       <Button
                         variant="outline"

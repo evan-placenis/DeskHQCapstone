@@ -5,7 +5,8 @@
  */
 
 const DB_NAME = "deskhq-capture";
-const DB_VERSION = 1;
+/** Must never be lower than the version already on disk for this origin (opens with VersionError). */
+const DB_VERSION = 2;
 const PHOTOS_STORE = "photos";
 const SESSIONS_STORE = "sessions";
 
@@ -29,15 +30,30 @@ export interface IDBSession {
   metadataSent: boolean;
   transcriptEntries: { text: string; timestampMs: number }[];
   createdAt: number;
+  /** True once mic recording produced at least one audio chunk (persisted for recovery). */
+  localAudioCaptured?: boolean;
+}
+
+/** Session is worth recovering only if it has photos, audio, speech transcript, or progressed past empty capture. */
+function sessionHasRecoverableContent(
+  session: IDBSession,
+  photos: IDBPhoto[]
+): boolean {
+  if (photos.length > 0) return true;
+  if (session.step !== "capture") return true;
+  if (session.projectId) return true;
+  if (session.transcriptEntries?.length) return true;
+  if (session.localAudioCaptured) return true;
+  return false;
 }
 
 function isImageBlob(value: unknown): value is Blob {
-  return (
-    value instanceof Blob &&
-    value.size > 0 &&
-    typeof value.type === "string" &&
-    value.type.startsWith("image/")
-  );
+  if (!(value instanceof Blob) || value.size === 0) return false;
+  if (typeof value.type === "string" && value.type.startsWith("image/")) return true;
+  // After IDB round-trip some browsers lose the MIME type — accept non-empty blobs
+  // that were originally stored as images (the store only accepts validated blobs).
+  if (!value.type || value.type === "") return true;
+  return false;
 }
 
 function toValidPhotoRecord(value: unknown): IDBPhoto | null {
@@ -47,19 +63,19 @@ function toValidPhotoRecord(value: unknown): IDBPhoto | null {
     typeof rec.sessionId !== "string" ||
     typeof rec.photoId !== "number" ||
     typeof rec.takenAtMs !== "number" ||
-    typeof rec.uploaded !== "boolean" ||
-    !isImageBlob(rec.blob)
+    typeof rec.uploaded !== "boolean"
   ) {
     return null;
   }
+  if (!(rec.blob instanceof Blob) || rec.blob.size === 0) return null;
   return rec as IDBPhoto;
 }
 
 function openDB(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
     const req = indexedDB.open(DB_NAME, DB_VERSION);
-    req.onupgradeneeded = () => {
-      const db = req.result;
+    req.onupgradeneeded = (event: IDBVersionChangeEvent) => {
+      const db = (event.target as IDBOpenDBRequest).result;
       if (!db.objectStoreNames.contains(PHOTOS_STORE)) {
         const store = db.createObjectStore(PHOTOS_STORE, {
           keyPath: ["sessionId", "photoId"],
@@ -182,53 +198,82 @@ export const captureIDB = {
     });
   },
 
+  /**
+   * Returns the best incomplete session that has recoverable content (photos, audio, transcript,
+   * or progressed past capture). Purges empty capture-only sessions (no photos, no audio signal).
+   */
   async getRecoverableSession(): Promise<{
     session: IDBSession;
     photos: IDBPhoto[];
   } | null> {
     const db = await openDB();
-    return new Promise((resolve, reject) => {
-      const tx = db.transaction([SESSIONS_STORE, PHOTOS_STORE], "readonly");
-      const sessReq = tx.objectStore(SESSIONS_STORE).getAll();
-
-      sessReq.onsuccess = () => {
-        const sessions = sessReq.result as IDBSession[];
-        const now = Date.now();
-
-        const incomplete = sessions
-          .filter(
-            (s) =>
-              s.step !== "success" &&
-              now - s.createdAt < MAX_SESSION_AGE_MS
-          )
-          .sort((a, b) => b.createdAt - a.createdAt)[0];
-
-        if (!incomplete) {
-          db.close();
-          resolve(null);
-          return;
-        }
-
-        const photoReq = tx
-          .objectStore(PHOTOS_STORE)
-          .index("bySession")
-          .getAll(incomplete.sessionId);
-
-        photoReq.onsuccess = () => {
-          db.close();
-          const rows = Array.isArray(photoReq.result) ? photoReq.result : [];
-          const photos = rows
-            .map(toValidPhotoRecord)
-            .filter((p): p is IDBPhoto => p !== null);
-          if (photos.length === 0 && incomplete.step === "capture") {
-            resolve(null);
-          } else {
-            resolve({ session: incomplete, photos });
-          }
-        };
-        photoReq.onerror = () => { db.close(); reject(photoReq.error); };
+    const sessions = await new Promise<IDBSession[]>((resolve, reject) => {
+      const tx = db.transaction(SESSIONS_STORE, "readonly");
+      const r = tx.objectStore(SESSIONS_STORE).getAll();
+      r.onsuccess = () => {
+        db.close();
+        resolve((r.result as IDBSession[]) || []);
       };
-      sessReq.onerror = () => { db.close(); reject(sessReq.error); };
+      r.onerror = () => {
+        db.close();
+        reject(r.error);
+      };
+    });
+
+    const now = Date.now();
+    const candidates = sessions
+      .filter(
+        (s) =>
+          s.step !== "success" &&
+          now - s.createdAt < MAX_SESSION_AGE_MS
+      )
+      .sort((a, b) => {
+        const aWeight = a.step !== "capture" || a.projectId ? 1 : 0;
+        const bWeight = b.step !== "capture" || b.projectId ? 1 : 0;
+        if (aWeight !== bWeight) return bWeight - aWeight;
+        return b.createdAt - a.createdAt;
+      });
+
+    for (const candidate of candidates) {
+      const photos = await captureIDB.getPhotos(candidate.sessionId);
+      if (sessionHasRecoverableContent(candidate, photos)) {
+        return { session: candidate, photos };
+      }
+      await captureIDB.clearSession(candidate.sessionId);
+    }
+    return null;
+  },
+
+  /** Deletes every session except `keepSessionId` and their photos. Enforces one active session in IDB. */
+  async deleteAllSessionsExcept(keepSessionId: string): Promise<void> {
+    const db = await openDB();
+    const sessions = await new Promise<IDBSession[]>((resolve, reject) => {
+      const tx = db.transaction(SESSIONS_STORE, "readonly");
+      const r = tx.objectStore(SESSIONS_STORE).getAll();
+      r.onsuccess = () => {
+        db.close();
+        resolve((r.result as IDBSession[]) || []);
+      };
+      r.onerror = () => {
+        db.close();
+        reject(r.error);
+      };
+    });
+    for (const s of sessions) {
+      if (s.sessionId === keepSessionId) continue;
+      await captureIDB.clearSession(s.sessionId);
+    }
+  },
+
+  /** Wipes all capture sessions and photos (before creating a brand-new session). */
+  async clearAllCaptureData(): Promise<void> {
+    const db = await openDB();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction([SESSIONS_STORE, PHOTOS_STORE], "readwrite");
+      tx.objectStore(SESSIONS_STORE).clear();
+      tx.objectStore(PHOTOS_STORE).clear();
+      tx.oncomplete = () => { db.close(); resolve(); };
+      tx.onerror = () => { db.close(); reject(tx.error); };
     });
   },
 
@@ -255,4 +300,5 @@ export const captureIDB = {
       tx.onerror = () => { db.close(); reject(tx.error); };
     });
   },
+
 };

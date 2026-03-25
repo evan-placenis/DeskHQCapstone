@@ -43,7 +43,7 @@ export function CaptureRecoveryGate() {
       return;
     }
     if (isPublicPath(pathname)) return;
-    if (pathname?.startsWith(ROUTES.captureSession)) {
+    if (pathname === ROUTES.capture || pathname?.startsWith(ROUTES.captureSession)) {
       setOpen(false);
       return;
     }
@@ -96,14 +96,26 @@ export function CaptureRecoveryGate() {
       <Camera className="mb-4 h-12 w-12 text-theme-primary" />
       <h2 className="mb-2 text-lg font-semibold text-white">Session Recovery</h2>
       <p className="mb-6 max-w-md text-center text-slate-300">
-        We found{" "}
-        <span className="font-medium text-white">
-          {photoCount} photo{photoCount !== 1 ? "s" : ""}
-        </span>{" "}
-        from your last capture session.
-        {hasPendingUpload
-          ? " Your upload was interrupted — you can retry it now."
-          : " You can continue where you left off."}
+        {photoCount === 0 ? (
+          <>
+            You have an unfinished capture session
+            {hasPendingUpload
+              ? " (upload was interrupted)."
+              : "."}{" "}
+            Continue where you left off or discard it.
+          </>
+        ) : (
+          <>
+            We found{" "}
+            <span className="font-medium text-white">
+              {photoCount} photo{photoCount !== 1 ? "s" : ""}
+            </span>{" "}
+            from your last capture session.
+            {hasPendingUpload
+              ? " Your upload was interrupted — you can retry it now."
+              : " You can continue where you left off."}
+          </>
+        )}
       </p>
       <div className="flex w-full max-w-xs gap-3">
         <Button

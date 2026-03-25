@@ -1,5 +1,4 @@
 "use client";
-//sinan made this
 import { useState, useRef, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -10,6 +9,15 @@ import { apiRoutes } from "@/lib/api-routes";
 import * as tus from "tus-js-client";
 import { captureIDB } from "../services/capture-idb";
 import { CAPTURE_RECOVERY_ACTION_KEY } from "../services/capture-recovery-bridge";
+import { saveImageBlobsToDeviceViaShare } from "@/features/projects/utils/save-photos-to-device";
+import {
+  AlertDialog,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 type Step = "capture" | "choose-project" | "uploading" | "success";
 
@@ -26,12 +34,12 @@ interface CapturedPhoto {
 }
 
 function isUsableImageBlob(blob: unknown): blob is Blob {
-  return (
-    blob instanceof Blob &&
-    blob.size > 0 &&
-    typeof blob.type === "string" &&
-    blob.type.startsWith("image/")
-  );
+  if (!(blob instanceof Blob) || blob.size === 0) return false;
+  if (typeof blob.type === "string" && blob.type.startsWith("image/")) return true;
+  // After IDB round-trip some browsers lose the MIME type; accept any non-empty blob
+  // that was originally validated on capture.
+  if (!blob.type || blob.type === "") return true;
+  return false;
 }
 
 export function CaptureSessionPage({
@@ -39,7 +47,7 @@ export function CaptureSessionPage({
   onSuccessRedirect,
 }: {
   onClose: () => void;
-  onSuccessRedirect: (projectId: string) => void;
+  onSuccessRedirect: () => void;
 }) {
   const [step, setStep] = useState<Step>("capture");
   const [sessionId, setSessionId] = useState<string | null>(null);
@@ -68,6 +76,19 @@ export function CaptureSessionPage({
   const isRecordingRef = useRef(false);
   /** Set when user chose "Retry Upload" from the global recovery gate (sessionStorage). */
   const shouldAutoRetryUploadRef = useRef(false);
+  const photosRef = useRef<CapturedPhoto[]>([]);
+  /** After first mic audio chunk, we persist `localAudioCaptured` in IDB once per recording. */
+  const audioChunkPersistedRef = useRef(false);
+
+  useEffect(() => { photosRef.current = photos; }, [photos]);
+
+  useEffect(() => {
+    if (!sessionId) return;
+    const t = setTimeout(() => {
+      captureIDB.updateSession(sessionId, { transcriptEntries }).catch(() => {});
+    }, 400);
+    return () => clearTimeout(t);
+  }, [sessionId, transcriptEntries]);
 
   const [projects, setProjects] = useState<Project[]>([]);
   const [projectsLoading, setProjectsLoading] = useState(false);
@@ -78,6 +99,8 @@ export function CaptureSessionPage({
   const [createClientName, setCreateClientName] = useState("");
   const [createAddress, setCreateAddress] = useState("");
   const [createSubmitting, setCreateSubmitting] = useState(false);
+  const [postDoneSavePromptOpen, setPostDoneSavePromptOpen] = useState(false);
+  const [postDoneSaveBusy, setPostDoneSaveBusy] = useState(false);
 
   const supportedMimeType = useCallback(() => {
     if (typeof MediaRecorder === "undefined") return null;
@@ -93,6 +116,7 @@ export function CaptureSessionPage({
         const recovered = await captureIDB.getRecoverableSession();
         if (recovered && !cancelled) {
           const { session, photos: idbPhotos } = recovered;
+          await captureIDB.deleteAllSessionsExcept(session.sessionId);
           setSessionId(session.sessionId);
           setFolderName(session.folderName);
           if (session.projectId) setSelectedProjectId(session.projectId);
@@ -124,9 +148,20 @@ export function CaptureSessionPage({
             /* ignore */
           }
 
-          if (action === "retry-upload" && session.projectId) {
+          if (
+            (action === "retry-upload" && session.projectId) ||
+            (session.step === "uploading" && session.projectId)
+          ) {
             shouldAutoRetryUploadRef.current = true;
             setStep("uploading");
+          } else if (session.step === "choose-project") {
+            setStep("choose-project");
+            setProjectsLoading(true);
+            fetch(apiRoutes.project.list())
+              .then((r) => r.json())
+              .then((data) => (data.projects ? setProjects(data.projects) : null))
+              .catch(() => {})
+              .finally(() => setProjectsLoading(false));
           } else {
             setStep("capture");
           }
@@ -144,6 +179,12 @@ export function CaptureSessionPage({
     if (!needsNewSession) return;
     let cancelled = false;
     (async () => {
+      try {
+        await captureIDB.clearAllCaptureData();
+      } catch (e) {
+        console.warn("IDB clear before new session failed:", e);
+      }
+      if (cancelled) return;
       const res = await fetch(apiRoutes.captureSessions.root, { method: "POST" });
       if (!res.ok || cancelled) return;
       const data = await res.json();
@@ -160,6 +201,7 @@ export function CaptureSessionPage({
           audioUploaded: false,
           metadataSent: false,
           transcriptEntries: [],
+          localAudioCaptured: false,
           createdAt: Date.now(),
         }).catch((e) => console.warn("IDB save failed:", e));
       }
@@ -195,7 +237,16 @@ export function CaptureSessionPage({
     const audioStream = audioTrack ? new MediaStream([audioTrack]) : new MediaStream();
     const recorder = new MediaRecorder(audioStream, { mimeType: mime });
     audioChunksRef.current = [];
-    recorder.ondataavailable = (e) => e.data.size && audioChunksRef.current.push(e.data);
+    audioChunkPersistedRef.current = false;
+    recorder.ondataavailable = (e) => {
+      if (!e.data.size) return;
+      audioChunksRef.current.push(e.data);
+      const sid = sessionId;
+      if (sid && !audioChunkPersistedRef.current) {
+        audioChunkPersistedRef.current = true;
+        captureIDB.updateSession(sid, { localAudioCaptured: true }).catch(() => {});
+      }
+    };
     recorder.start(1000);
     mediaRecorderRef.current = recorder;
 
@@ -247,7 +298,7 @@ export function CaptureSessionPage({
       recognition.start();
       recognitionRef.current = recognition;
     }
-  }, [supportedMimeType]);
+  }, [supportedMimeType, sessionId]);
 
   const stopRecording = useCallback(() => {
     isRecordingRef.current = false;
@@ -260,7 +311,13 @@ export function CaptureSessionPage({
     recognitionRef.current?.stop();
     recognitionRef.current = null;
     setIsRecording(false);
-  }, []);
+    const hasAudio =
+      audioChunksRef.current.length > 0 &&
+      audioChunksRef.current.some((c) => c.size > 0);
+    if (sessionId && hasAudio) {
+      captureIDB.updateSession(sessionId, { localAudioCaptured: true }).catch(() => {});
+    }
+  }, [sessionId]);
 
   const takePhoto = useCallback(() => {
     const video = videoRef.current;
@@ -305,8 +362,8 @@ export function CaptureSessionPage({
     }
   }, [sessionId]);
 
-  const handleDone = useCallback(() => {
-    stopRecording();
+  const proceedToChooseProject = useCallback(() => {
+    setPostDoneSavePromptOpen(false);
     setStep("choose-project");
     if (sessionId) {
       captureIDB.updateSession(sessionId, {
@@ -318,9 +375,40 @@ export function CaptureSessionPage({
     fetch(apiRoutes.project.list())
       .then((r) => r.json())
       .then((data) => (data.projects ? setProjects(data.projects) : null))
-      .catch(() => { })
+      .catch(() => {})
       .finally(() => setProjectsLoading(false));
-  }, [stopRecording, sessionId, transcriptEntries]);
+  }, [sessionId, transcriptEntries]);
+
+  const handlePostDoneSaveYes = useCallback(async () => {
+    setPostDoneSaveBusy(true);
+    try {
+      const blobs = photos.filter((p) => isUsableImageBlob(p.blob)).map((p) => p.blob);
+      if (blobs.length > 0) {
+        await saveImageBlobsToDeviceViaShare(blobs);
+      }
+    } catch (err) {
+      if (!(err instanceof DOMException && err.name === "AbortError")) {
+        console.error("Save to device after capture:", err);
+        alert(
+          err instanceof Error
+            ? err.message
+            : "Could not open the share dialog. You can continue without saving copies."
+        );
+      }
+    } finally {
+      setPostDoneSaveBusy(false);
+      proceedToChooseProject();
+    }
+  }, [photos, proceedToChooseProject]);
+
+  const handleDone = useCallback(() => {
+    stopRecording();
+    if (photos.length === 0) {
+      proceedToChooseProject();
+      return;
+    }
+    setPostDoneSavePromptOpen(true);
+  }, [stopRecording, photos.length, proceedToChooseProject]);
 
   const handleCreateProject = useCallback(async () => {
     if (!createName.trim()) return;
@@ -430,6 +518,7 @@ export function CaptureSessionPage({
       }
 
       // 3. Upload photos one at a time (only those not yet uploaded)
+      const currentPhotos = photosRef.current;
       let photosToUpload: { photoId: number; blob: Blob; takenAtMs: number }[];
       try {
         const allIDB = await captureIDB.getPhotos(sessionId);
@@ -437,14 +526,18 @@ export function CaptureSessionPage({
           photosToUpload = allIDB
             .filter((p) => !p.uploaded)
             .filter((p) => isUsableImageBlob(p.blob))
-            .map((p) => ({ photoId: p.photoId, blob: p.blob, takenAtMs: p.takenAtMs }));
+            .map((p) => ({
+              photoId: p.photoId,
+              blob: p.blob.type ? p.blob : new Blob([p.blob], { type: "image/jpeg" }),
+              takenAtMs: p.takenAtMs,
+            }));
         } else {
-          photosToUpload = photos
+          photosToUpload = currentPhotos
             .filter((p) => isUsableImageBlob(p.blob))
             .map((p) => ({ photoId: p.id, blob: p.blob, takenAtMs: p.takenAtMs }));
         }
       } catch {
-        photosToUpload = photos
+        photosToUpload = currentPhotos
           .filter((p) => isUsableImageBlob(p.blob))
           .map((p) => ({ photoId: p.id, blob: p.blob, takenAtMs: p.takenAtMs }));
       }
@@ -496,16 +589,22 @@ export function CaptureSessionPage({
         await captureIDB.updateSession(sessionId, { metadataSent: true }).catch(() => {});
       }
 
-      // 5. Done — clear local persistence
-      await captureIDB.clearSession(sessionId).catch(() => {});
+      // 5. Done — mark success first (so recovery gate won't re-trigger), then clear
+      await captureIDB.updateSession(sessionId, { step: "success" }).catch(() => {});
+      try {
+        await captureIDB.clearSession(sessionId);
+      } catch (e) {
+        console.warn("IDB clearSession failed, retrying:", e);
+        await captureIDB.clearSession(sessionId).catch(() => {});
+      }
       setUploadProgress("done");
       setStep("success");
-      setTimeout(() => onSuccessRedirect(projectId), 1500);
+      setTimeout(() => onSuccessRedirect(), 1500);
     } catch (e) {
       setUploadError(e instanceof Error ? e.message : "Upload failed");
       setUploadProgress("error");
     }
-  }, [sessionId, selectedProjectId, photos, transcriptEntries, getAudioBlob, onSuccessRedirect]);
+  }, [sessionId, selectedProjectId, transcriptEntries, getAudioBlob, onSuccessRedirect]);
 
   useEffect(() => {
     if (!shouldAutoRetryUploadRef.current) return;
@@ -523,16 +622,6 @@ export function CaptureSessionPage({
   const filteredProjects = projects.filter((p) =>
     p.name.toLowerCase().includes(searchQuery.toLowerCase())
   );
-
-  const loadProjectsAndGo = useCallback(() => {
-    setStep("choose-project");
-    setProjectsLoading(true);
-    fetch(apiRoutes.project.list())
-      .then((r) => r.json())
-      .then((data) => (data.projects ? setProjects(data.projects) : null))
-      .catch(() => {})
-      .finally(() => setProjectsLoading(false));
-  }, []);
 
   if (!sessionId && step === "capture") {
     return (
@@ -685,6 +774,38 @@ export function CaptureSessionPage({
   }
 
   return (
+    <>
+      <AlertDialog open={postDoneSavePromptOpen} onOpenChange={setPostDoneSavePromptOpen}>
+        <AlertDialogContent className="z-[100] sm:max-w-md">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Save photos to this device?</AlertDialogTitle>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="gap-3 sm:gap-4">
+            <AlertDialogCancel
+              disabled={postDoneSaveBusy}
+              className="mt-0"
+              onClick={() => proceedToChooseProject()}
+            >
+              No
+            </AlertDialogCancel>
+            <Button
+              className="bg-theme-action-primary hover:bg-theme-action-primary-hover"
+              disabled={postDoneSaveBusy}
+              onClick={() => void handlePostDoneSaveYes()}
+            >
+              {postDoneSaveBusy ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Preparing…
+                </>
+              ) : (
+                "Yes"
+              )}
+            </Button>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
     <div className="fixed inset-0 bg-slate-900 z-50 flex flex-col safe-area-inset">
       <div className="flex items-center justify-between p-3 bg-slate-900/95 border-b border-slate-700">
         <Button variant="ghost" size="sm" onClick={onClose} className="text-white hover:bg-slate-800 rounded-lg h-9">
@@ -767,5 +888,6 @@ export function CaptureSessionPage({
         )}
       </div>
     </div>
+    </>
   );
 }

@@ -9,8 +9,10 @@ export default function CaptureSession() {
 
   return (
     <CaptureSessionPage
-      onClose={() => router.back()}
-      onSuccessRedirect={(projectId) => router.push(ROUTES.project(projectId))}
+      onClose={() => router.push(ROUTES.dashboard)}
+      onSuccessRedirect={() => {
+        window.location.href = ROUTES.dashboard;
+      }}
     />
   );
 }
