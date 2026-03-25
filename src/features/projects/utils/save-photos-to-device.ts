@@ -31,17 +31,32 @@ async function resolveFetchableImageUrl(photo: Photo): Promise<string> {
   return photo.url;
 }
 
+async function shareImageFiles(files: File[], title: string, text: string): Promise<void> {
+  if (files.length === 0) return;
+
+  if (typeof navigator === "undefined" || typeof navigator.share !== "function") {
+    alert("Sharing is not supported in this browser.");
+    return;
+  }
+
+  if (!navigator.canShare || !navigator.canShare({ files })) {
+    alert("Your browser doesn't support saving multiple images at once. Try Safari on iPhone or Chrome on Android.");
+    return;
+  }
+
+  await navigator.share({
+    files,
+    title,
+    text,
+  });
+}
+
 /**
  * Opens the native share sheet with image files (Save to Photos / Camera Roll on iOS).
  * Requires HTTPS and a browser that supports `navigator.share` with files.
  */
 export async function savePhotosToDeviceViaShare(photos: Photo[]): Promise<void> {
   if (photos.length === 0) return;
-
-  if (typeof navigator === "undefined" || typeof navigator.share !== "function") {
-    alert("Sharing is not supported in this browser.");
-    return;
-  }
 
   const filePromises = photos.map(async (photo, index) => {
     const url = await resolveFetchableImageUrl(photo);
@@ -57,17 +72,32 @@ export async function savePhotosToDeviceViaShare(photos: Photo[]): Promise<void>
 
   const filesArray = await Promise.all(filePromises);
 
-  if (!navigator.canShare || !navigator.canShare({ files: filesArray })) {
-    alert("Your browser doesn't support saving multiple images at once. Try Safari on iPhone or Chrome on Android.");
-    return;
-  }
+  await shareImageFiles(
+    filesArray,
+    "Project photos",
+    filesArray.length === 1
+      ? "Save this photo to your library."
+      : `Save ${filesArray.length} photos to your library.`
+  );
+}
 
-  await navigator.share({
-    files: filesArray,
-    title: "Project photos",
-    text:
-      filesArray.length === 1
-        ? "Save this photo to your library."
-        : `Save ${filesArray.length} photos to your library.`,
+/**
+ * Same as {@link savePhotosToDeviceViaShare} but uses in-memory blobs (e.g. right after capture).
+ */
+export async function saveImageBlobsToDeviceViaShare(blobs: Blob[]): Promise<void> {
+  if (blobs.length === 0) return;
+
+  const files = blobs.map((blob, index) => {
+    const type = blob.type || "image/jpeg";
+    const ext = extFromMime(type);
+    return new File([blob], `capture-photo-${index + 1}.${ext}`, { type });
   });
+
+  await shareImageFiles(
+    files,
+    "Capture photos",
+    files.length === 1
+      ? "Save this photo to your library."
+      : `Save ${files.length} photos to your library.`
+  );
 }
