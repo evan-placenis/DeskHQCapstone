@@ -9,6 +9,7 @@ import { apiRoutes } from "@/lib/api-routes";
 import * as tus from "tus-js-client";
 import { captureIDB } from "../services/capture-idb";
 import { pickSupportedAudioMimeType, useCaptureSession } from "../hooks/use-capture-session";
+import { flattenMultiPartAudioBlob } from "../utils/flatten-multi-part-audio-blob";
 import { CAPTURE_RECOVERY_ACTION_KEY } from "../services/capture-recovery-bridge";
 import { saveImageBlobsToDeviceViaShare } from "@/features/projects/utils/save-photos-to-device";
 import {
@@ -87,14 +88,8 @@ export function CaptureSessionPage({
   const photosRef = useRef<CapturedPhoto[]>([]);
   /** Final merged audio after Done (used for TUS upload and retry). */
   const finalizedAudioBlobRef = useRef<Blob | null>(null);
-  /** Merged blob from IDB when the hook has not been hydrated yet (e.g. choose-project / upload-only recovery). */
+  /** Fallback when hook has no in-memory segments (should be rare after IDB hydrate). */
   const recoveryAudioBlobRef = useRef<Blob | null>(null);
-  const pendingRecoveryHydrateRef = useRef<{
-    chunks: Blob[];
-    mimeType: string;
-    durationMs: number;
-    nextChunkIndex: number;
-  } | null>(null);
 
   const onAudioChunkPersist = useCallback(
     (payload: {
@@ -134,6 +129,7 @@ export function CaptureSessionPage({
     hydrateFromRecovery,
     getMergedAudioBlob,
     getChunkCount,
+    getRawAudioSegmentsAndMime,
   } = useCaptureSession(captureStream, {
     onAudioChunkPersist,
     onFreshSessionStart,
@@ -195,13 +191,13 @@ export function CaptureSessionPage({
               const mime =
                 session.audioMimeType || pickSupportedAudioMimeType() || "audio/webm";
               const durationMs = session.audioEncodedDurationMs ?? 0;
-              recoveryAudioBlobRef.current = new Blob(audioChunks, { type: mime });
-              pendingRecoveryHydrateRef.current = {
-                chunks: audioChunks,
-                mimeType: mime,
+              recoveryAudioBlobRef.current = null;
+              hydrateFromRecovery(
+                audioChunks,
+                mime,
                 durationMs,
-                nextChunkIndex,
-              };
+                nextChunkIndex
+              );
             }
           } catch (e) {
             console.warn("IDB audio recovery load failed:", e);
@@ -240,7 +236,7 @@ export function CaptureSessionPage({
       if (!cancelled) setNeedsNewSession(true);
     })();
     return () => { cancelled = true; };
-  }, []);
+  }, [hydrateFromRecovery]);
 
   useEffect(() => {
     if (!needsNewSession) return;
@@ -298,20 +294,6 @@ export function CaptureSessionPage({
       setCaptureStream(null);
     };
   }, [sessionId, step]);
-
-  useEffect(() => {
-    if (!captureStream || !sessionId || step !== "capture") return;
-    const pending = pendingRecoveryHydrateRef.current;
-    if (!pending) return;
-    pendingRecoveryHydrateRef.current = null;
-    hydrateFromRecovery(
-      pending.chunks,
-      pending.mimeType,
-      pending.durationMs,
-      pending.nextChunkIndex
-    );
-    recoveryAudioBlobRef.current = null;
-  }, [captureStream, sessionId, step, hydrateFromRecovery]);
 
   const startSpeechRecognition = useCallback(() => {
     recognitionRef.current?.stop();
@@ -372,17 +354,6 @@ export function CaptureSessionPage({
 
   const startCapture = useCallback(() => {
     if (!captureStream) return;
-    if (pendingRecoveryHydrateRef.current) {
-      const p = pendingRecoveryHydrateRef.current;
-      pendingRecoveryHydrateRef.current = null;
-      hydrateFromRecovery(
-        p.chunks,
-        p.mimeType,
-        p.durationMs,
-        p.nextChunkIndex
-      );
-      recoveryAudioBlobRef.current = null;
-    }
     const cont = getChunkCount() > 0;
     if (!cont) {
       finalizedAudioBlobRef.current = null;
@@ -394,7 +365,6 @@ export function CaptureSessionPage({
     startSpeechRecognition();
   }, [
     captureStream,
-    hydrateFromRecovery,
     getChunkCount,
     startSession,
     startSpeechRecognition,
@@ -505,8 +475,16 @@ export function CaptureSessionPage({
         captureIDB.updateSession(sessionId, { localAudioCaptured: true }).catch(() => {});
       }
     } else {
-      const merged = getMergedAudioBlob() ?? recoveryAudioBlobRef.current;
-      finalizedAudioBlobRef.current = merged && merged.size > 0 ? merged : null;
+      const { segments, mime } = getRawAudioSegmentsAndMime();
+      let next: Blob | null = null;
+      if (segments.length > 1) {
+        next = await flattenMultiPartAudioBlob(segments, mime);
+      } else if (segments.length === 1) {
+        next = segments[0];
+      } else {
+        next = getMergedAudioBlob() ?? recoveryAudioBlobRef.current;
+      }
+      finalizedAudioBlobRef.current = next && next.size > 0 ? next : null;
     }
 
     if (photos.length === 0) {
@@ -514,7 +492,15 @@ export function CaptureSessionPage({
       return;
     }
     setPostDoneSavePromptOpen(true);
-  }, [isRecording, endSession, getMergedAudioBlob, sessionId, photos.length, proceedToChooseProject]);
+  }, [
+    isRecording,
+    endSession,
+    getMergedAudioBlob,
+    getRawAudioSegmentsAndMime,
+    sessionId,
+    photos.length,
+    proceedToChooseProject,
+  ]);
 
   const handleCreateProject = useCallback(async () => {
     if (!createName.trim()) return;
@@ -577,7 +563,15 @@ export function CaptureSessionPage({
       await captureIDB.updateSession(sessionId, { finalized: true }).catch(() => {});
 
       // 2. Audio via TUS (skip if already uploaded in a previous attempt)
-      const audioBlob = getAudioBlob();
+      const { segments: audioSegments, mime: segmentMime } = getRawAudioSegmentsAndMime();
+      let audioBlob: Blob | null = null;
+      if (audioSegments.length > 1) {
+        audioBlob = await flattenMultiPartAudioBlob(audioSegments, segmentMime);
+      } else if (audioSegments.length === 1) {
+        audioBlob = audioSegments[0];
+      } else {
+        audioBlob = getAudioBlob();
+      }
       let audioClientUploaded = idbState?.audioUploaded === true;
 
       if (!audioClientUploaded && audioBlob && audioBlob.size > 0 && organizationId && fn) {
@@ -592,7 +586,7 @@ export function CaptureSessionPage({
         const fileName = `session-audio-${sessionId}.webm`;
         const filePath = `${organizationId}/${projectId}/${safeFolder}/${fileName}`;
         const CHUNK_SIZE = 6 * 1024 * 1024;
-        const mimeType = audioBlob.type || "audio/webm";
+        const mimeType = audioBlob.type || segmentMime || "audio/webm";
 
         await new Promise<void>((resolve, reject) => {
           const upload = new tus.Upload(audioBlob, {
@@ -685,6 +679,18 @@ export function CaptureSessionPage({
         if (currentTranscript.length > 0) {
           form.set("transcript_segments", JSON.stringify(currentTranscript));
         }
+        const encodedMs = idbState?.audioEncodedDurationMs ?? 0;
+        const lastTranscriptMs =
+          currentTranscript.length > 0
+            ? Math.max(...currentTranscript.map((e) => e.timestampMs))
+            : 0;
+        const inferredDurationSec = Math.ceil(Math.max(encodedMs, lastTranscriptMs) / 1000);
+        if (
+          inferredDurationSec > 0 &&
+          (audioClientUploaded || (audioBlob && audioBlob.size > 0) || currentTranscript.length > 0)
+        ) {
+          form.set("audio_duration_seconds", String(inferredDurationSec));
+        }
         const metaRes = await fetch(apiRoutes.captureSessions.upload(sessionId), {
           method: "POST",
           body: form,
@@ -711,7 +717,14 @@ export function CaptureSessionPage({
       setUploadError(e instanceof Error ? e.message : "Upload failed");
       setUploadProgress("error");
     }
-  }, [sessionId, selectedProjectId, transcriptEntries, getAudioBlob, onSuccessRedirect]);
+  }, [
+    sessionId,
+    selectedProjectId,
+    transcriptEntries,
+    getAudioBlob,
+    getRawAudioSegmentsAndMime,
+    onSuccessRedirect,
+  ]);
 
   useEffect(() => {
     if (!shouldAutoRetryUploadRef.current) return;

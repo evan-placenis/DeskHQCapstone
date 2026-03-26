@@ -167,6 +167,8 @@ If the user asks for a specific format (e.g. bullet points, report section), str
       transcriptSegments: string | null;
       /** When true, audio was uploaded client-side via TUS; path is constructed from session. */
       audioClientUploaded?: boolean;
+      /** Full recording length in seconds (from client timeline); used for playback UI. */
+      audioDurationSeconds?: number | null;
     },
     userId: string,
     client: SupabaseClient
@@ -225,6 +227,11 @@ If the user asks for a specific format (e.g. bullet points, report section), str
         notes_text: data.notesText,
         transcript_text: data.transcriptSegments,
         status: "uploaded",
+        ...(data.audioDurationSeconds != null &&
+        Number.isFinite(data.audioDurationSeconds) &&
+        data.audioDurationSeconds > 0
+          ? { audio_duration_seconds: data.audioDurationSeconds }
+          : {}),
       }, client);
 
       audioResult = { public_url: publicUrl, storage_path: storagePath };
@@ -247,6 +254,11 @@ If the user asks for a specific format (e.g. bullet points, report section), str
         notes_text: data.notesText,
         transcript_text: data.transcriptSegments,
         status: "uploaded",
+        ...(data.audioDurationSeconds != null &&
+        Number.isFinite(data.audioDurationSeconds) &&
+        data.audioDurationSeconds > 0
+          ? { audio_duration_seconds: data.audioDurationSeconds }
+          : {}),
       }, client);
 
       audioResult = { public_url: result.public_url, storage_path: result.storage_path };
@@ -255,6 +267,11 @@ If the user asks for a specific format (e.g. bullet points, report section), str
         notes_text: data.notesText,
         transcript_text: data.transcriptSegments,
         status: "uploaded",
+        ...(data.audioDurationSeconds != null &&
+        Number.isFinite(data.audioDurationSeconds) &&
+        data.audioDurationSeconds > 0
+          ? { audio_duration_seconds: data.audioDurationSeconds }
+          : {}),
       }, client);
     }
 

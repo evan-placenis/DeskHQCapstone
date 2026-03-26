@@ -28,6 +28,14 @@ export async function POST(
         const transcriptRaw = formData.get("transcript_segments");
         const transcriptSegments = typeof transcriptRaw === "string" ? transcriptRaw : null;
 
+        const audioDurRaw = formData.get("audio_duration_seconds");
+        const audioDurParsed =
+            typeof audioDurRaw === "string" && audioDurRaw.trim() !== ""
+                ? Number(audioDurRaw)
+                : NaN;
+        const audioDurationSeconds =
+            Number.isFinite(audioDurParsed) && audioDurParsed > 0 ? audioDurParsed : null;
+
         const photosA = formData.getAll("photos").filter((p): p is File => p instanceof File);
         const photosB = formData.getAll("photos[]").filter((p): p is File => p instanceof File);
         const photos = photosA.length > 0 ? photosA : photosB;
@@ -42,7 +50,15 @@ export async function POST(
 
         const result = await Container.captureSessionService.uploadAssets(
             sessionId,
-            { photos, takenAtMs, audioFile, notesText: null, transcriptSegments, audioClientUploaded },
+            {
+                photos,
+                takenAtMs,
+                audioFile,
+                notesText: null,
+                transcriptSegments,
+                audioClientUploaded,
+                audioDurationSeconds,
+            },
             user.id,
             supabase
         );

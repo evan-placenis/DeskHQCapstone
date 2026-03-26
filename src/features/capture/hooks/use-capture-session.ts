@@ -1,4 +1,5 @@
 import { useState, useRef, useCallback, useEffect } from "react";
+import { flattenMultiPartAudioBlob } from "../utils/flatten-multi-part-audio-blob";
 
 export function pickSupportedAudioMimeType(): string | null {
   if (typeof MediaRecorder === "undefined") return null;
@@ -147,9 +148,21 @@ export function useCaptureSession(
 
     const rec = mediaRecorderRef.current;
     if (rec && rec.state === "recording") {
-      rec.stop();
+      /* Prefer pause/resume so the file stays one WebM. Concatenating separate
+       * stop/start segments (each with its own EBML header) breaks <audio> playback
+       * in common browsers while the full bytes still transcribe server-side. */
+      if (typeof rec.pause === "function") {
+        try {
+          rec.pause();
+        } catch {
+          rec.stop();
+          mediaRecorderRef.current = null;
+        }
+      } else {
+        rec.stop();
+        mediaRecorderRef.current = null;
+      }
     }
-    mediaRecorderRef.current = null;
 
     currentPauseStartMs.current = Date.now();
     setIsPaused(true);
@@ -171,7 +184,17 @@ export function useCaptureSession(
     totalPausedMs.current += pauseDuration;
     currentPauseStartMs.current = null;
 
-    initializeRecorder();
+    const rec = mediaRecorderRef.current;
+    if (rec && rec.state === "paused" && typeof rec.resume === "function") {
+      try {
+        rec.resume();
+      } catch {
+        initializeRecorder();
+      }
+    } else {
+      initializeRecorder();
+    }
+
     setIsPaused(false);
     startTimer();
   }, [isRecording, isPaused, initializeRecorder, startTimer]);
@@ -204,6 +227,13 @@ export function useCaptureSession(
 
   const getChunkCount = useCallback(() => audioChunksRef.current.length, []);
 
+  const getRawAudioSegmentsAndMime = useCallback((): { segments: Blob[]; mime: string } => {
+    return {
+      segments: [...audioChunksRef.current],
+      mime: outputMimeRef.current || "audio/webm",
+    };
+  }, []);
+
   const getMergedAudioBlob = useCallback((): Blob | null => {
     if (audioChunksRef.current.length === 0) return null;
     const mime = outputMimeRef.current || "audio/webm";
@@ -234,11 +264,20 @@ export function useCaptureSession(
     setIsPaused(false);
     sessionStartMs.current = null;
 
-    const blob = new Blob(audioChunksRef.current, { type: mime });
+    const segments = [...audioChunksRef.current];
     audioChunksRef.current = [];
     chunkIndexRef.current = 0;
     baseTimelineMsRef.current = 0;
     setDurationMs(0);
+
+    let blob: Blob;
+    if (segments.length > 1) {
+      blob = await flattenMultiPartAudioBlob(segments, mime);
+    } else if (segments.length === 1) {
+      blob = segments[0];
+    } else {
+      blob = new Blob([], { type: mime });
+    }
 
     return blob;
   }, [stopTimer]);
@@ -255,5 +294,6 @@ export function useCaptureSession(
     hydrateFromRecovery,
     getMergedAudioBlob,
     getChunkCount,
+    getRawAudioSegmentsAndMime,
   };
 }
