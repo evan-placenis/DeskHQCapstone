@@ -81,12 +81,21 @@ export class ChatOrchestrator {
         console.log(`[Chat] Skills injected into system prompt: [${skillNames.join(', ')}] (${systemPrompt.length} chars)`);
         console.log(`[Chat] Tools registered: [${registeredToolNames.join(', ')}]`);
 
+        // When the user sent a selection-based edit, the actual rewrite is handled
+        // by the /api/report/[id]/ai-edit route on the client.  Force toolChoice
+        // to 'none' so the AI SDK blocks any tool calls in this chat turn — without
+        // this guard the model sometimes calls propose_structure_insertion, which
+        // causes a second applyInlineDiff on already-marked content and corrupts
+        // the diff state (double-blink + broken reject).
+        const toolChoiceOption = selectionEdit ? ({ toolChoice: 'none' } as const) : {};
+
         return streamText({
             model: ModelStrategy.getModel(provider, heliconeInput),
             messages: await convertToModelMessages(messages),
             system: systemPrompt,
             stopWhen: stepCountIs(10),
             tools,
+            ...toolChoiceOption,
             onFinish,
 
             experimental_onToolCallStart({ toolCall }: { toolCall: { toolName: string; toolCallId: string } }) {

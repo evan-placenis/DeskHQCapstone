@@ -105,6 +105,7 @@ export function chatContextTools(fullReportMarkdown?: string) {
         'For edits like "make the conclusion more concise", "rewrite the intro", "shorten the executive summary" - use replace_section, NOT after_heading. ' +
         'First call read_specific_sections to get the current section content, then generate the revised content and call this tool with replace_section.',
       inputSchema: z.object({
+        reason: z.string().describe('Brief plan for this insertion. Must fill out first.'),
         content: z
           .string()
           .describe('Full markdown to insert, including heading (e.g. ## Conclusion) and body. Use same heading level as neighboring sections.'),
@@ -115,7 +116,7 @@ export function chatContextTools(fullReportMarkdown?: string) {
           .string()
           .optional()
           .describe('Required when insertLocation is after_heading or replace_section: the exact heading name from the report outline.'),
-        reason: z.string().optional().describe('Brief reason for this insertion'),
+        
       }),
       execute: async ({ content, insertLocation, targetHeading, reason }) => {
         const anchor =

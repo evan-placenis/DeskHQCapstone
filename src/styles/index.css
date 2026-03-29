@@ -5510,18 +5510,3 @@ html {
   border-radius: 2px;
 }
 
-/* DiffPopup: style diff spans from computeDiffDocument (ReactMarkdown + rehypeRaw) */
-.diff-popup-content [data-diff="addition"] {
-  background-color: rgb(220 252 231); /* green-100 */
-  color: rgb(22 101 52); /* green-800 */
-  padding: 0 2px;
-  border-radius: 4px;
-}
-.diff-popup-content [data-diff="deletion"] {
-  background-color: rgb(254 226 226); /* red-100 */
-  color: rgb(153 27 27); /* red-800 */
-  padding: 0 2px;
-  border-radius: 4px;
-  text-decoration: line-through;
-  text-decoration-color: rgb(239 68 68);
-}

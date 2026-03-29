@@ -4,7 +4,7 @@ import { useEditor, EditorContent } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
 import { Markdown } from '@tiptap/markdown' // You need to install this
 import { Extension } from '@tiptap/core'
-import { Plugin } from '@tiptap/pm/state'
+import { Plugin, PluginKey } from '@tiptap/pm/state'
 import { Decoration, DecorationSet } from '@tiptap/pm/view'
 import { useEffect, useMemo, useState, useRef, forwardRef, useImperativeHandle, useCallback } from 'react'
 import {
@@ -14,7 +14,7 @@ import {
     extractSectionsByHeading,
     getPositionForInsertAnchor,
     getRangeForReplaceSection as getRangeForReplaceSectionImpl,
-    type OutlineEntry,
+    type OutlineItem,
     type ActiveSectionInfo,
     type InsertAnchor,
 } from '@/features/reports/components/editor-context'
@@ -32,6 +32,11 @@ import Audio from '@tiptap/extension-audio'
 import { ReportImageComponent } from './report-image-component'
 import { AdditionMark, DeletionMark } from './diff-marks'
 import { computeDiffDocument } from './diff-utils'
+import {
+    applyLibraryDiff as applyLibraryDiffImpl,
+    resolveBlock as resolveBlockImpl,
+    resolveAllChanges as resolveAllChangesImpl
+} from './inline-diff-utils'
 import { Button } from '@/components/ui/button'
 import {
     DropdownMenu,
@@ -114,6 +119,7 @@ export interface SelectionContext {
     fullMarkdown: string;
 }
 
+
 export interface TiptapEditorHandle {
     getSelectionContext: () => SelectionContext | null;
     /** Replace the given range with new markdown (parsed and inserted). Use when accepting an AI edit. */
@@ -124,18 +130,20 @@ export interface TiptapEditorHandle {
     getInsertPositionForAnchor: (anchor: InsertAnchor) => number | null;
     /** Get range (from, to) for replacing a section by heading name. */
     getRangeForReplaceSection: (heading: string) => { from: number; to: number } | null;
-    /** Collapse the selection so the next getSelectionContext() returns null (e.g. after using selection for an edit). */
-    clearSelection: () => void;
-    /** Map: returns the document outline (all headings) as structured entries */
-    getDocumentOutline: () => OutlineEntry[];
-    /** Map: returns the document outline as a plain-text string for system prompts */
+   
+    // Diff Management
+    applyLibraryDiff: (range: { from: number; to: number }, aiGeneratedMarkdown: string) => { from: number; to: number } | null;
+    resolveInlineDiff: (blockStart: number, action: 'accept' | 'reject') => void;
+    resolveAllChanges: (action: 'accept' | 'reject') => void;
+
+    // Tooling/Outline
+    getDocumentOutline: () => OutlineItem[];
     getDocumentOutlineString: () => string;
-    /** Lens: returns the heading + markdown of the section the cursor is currently in */
     getActiveSection: () => ActiveSectionInfo | null;
-    /** Tool helper: extract markdown for specific sections by heading name */
     getSectionsByHeading: (headings: string[]) => Record<string, string>;
-    /** Tool helper: return the full document markdown */
     getFullMarkdown: () => string;
+    clearSelection: () => void;
+
 }
 
 /** Extension that shows a persistent highlight for a pinned selection range (survives blur when user clicks into chat) */
@@ -161,6 +169,147 @@ function createPinnedHighlightExtension(getRange: () => { from: number; to: numb
         },
     });
 }
+/**
+ * The consolidated Manager. Handles the green borders, the pills, and the logic.
+ */
+export function createChangeManagerExtension(
+    onAllClear: React.MutableRefObject<(() => void) | undefined>
+  ) {
+    return Extension.create({
+      name: 'changeManager',
+      addProseMirrorPlugins() {
+        const { editor } = this;
+        return [
+          new Plugin({
+            key: new PluginKey('changeManager'),
+            props: {
+              // ... Your existing decorations() logic stays exactly the same ...
+              decorations(state) {
+                const decos: Decoration[] = [];
+                state.doc.descendants((node, pos) => {
+                  const hasDiff = node.marks?.some(m => m.type.name === 'addition' || m.type.name === 'deletion');
+                  if (hasDiff) {
+                    const $pos = state.doc.resolve(pos);
+                    const blockStart = $pos.before(1);
+                    const blockEnd = $pos.after(1);
+                    decos.push(Decoration.node(blockStart, blockEnd, { class: 'diff-hunk-active' }));
+                  }
+                });
+                return DecorationSet.create(state.doc, decos);
+              },
+            },
+            view(editorView) {
+              const overlay = document.createElement('div');
+              overlay.className = 'tiptap-diff-overlay';
+              // Note: Make sure editorView.dom.parentElement has 'position: relative' in its CSS!
+              overlay.style.cssText = 'position:absolute;top:0;right:0;bottom:0;left:0;pointer-events:none;z-index:20;';
+              editorView.dom.parentElement?.appendChild(overlay);
+  
+              const render = () => {
+                overlay.innerHTML = '';
+                const hunks = collectHunks(editorView.state.doc); 
+                const overlayRect = overlay.getBoundingClientRect();
+              
+                hunks.forEach((blockStart) => {
+                  const coords = editorView.coordsAtPos(blockStart);
+                  if (!coords) return;
+                  
+                  const textCenterY = (coords.top + coords.bottom) / 2;
+                  const relativeTop = textCenterY - overlayRect.top;
+              
+                  const pill = createPillElement(
+                    [], // No longer need changeIds here
+                    relativeTop, 
+                    (action: 'accept' | 'reject') => {
+                      // We pass the position of the block, not the ID!
+                      resolveBlockImpl(editor, blockStart, action); 
+                      
+                      if (!docHasChanges(editor.state.doc)) onAllClear.current?.();
+                    }
+                  );
+                  
+                  overlay.appendChild(pill);
+                });
+              };
+              
+              return { update: render, destroy: () => overlay.remove() };
+            }
+          })
+        ];
+      }
+    });
+  }
+  function collectHunks(doc: any): number[] {
+    const hunkStarts = new Set<number>();
+    
+    doc.descendants((node: any, pos: number) => {
+      if (!node.isText) return;
+      
+      const hasDiff = node.marks?.some((m: any) => m.type.name === 'addition' || m.type.name === 'deletion');
+      if (hasDiff) {
+        const $pos = doc.resolve(pos);
+        // depth 1 gets the top-level block (Paragraph, Table, BulletList)
+        hunkStarts.add($pos.before(1));
+      }
+    });
+  
+    return Array.from(hunkStarts);
+  }
+
+  
+
+/** Creates the floating Accept/Reject pill element for a diff hunk. */
+function createPillElement(
+    changeIds: string[], // Keeping this in case you want to show a count later
+    top: number,
+    onAction: (action: 'accept' | 'reject') => void,
+  ): HTMLElement {
+    const pill = document.createElement('div');
+    
+    // Added 'pointer-events-auto' so it's clickable inside the transparent overlay
+    pill.className = 'flex items-center gap-1 px-1.5 py-1 rounded border border-slate-200 bg-white shadow-sm pointer-events-auto';
+    
+    // Using transform: translateY(-50%) makes the vertical alignment much more forgiving
+    pill.style.cssText = `position:absolute;top:${top}px;right:8px;z-index:30;transform:translateY(-50%);`;
+  
+    const mkBtn = (label: 'accept' | 'reject', icon: string, colorClass: string) => {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.innerHTML = icon;
+      btn.title = label.charAt(0).toUpperCase() + label.slice(1);
+      btn.className = `p-1 rounded transition-colors ${colorClass}`;
+      
+      // Prevent the editor from losing focus or moving the cursor on click
+      btn.addEventListener('mousedown', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        onAction(label);
+      });
+      
+      return btn;
+    };
+  
+    const checkIcon = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>';
+    const xIcon = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
+  
+    pill.appendChild(mkBtn('accept', checkIcon, 'hover:bg-green-50 text-green-600'));
+    pill.appendChild(mkBtn('reject', xIcon, 'hover:bg-red-50 text-red-600'));
+  
+    return pill;
+  }
+  
+function docHasChanges(doc: any) {
+let hasChanges = false;
+doc.descendants((node: any) => {
+    if (node.marks?.some((m: any) => m.type.name === 'addition' || m.type.name === 'deletion')) {
+    hasChanges = true;
+    return false;
+    }
+});
+return hasChanges;
+}
+
+
 
 interface TiptapEditorProps {
     content: string; // This expects the Markdown string from your processNode
@@ -173,6 +322,10 @@ interface TiptapEditorProps {
     onSelectionChange?: (context: SelectionContext | null) => void;
     /** When set, show a persistent highlight at this range (e.g. when user selected text then clicked into chat) */
     pinnedSelectionRange?: { from: number; to: number } | null;
+    /** Called after the last inline diff mark is resolved via a per-paragraph button (not the global banner). */
+    onAllDiffChangesResolved?: () => void;
+    /** Called when doc has unresolved diff marks (addition/deletion). Used for external banners; responds to Undo. */
+    onHasUnresolvedEditsChange?: (hasEdits: boolean) => void;
 }
 
 const SURROUNDING_CHARS = 500;
@@ -186,7 +339,11 @@ export const TiptapEditor = forwardRef<TiptapEditorHandle, TiptapEditorProps>(fu
     onRejectDiff,
     onSelectionChange,
     pinnedSelectionRange,
+    onAllDiffChangesResolved,
+    onHasUnresolvedEditsChange,
 }, ref) {
+
+
     // Store the original markdown when entering review mode to prevent infinite loops
     const originalMarkdownRef = useRef<string | null>(null);
     const [originalMarkdown, setOriginalMarkdown] = useState<string | null>(null);
@@ -199,13 +356,21 @@ export const TiptapEditor = forwardRef<TiptapEditorHandle, TiptapEditorProps>(fu
     const pinnedRangeRef = useRef<{ from: number; to: number } | null>(null);
     pinnedRangeRef.current = pinnedSelectionRange ?? null;
 
+    const [hasUnresolvedEdits, setHasUnresolvedEdits] = useState(false);
+
     // Determine if we're in review mode
     const isReviewMode = !!diffContent;
 
-    const pinnedHighlightExtension = useMemo(
-        () => createPinnedHighlightExtension(() => pinnedRangeRef.current),
-        [] // ref is stable; we update .current and dispatch to force re-render
-    );
+
+    // 1. Refs for parent callbacks
+    const onAllDiffChangesResolvedRef = useRef(onAllDiffChangesResolved);
+    onAllDiffChangesResolvedRef.current = onAllDiffChangesResolved;
+    const onHasUnresolvedEditsChangeRef = useRef(onHasUnresolvedEditsChange);
+    onHasUnresolvedEditsChangeRef.current = onHasUnresolvedEditsChange;
+
+    // 2. Stable extension definitions
+    const pinnedHighlightExtension = useMemo(() => createPinnedHighlightExtension(() => pinnedRangeRef.current), []);
+    const changeManagerExtension = useMemo(() => createChangeManagerExtension(onAllDiffChangesResolvedRef), []);
 
     const editor = useEditor({
         immediatelyRender: false,
@@ -234,6 +399,7 @@ export const TiptapEditor = forwardRef<TiptapEditorHandle, TiptapEditorProps>(fu
             TableHeader,
             TableCell,
             pinnedHighlightExtension,
+            changeManagerExtension,
         ],
         content: content,
         contentType: 'markdown',
@@ -297,6 +463,47 @@ export const TiptapEditor = forwardRef<TiptapEditorHandle, TiptapEditorProps>(fu
             setOriginalMarkdown(null);
         }
     }, [diffContent, editor, content]);
+
+    // Track unresolved changes for the UI banner (Instant Undo, Debounced Typing)
+    useEffect(() => {
+        if (!editor) return;
+
+        let timeoutId: NodeJS.Timeout;
+
+        const updateUI = ({ transaction }: { transaction: any }) => {
+            // 1. If nothing changed in the doc, ignore it (selection/cursor moves)
+            if (!transaction.docChanged) return;
+
+            // 2. Check if this is an Undo/Redo
+            const isHistoryOp = !!transaction.getMeta('history$');
+
+            const performCheck = () => {
+                const hasEdits = docHasChanges(editor.state.doc);
+                setHasUnresolvedEdits(hasEdits);
+                onHasUnresolvedEditsChangeRef.current?.(hasEdits);
+            };
+
+            if (isHistoryOp) {
+                // ⚡️ INSTANT: Undo/Redo needs to feel snappy
+                clearTimeout(timeoutId);
+                performCheck();
+            } else {
+                // ⏳ DEBOUNCED: Typing is "dirty" work—wait for a pause
+                clearTimeout(timeoutId);
+                timeoutId = setTimeout(performCheck, 150);
+            }
+        };
+
+        // Run once on mount to catch initial diffs
+        setHasUnresolvedEdits(docHasChanges(editor.state.doc));
+
+        editor.on('transaction', updateUI);
+
+        return () => {
+            editor.off('transaction', updateUI);
+            clearTimeout(timeoutId);
+        };
+    }, [editor]);
 
     // Compute diff markdown when diffContent is provided
     // Returns a Markdown string with HTML span tags for diff marks
@@ -440,14 +647,14 @@ export const TiptapEditor = forwardRef<TiptapEditorHandle, TiptapEditorProps>(fu
             },
             replaceRange(range: { from: number; to: number }, newMarkdown: string) {
                 if (!editor || isReviewMode) return;
-                try {
-                    editor.chain().focus().setTextSelection({ from: range.from, to: range.to }).deleteSelection().run();
-                    editor.commands.insertContentAt(range.from, newMarkdown, { contentType: 'markdown' });
-                } catch (e) {
-                    console.warn("replaceRange failed, inserting as plain text", e);
-                    editor.chain().focus().setTextSelection({ from: range.from, to: range.to }).deleteSelection().run();
-                    editor.commands.insertContent(newMarkdown, { contentType: 'markdown' });
-                }
+                // Single insertContentAt call handles delete + insert atomically.
+                // The two-step approach (deleteSelection → insertContentAt) was
+                // bleeding into adjacent block nodes and deleting heading nodes.
+                editor.commands.insertContentAt(
+                    { from: range.from, to: range.to },
+                    newMarkdown,
+                    { contentType: 'markdown', updateSelection: false },
+                );
             },
             insertAtPosition(pos: number, markdown: string) {
                 if (!editor || isReviewMode) return;
@@ -493,6 +700,21 @@ export const TiptapEditor = forwardRef<TiptapEditorHandle, TiptapEditorProps>(fu
                 } catch {
                     return '';
                 }
+            },
+            applyLibraryDiff(
+                range: { from: number; to: number },
+                aiGeneratedMarkdown: string,
+            ) {
+                if (!editor || isReviewMode) return null;
+                return applyLibraryDiffImpl(editor, range, aiGeneratedMarkdown);
+            },
+            resolveInlineDiff(blockStart: number, action: 'accept' | 'reject') {
+                if (!editor) return;
+                resolveBlockImpl(editor, blockStart, action);
+            },
+            resolveAllChanges(action: 'accept' | 'reject') {
+                if (!editor) return;
+                resolveAllChangesImpl(editor, action);
             },
         }),
         [editor, isReviewMode]
@@ -557,7 +779,7 @@ export const TiptapEditor = forwardRef<TiptapEditorHandle, TiptapEditorProps>(fu
                                 className="h-8 text-xs bg-green-600 hover:bg-green-700 text-white"
                             >
                                 <Check className="w-3 h-3 mr-1.5" />
-                                Accept Changes
+                                Accept
                             </Button>
                         </div>
                     </div>
@@ -751,14 +973,4 @@ export const TiptapEditor = forwardRef<TiptapEditorHandle, TiptapEditorProps>(fu
 
 
 
-// import { diff_match_patch } from 'diff-match-patch';
-
-// const dmp = new diff_match_patch();
-
-// // When AI returns 'aiText'
-// const diffs = dmp.diff_main(currentText, aiText);
-// dmp.diff_cleanupSemantic(diffs);
-
-// // This 'diffs' array can be used to render Red/Green highlights
-// // You would build a custom Tiptap extension to render these,
 // // OR just show a "Review Changes" modal before accepting.

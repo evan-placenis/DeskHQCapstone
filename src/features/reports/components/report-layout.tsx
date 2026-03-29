@@ -2,9 +2,10 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { AIChatSidebar, EditSuggestion } from "@/features/chat/components/ai-chat-sidebar";
 import { ReportContent } from "./report-content";
 import { PeerReview, ReportContent as ReportContentType } from "@/lib/types";
-import { DiffPopup } from "./diff-popup";
 import type { TiptapEditorHandle, SelectionContext } from "./tiptap-editor";
-import { Loader2 } from "lucide-react";
+import { stripLeadingHeading } from "./inline-diff-utils";
+import { Check, X } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { apiRoutes } from "@/lib/api-routes";
 
 interface SelectedContext {
@@ -116,9 +117,11 @@ export function ReportLayout({
   const [chatWidth, setChatWidth] = useState(384); // Default 384px (w-96)
   const [activeHighlightCommentId, setActiveHighlightCommentId] = useState<number | null>(null);
 
-  // EditSuggestion state for diff popup
-  const [pendingEditSuggestion, setPendingEditSuggestion] = useState<EditSuggestion | null>(null);
   const [isGeneratingEdit, setIsGeneratingEdit] = useState(false);
+  // Range of the inline diff currently applied to the editor
+  const [inlineDiffRange, setInlineDiffRange] = useState<{ from: number; to: number } | null>(null);
+  // Doc-level unresolved edits (from editor scan; responds to Undo) — used for bottom Accept/Reject banner
+  const [hasUnresolvedEdits, setHasUnresolvedEdits] = useState(false);
 
   // Ref to Tiptap editor for client-context (selection + surrounding) AI edit
   const editorRef = useRef<TiptapEditorHandle | null>(null);
@@ -158,7 +161,8 @@ export function ReportLayout({
     onEditorUpdate?.(newContent);
   }, [onEditorUpdate]);
 
-  // Selection-based AI edit: send markdown to API, store range, apply via editor.replaceRange on accept
+  // Selection-based AI edit: stream the AI response silently, then inject the inline diff
+  // directly into the Tiptap editor. No modal popup — the user reviews green/red marks in place.
   const requestAIEditWithSelection = useCallback(
     async (context: SelectionContext, instruction: string) => {
       if (!reportId || isGeneratingEdit) return;
@@ -184,42 +188,22 @@ export function ReportLayout({
           return;
         }
 
+        // Drain the stream silently — the loading spinner covers the wait.
         const reader = response.body?.getReader();
         const decoder = new TextDecoder();
         let suggestedText = "";
-        let lastUpdate = 0;
-        const UPDATE_INTERVAL_MS = 80;
         if (reader) {
           while (true) {
             const { done, value } = await reader.read();
             if (done) break;
             suggestedText += decoder.decode(value, { stream: true });
-            const now = Date.now();
-            const isFirstChunk = suggestedText.length > 0 && lastUpdate === 0;
-            if (isFirstChunk || now - lastUpdate >= UPDATE_INTERVAL_MS) {
-              lastUpdate = now;
-              setPendingEditSuggestion((prev) => {
-                const base =
-                  prev ??
-                  ({
-                    originalText: context.selection,
-                    suggestedText: "",
-                    reason: instruction,
-                    status: "PENDING",
-                    range: editRange,
-                  } as EditSuggestion);
-                return { ...base, suggestedText };
-              });
-            }
           }
         }
+
         suggestedText = suggestedText.trim();
-        if (suggestedText) {
-          setPendingEditSuggestion((prev) =>
-            prev ? { ...prev, suggestedText } : null
-          );
-        } else {
-          setPendingEditSuggestion(null);
+        if (suggestedText && editorRef.current) {
+          const newRange = editorRef.current.applyLibraryDiff(editRange, suggestedText);
+          setInlineDiffRange(newRange);
         }
       } catch (error) {
         console.error("AI Edit (selection) request failed:", error);
@@ -230,65 +214,52 @@ export function ReportLayout({
     [reportId, isGeneratingEdit]
   );
   
-  // Accept edit: range-based replace OR structure-based insertion in Tiptap; editor onUpdate triggers save path.
-  const handleAcceptEditSuggestion = useCallback(() => {
-    if (!pendingEditSuggestion) return;
+  const handleAcceptAllChanges = useCallback(() => {
+    if (!editorRef.current) return;
+    editorRef.current.resolveAllChanges('accept');
+    setInlineDiffRange(null);
+  }, []);
 
-    const { suggestedText, range, insertAnchor } = pendingEditSuggestion;
+  const handleRejectAllChanges = useCallback(() => {
+    if (!editorRef.current) return;
+    editorRef.current.resolveAllChanges('reject');
+    setInlineDiffRange(null);
+  }, []);
 
-    if (useTiptap && editorRef.current) {
-      if (range != null) {
-        editorRef.current.replaceRange(range, suggestedText);
-        console.log("✅ Edit accepted via Tiptap replaceRange (save will sync via onUpdate)");
-      } else if (insertAnchor != null) {
-        // Replace section: use replaceRange when anchor is { replaceSection: "Heading" }
-        const replaceSection =
-          typeof insertAnchor === 'object' && 'replaceSection' in insertAnchor
-            ? insertAnchor.replaceSection
-            : null;
-        if (replaceSection) {
-          const range = editorRef.current.getRangeForReplaceSection(replaceSection);
-          if (range) {
-            editorRef.current.replaceRange(range, suggestedText);
-            console.log("✅ Section replacement accepted for", replaceSection);
-          } else {
-            console.warn("Could not resolve section for replacement:", replaceSection);
-          }
-        } else {
-          const pos = editorRef.current.getInsertPositionForAnchor(insertAnchor);
-          if (pos != null) {
-            // Ensure proper spacing: prepend newlines when inserting mid-document or at end
-            const content = (pos > 0 && !suggestedText.startsWith('\n') ? '\n\n' : '') + suggestedText;
-            editorRef.current.insertAtPosition(pos, content);
-            console.log("✅ Structure-based insertion accepted at position", pos);
-          } else {
-            console.warn("Could not resolve insert anchor:", insertAnchor);
-          }
-        }
+  // Handles propose_structure_insertion tool calls: replace_section uses
+  // applyLibraryDiff for inline diff; insert anchors use insertAtPosition.
+  const handleEditSuggestion = useCallback((suggestion: EditSuggestion) => {
+    if (!editorRef.current) return;
+    const { suggestedText, originalText, insertAnchor } = suggestion;
+    if (!insertAnchor) return;
+
+    const replaceSection =
+      typeof insertAnchor === 'object' && 'replaceSection' in insertAnchor
+        ? insertAnchor.replaceSection
+        : null;
+
+    if (replaceSection) {
+      const range = editorRef.current.getRangeForReplaceSection(replaceSection);
+      if (!range) {
+        console.warn("handleEditSuggestion: could not resolve section:", replaceSection);
+        return;
       }
-    } else if (pendingEditSuggestion.fullDocument != null) {
-      // Legacy fallback: string replace when not using Tiptap or no range
-      const { originalText, fullDocument } = pendingEditSuggestion;
-      let newContent = fullDocument.replace(originalText, suggestedText);
-      if (newContent === fullDocument) {
-        const trimmed = originalText.trim();
-        if (trimmed && fullDocument.includes(trimmed)) {
-          newContent = fullDocument.replace(trimmed, suggestedText);
-        }
-      }
-      if (newContent !== fullDocument) {
-        onContentChange({ tiptapContent: newContent });
+
+      // Strip any leading heading the AI echoed back (the heading is already
+      // in the editor; re-inserting it would double it or clobber the heading node).
+      const bodyContent = stripLeadingHeading(suggestedText);
+
+      const newRange = editorRef.current.applyLibraryDiff(range, bodyContent);
+      setInlineDiffRange(newRange);
+    } else {
+      const pos = editorRef.current.getInsertPositionForAnchor(insertAnchor);
+      if (pos != null) {
+        const content = (pos > 0 && !suggestedText.startsWith('\n') ? '\n\n' : '') + suggestedText;
+        editorRef.current.insertAtPosition(pos, content);
+      } else {
+        console.warn("handleEditSuggestion: could not resolve insert anchor:", insertAnchor);
       }
     }
-
-    setPendingEditSuggestion(null);
-  }, [pendingEditSuggestion, useTiptap, onContentChange]);
-  
-  // Handler for rejecting (or dismissing) an edit suggestion. Only clears the popup.
-  // AIChatSidebar keeps processedEditRef set so the same assistant message won't re-trigger
-  // the edit request and re-prompt the user.
-  const handleRejectEditSuggestion = useCallback(() => {
-    setPendingEditSuggestion(null);
   }, []);
 
   // Auto-scroll is handled by Thread component
@@ -432,6 +403,8 @@ export function ReportLayout({
         editorRef={editorRef}
         onSelectionChange={handleSelectionChange}
         pinnedSelectionRange={pinnedSelectionContext?.range ?? null}
+        onAllDiffChangesResolved={() => setInlineDiffRange(null)}
+        onHasUnresolvedEditsChange={setHasUnresolvedEdits}
       />
 
       {/* AI Chat Sidebar - Extracted to AIChatSidebar component */}
@@ -460,7 +433,7 @@ export function ReportLayout({
             });
           }
         }}
-        onEditSuggestion={setPendingEditSuggestion}
+        onEditSuggestion={handleEditSuggestion}
         getEditorSelectionContext={() => editorRef.current?.getSelectionContext() ?? pinnedSelectionContext ?? null}
         onRequestAIEditWithSelection={requestAIEditWithSelection}
         pinnedSelectionContext={pinnedSelectionContext}
@@ -476,33 +449,35 @@ export function ReportLayout({
         getEditorContext={getEditorContext}
       />
 
-      {/* Loading overlay: show as soon as user sends a selection edit, until the suggestion is ready.
-          Backend delay causes to check if popup stays slow: (1) generateText waits for full response vs streamText,
-          (2) edit orchestrator stepCountIs(5) allows many tool rounds, (3) edit skills include research tools so model may call search first,
-          (4) model/provider latency. Consider streaming + stepCountIs(2) and showing popup on first chunk. */}
-      {isGeneratingEdit && !pendingEditSuggestion && useTiptap && (
-        <>
-          <div className="fixed inset-0 bg-black/20 z-40" aria-hidden />
-          <div
-            className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-50 bg-white rounded-lg shadow-2xl border border-slate-200 px-8 py-6 flex flex-col items-center gap-4 min-w-[280px]"
-            role="status"
-            aria-live="polite"
+      {/* Accept/reject banner — appears when inline diff exists or doc has unresolved edits (e.g. after Undo). */}
+      {(inlineDiffRange || hasUnresolvedEdits) && (
+        <div
+          className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-3 rounded-xl border border-slate-200 bg-white px-5 py-3 shadow-2xl"
+          role="status"
+          aria-live="polite"
+        >
+          <span className="text-sm font-medium text-slate-700">
+            AI changes applied — 
+          </span>
+          <Button
+            size="sm"
+            onClick={handleAcceptAllChanges}
+            className="h-8 bg-green-600 text-xs text-white hover:bg-green-700"
           >
-            <Loader2 className="w-10 h-10 animate-spin text-theme-primary" />
-            <p className="text-sm font-medium text-slate-700">Generating your edit...</p>
-            <p className="text-xs text-slate-500">This usually takes a few seconds</p>
-          </div>
-        </>
-      )}
-
-      {/* Diff Popup for AI edit suggestions */}
-      {pendingEditSuggestion && (
-        <DiffPopup
-          suggestion={pendingEditSuggestion}
-          onAccept={handleAcceptEditSuggestion}
-          onReject={handleRejectEditSuggestion}
-          onDismiss={handleRejectEditSuggestion}
-        />
+            <Check className="mr-1.5 h-3 w-3" />
+            Keep All Changes
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleRejectAllChanges}
+            className="h-8 text-xs hover:border-red-300 hover:bg-red-50 hover:text-red-700"
+          >
+            <X className="mr-1.5 h-3 w-3" />
+            Undo
+          </Button>
+          
+        </div>
       )}
     </div>
   );

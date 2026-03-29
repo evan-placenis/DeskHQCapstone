@@ -111,6 +111,10 @@ interface ReportContentProps {
   onSelectionChange?: (context: import("./tiptap-editor").SelectionContext | null) => void;
   /** When user has pinned selection (e.g. selected then clicked into chat), show persistent highlight at this range */
   pinnedSelectionRange?: { from: number; to: number } | null;
+  /** Called when all inline diff marks have been resolved via per-paragraph buttons (used to hide the global banner) */
+  onAllDiffChangesResolved?: () => void;
+  /** Called when doc has unresolved diff marks (responds to Undo); used for external Accept/Reject banner */
+  onHasUnresolvedEditsChange?: (hasEdits: boolean) => void;
 }
 
 export function ReportContent({
@@ -149,6 +153,8 @@ export function ReportContent({
   editorRef,
   onSelectionChange,
   pinnedSelectionRange,
+  onAllDiffChangesResolved,
+  onHasUnresolvedEditsChange,
 }: ReportContentProps) {
   // Local state for pending changes if not managed by parent
   const [localPendingChange, setLocalPendingChange] = useState<PendingChange | null>(null);
@@ -575,6 +581,8 @@ export function ReportContent({
                                 }}
                                 onSelectionChange={onSelectionChange}
                                 pinnedSelectionRange={pinnedSelectionRange}
+                                onAllDiffChangesResolved={onAllDiffChangesResolved}
+                                onHasUnresolvedEditsChange={onHasUnresolvedEditsChange}
                               />
                             ) : mode === "peer-review" && peerReview && peerReview.comments ? (
                               <HighlightableText

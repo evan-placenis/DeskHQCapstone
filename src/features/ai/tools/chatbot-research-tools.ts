@@ -12,6 +12,7 @@ export const researchTools = (projectId: string) => ({
     description:
       'Search the internal project memory/database for EXTERNAL information (standards, past project data, reference material). Do NOT use this for questions about the current report - use read_specific_sections or read_full_report instead.',
     inputSchema: z.object({
+      reason: z.string().describe('Brief plan for using this tool Must fill out first.'),
       query: z.string().describe('The question or topic to search for'),
     }),
     execute: async ({ query }) => {
@@ -20,8 +21,12 @@ export const researchTools = (projectId: string) => ({
         console.log(`🧠 [Research Tool] Searching Internal Memory: "${cleanQuery}"`);
         const results = await Container.knowledgeService.search([cleanQuery], projectId);
 
+        const formattedContext = results.map(doc => {
+          return `--- Document: ${doc.source} ---\n${doc.content}\n`;
+        }).join('\n');
+
         if (results && results.length > 0) {
-          return `[MEMORY MATCH FOUND]:\n${results.join('\n\n')}`;
+          return `[MEMORY MATCH FOUND]:\n${formattedContext}`;
         }
 
         return 'No matches found in internal memory.';
@@ -35,6 +40,7 @@ export const researchTools = (projectId: string) => ({
   searchWeb: tool({
     description: 'Search the live web using Exa. Use this if Internal Memory fails.',
     inputSchema: z.object({
+      reason: z.string().describe('Brief plan for using this tool Must fill out first.'),
       query: z.string().describe('The search query optimized for a search engine'),
     }),
     execute: async ({ query }) => {

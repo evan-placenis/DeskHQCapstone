@@ -25,14 +25,20 @@ import {
   FileText,
   X,
   Loader2,
-  Wrench
+  Wrench,
+  Brain,
+  FileSearch,
 } from "lucide-react";
 import { MarkdownTextPrimitive } from '@assistant-ui/react-markdown';
 import { apiRoutes } from "@/lib/api-routes";
 import { DEFAULT_AI_SDK_CHAT_PROVIDER, type AiSdkChatProvider } from "@/lib/ai-providers";
 import remarkGfm from 'remark-gfm';
 import { memo } from "react";
-
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
 
 
 // 1. PERFORMANCE FIX: Define this OUTSIDE the main component
@@ -58,11 +64,115 @@ const StatusIndicator = memo(({ label }: { label: string }) => (
   </div>
 ));
 
-// 3. CRITICAL FIX: Define the config object OUTSIDE the component.
-// This guarantees strict equality (===), so React skips the "Did config change?" check entirely.
-const COMPONENT_CONFIG = {
-  Text: AI_Text_Renderer,
-};
+/** Humanize tool name for display (e.g. read_specific_sections → "Read specific sections") */
+function humanizeToolName(name: string): string {
+  const display = name.replace(/_/g, ' ');
+  return display.charAt(0).toUpperCase() + display.slice(1);
+}
+
+/** Icon for tool based on name - read/fetch tools get FileSearch, others get Wrench */
+function ToolIcon({ toolName }: { toolName: string }) {
+  const isRead = /^read_|^get|^search/.test(toolName);
+  return isRead ? (
+    <FileSearch className="w-3.5 h-3.5 text-slate-500 flex-shrink-0" />
+  ) : (
+    <Wrench className="w-3.5 h-3.5 text-slate-500 flex-shrink-0" />
+  );
+}
+
+/** Collapsible "Thought" section showing reasoning/plan from tool args */
+const ThoughtDropdown = memo(({
+  reasoning,
+  reason,
+  defaultOpen = false,
+}: {
+  reasoning?: string;
+  reason?: string;
+  defaultOpen?: boolean;
+}) => {
+  const content = reasoning?.trim() || reason?.trim();
+  if (!content) return null;
+  
+
+  return (
+    <Collapsible defaultOpen={defaultOpen} className="mt-1 group">
+      <CollapsibleTrigger className="flex items-center gap-2 w-full text-left text-slate-500 hover:text-slate-700 transition-colors py-1">
+        <Brain className="w-3.5 h-3.5 flex-shrink-0" />
+        <span className="text-xs font-medium">Thought</span>
+        <ChevronDown className="w-3 h-3 ml-auto flex-shrink-0 transition-transform duration-200 group-data-[state=open]:rotate-180" />
+      </CollapsibleTrigger>
+      <CollapsibleContent>
+        <div className="pl-5 ml-1.5 border-l border-slate-200 py-2 space-y-1">
+          {content.split(/\n+/).filter(Boolean).map((line, i) => (
+            <div key={i} className="flex gap-2 text-xs text-slate-600">
+              <span className="text-slate-400">◦</span>
+              <span className="leading-relaxed">{line.trim()}</span>
+            </div>
+          ))}
+        </div>
+      </CollapsibleContent>
+    </Collapsible>
+  );
+});
+ThoughtDropdown.displayName = 'ThoughtDropdown';
+
+/** Persistent trace item for each tool call - shows name, status, and optional Thought dropdown */
+const ToolTraceItem = memo(({
+  part,
+  rawContentParts = [],
+  isMessageComplete = false,
+}: { part: any; rawContentParts?: readonly any[]; isMessageComplete?: boolean }) => {
+  const toolName = part.toolName ?? part.name ?? 'tool';
+  const toolCallId = part.toolCallId ?? part.id;
+
+  // 1. Check if there is an explicit 'tool-result' part in the array
+  const hasSeparateResultPart = rawContentParts.some((p: any) =>
+    (p.type === 'tool-result' || p.type === 'tool-return') &&
+    (p.toolCallId === toolCallId || p.id === toolCallId)
+  );
+
+  // 2. Safely find the tool part, ensuring result is NOT null
+  const rawPart = toolCallId && rawContentParts.length > 0
+  ? (rawContentParts as any[]).find((p: any) => (p.toolCallId ?? p.id) === toolCallId && p.result !== undefined) 
+    ?? (rawContentParts as any[]).find((p: any) => (p.toolCallId ?? p.id) === toolCallId) 
+    ?? part
+  : part;
+
+  // 3. Tool is done if we have a valid inline result OR a separate result part
+  const showDone = hasSeparateResultPart || (rawPart.result !== undefined && rawPart.result !== null);
+
+  const displayName = humanizeToolName(toolName);
+  const args = part.args ?? {};
+  const reasoning = typeof args.reasoning === 'string' ? args.reasoning : undefined;
+  const reason = typeof args.reason === 'string' ? args.reason : undefined;
+
+  // useEffect(() => {
+  //   console.log(`[DEBUG - Trace] ${toolName} (${toolCallId}):`, {
+  //     showDone,
+  //     hasSeparateResultPart,
+  //     rawResult: rawPart?.result,
+  //     rawState: rawPart?.state,
+  //     partType: rawPart?.type
+  //   });
+  // }, [toolName, toolCallId, showDone, hasSeparateResultPart, rawPart]);
+
+  return (
+    <div className="mt-2 mb-1 flex flex-col gap-0">
+      <div className="flex items-center gap-2 text-slate-500">
+        <ToolIcon toolName={toolName} />
+        <span className="text-xs font-medium">{displayName}</span>
+        {!showDone && (
+          <Loader2 className="w-3 h-3 animate-spin text-slate-400 flex-shrink-0" />
+        )}
+        {showDone && (
+          <span className="text-xs text-slate-400">— Done</span>
+        )}
+      </div>
+      <ThoughtDropdown reasoning={reasoning} reason={reason} defaultOpen={false} />
+    </div>
+  );
+});
+ToolTraceItem.displayName = 'ToolTraceItem';
 
 const CustomMessage = () => {
   // Ignore the deprecation warning for now; it is safe to use.
@@ -75,10 +185,6 @@ const CustomMessage = () => {
     setMounted(true);
     return () => setMounted(false);
   }, []);
-
-  if (!message || !mounted) {
-    return null;
-  }
 
   const isUser = message.role === 'user';
 
@@ -95,9 +201,63 @@ const CustomMessage = () => {
   // Check for ANY visible text
   const hasText = contentParts.some((c: any) => c.type === 'text' && c.text.length > 0);
 
-  // Check for Tools
-  const activeToolPart = contentParts.find((c: any) => c.type === 'tool-call' || c.type === 'tool-use');
-  const toolName = (activeToolPart as any)?.toolName || (activeToolPart as any)?.name;
+  // --- NEW GLOBAL SPINNER LOGIC ---
+  // Type for tool-call parts (AI SDK uses toolName or name, toolCallId or id)
+  type ToolCallPart = { type: string; toolName?: string; name?: string; toolCallId?: string; id?: string; result?: unknown; };
+  const isToolCallPart = (p: unknown): p is ToolCallPart =>
+    (p as { type?: string })?.type === 'tool-call' || (p as { type?: string })?.type === 'tool-use';
+
+
+  const allToolParts = contentParts.filter(isToolCallPart) as ToolCallPart[];
+
+  // FIX: Filter out tools that are already done. Only keep tools currently running.
+  const activeRunningTools = allToolParts.filter((toolPart) => {
+    // Safely get the ID for the current tool call
+    const targetId = toolPart.toolCallId || toolPart.id;
+
+    // If the tool doesn't even have an ID yet, it's brand new and streaming. Keep it!
+    if (!targetId) return true;
+
+    // --- THE BULLETPROOF CHECKS (Matching ToolTraceItem's logic) ---
+
+    // Check 1: Does ANY part in the entire content array share this ID *AND* have a result?
+    const hasResultInAnyPart = contentParts.some((p: any) => {
+      const pId = p.toolCallId ?? p.id;
+      return pId === targetId && p.result !== undefined && p.result !== null;
+    });
+
+    // Check 2: Is there a dedicated tool-result part for this ID?
+    const hasToolResultType = contentParts.some((p: any) => {
+      const pId = p.toolCallId ?? p.id;
+      return (p.type === 'tool-result' || p.type === 'tool-return') && pId === targetId;
+    });
+
+    // Check 3: Is the state explicitly marked as 'result'?
+    const isStateResult = (toolPart as any).state === 'result';
+
+    // If ANY of these are true, the tool is completely finished.
+    const isFinished = hasResultInAnyPart || hasToolResultType || isStateResult;
+
+    return !isFinished; // Keep ONLY if it hasn't finished yet
+  });
+  // Get the genuinely active tool (ignoring any that have already finished)
+  const currentActiveTool = activeRunningTools[activeRunningTools.length - 1];// We no longer need `toolIsFinished`. If activeRunningTools has items, a tool is actively running.
+  const toolName = currentActiveTool?.toolName || currentActiveTool?.name;
+  const isToolRunning = activeRunningTools.length > 0;
+
+//  // --- DEBUG LOGGING: GLOBAL SPINNER ---
+//  useEffect(() => {
+//   if (isRunning && toolName) {
+//     console.log('[DEBUG - Spinner] Active Tool State:', {
+//       toolName,
+//       isToolRunning,
+//       rawStateToolName: currentActiveTool?.toolName,
+//       partKeys: currentActiveTool ? Object.keys(currentActiveTool) : []
+//     });
+//   }
+// }, [isRunning, toolName, isToolRunning, currentActiveTool]);
+
+
 
   // --- LOGIC: CALCULATE SPINNER STATE ---
   let loadingState = null;
@@ -106,7 +266,6 @@ const CustomMessage = () => {
   if (!isUser && isRunning) {
 
     // PRIORITY 1: If we have text, FORCE HIDE the spinner.
-    // This fixes the bug where spinner stayed while typing.
     if (hasText) {
       loadingState = null;
     }
@@ -119,6 +278,11 @@ const CustomMessage = () => {
     else {
       loadingState = "Reasoning...";
     }
+  }
+
+  // --- EARLY RETURN (Must be placed AFTER all hooks!) ---
+  if (!message || !mounted) {
+    return null;
   }
 
 
@@ -147,9 +311,20 @@ const CustomMessage = () => {
         {/* CONTENT AREA */}
         <div className="text-slate-800 text-sm leading-relaxed w-full">
 
-          {/* 1. RENDER ACTUAL CONTENT (Text & Tools) */}
+          {/* 1. RENDER CONTENT (Text + Tool trace + Thought dropdown) */}
           <MessagePrimitive.Content
-            components={COMPONENT_CONFIG}
+            components={{
+              Text: AI_Text_Renderer,
+              tools: {
+                Fallback: (props: any) => (
+                  <ToolTraceItem
+                    part={props}
+                    rawContentParts={contentParts}
+                    isMessageComplete={!isRunning}
+                  />
+                ),
+              },
+            }}
           />
 
           {/* 2. RENDER STATUS SPINNER (Manually handled) */}
@@ -159,6 +334,8 @@ const CustomMessage = () => {
 
         </div>
       </div>
+
+      
     </MessagePrimitive.Root>
   );
 };
@@ -315,14 +492,16 @@ export function AIChatSidebar({
     };
   }, [isResizing, windowWidth, onResize]);
 
-  // Body is a function so it's evaluated at send time — ensures fresh Map & Lens from the live editor
+  // Body is a function so it's evaluated at send time — ensures fresh Map & Lens from the live editor.
+  // When user had selection, pendingSelectionForBodyRef is set so we send selectionEdit for the chat API.
   const transport = useMemo(
     () =>
       new AssistantChatTransport({
         api: sessionId ? apiRoutes.chat.sessionStream(sessionId) : "",
         body: () => {
           const ctx = getEditorContext?.();
-          const body = {
+          const sel = pendingSelectionForBodyRef.current;
+          const body: Record<string, unknown> = {
             activeSectionId,
             reportId,
             projectId,
@@ -332,11 +511,11 @@ export function AIChatSidebar({
             activeSectionHeading: ctx?.activeSectionHeading ?? '',
             fullReportMarkdown: ctx?.fullReportMarkdown ?? '',
           };
-          console.log('[ChatContext] Body at send time:', {
-            documentOutlineLen: body.documentOutline.length,
-            activeSectionHeading: body.activeSectionHeading || '(none)',
-            fullReportMarkdownLen: body.fullReportMarkdown.length,
-          });
+          if (sel?.selection?.trim()) {
+            body.selectionEdit = true;
+            body.selectionMarkdown = sel.markdown;
+            body.surroundingContext = sel.surroundingContext ?? '';
+          }
           return body;
         },
       }),
@@ -404,6 +583,12 @@ export function AIChatSidebar({
   // Track processed edits to avoid duplicates
   const lastUserMessageRef = useRef<string | null>(null);
   const lastProcessedStructureInsertRef = useRef<string | null>(null);
+  // Hold selection for transport body when sending with selection (body runs at fetch time)
+  const pendingSelectionForBodyRef = useRef<typeof pinnedSelectionContext>(null);
+  // Guard: when the last send was a selection-based edit, the applyInlineDiff is
+  // handled by requestAIEditWithSelection.  Block propose_structure_insertion
+  // processing here so the diff is not applied a second time from the chat stream.
+  const selectionEditActiveRef = useRef(false);
 
   // Listen for message completion to handle tool calls and trigger non-streaming edits
   useEffect(() => {
@@ -437,6 +622,14 @@ export function AIChatSidebar({
             const callId = `${msgId}-propose_structure_insertion`;
             if (lastProcessedStructureInsertRef.current === callId) {
               // Already processed this tool call
+            } else if (selectionEditActiveRef.current) {
+              // This chat turn was triggered alongside a selection-based ai-edit.
+              // The diff is already being applied by requestAIEditWithSelection —
+              // skip this tool call to prevent a double-apply that corrupts the diff.
+              // CRITICAL: also mark callId as processed so subsequent processToolCalls
+              // invocations (which fire on every thread state update) don't retry.
+              lastProcessedStructureInsertRef.current = callId;
+              console.log('[AIChatSidebar] Skipping propose_structure_insertion — selection edit is active');
             } else {
               lastProcessedStructureInsertRef.current = callId;
               const result = structureInsertCall.result;
@@ -454,6 +647,12 @@ export function AIChatSidebar({
                       : typeof anchor === 'object' && anchor?.afterHeading
                         ? { afterHeading: anchor.afterHeading }
                         : 'end_of_report';
+                // Fallback to live editor state when AI doesn't return originalContent (e.g. to save tokens)
+                const ctx = getEditorContext?.();
+                const fallbackOriginalText =
+                  insertAnchor && typeof insertAnchor === 'object' && 'replaceSection' in insertAnchor
+                    ? (ctx?.activeSectionMarkdown ?? '')
+                    : '';
                 const sectionLabel = insertAnchor === 'start_of_report'
                   ? 'Start of report'
                   : insertAnchor === 'end_of_report'
@@ -462,7 +661,7 @@ export function AIChatSidebar({
                       ? `Replace "${insertAnchor.replaceSection}"`
                       : `After "${(insertAnchor as { afterHeading: string }).afterHeading}"`;
                 onEditSuggestion({
-                  originalText: originalContent ?? '',
+                  originalText: originalContent || fallbackOriginalText,
                   suggestedText: content,
                   reason,
                   status: 'PENDING',
@@ -489,13 +688,16 @@ export function AIChatSidebar({
               (typeof toolResult === 'string' ? toolResult : null) ||
               messageContent) as string;
 
+            const ctx = getEditorContext?.();
+            const liveOldValue = ctx?.activeSectionMarkdown ?? '';
+
             if (useTiptap && activeSectionId === "main-content" && onSetDiffContent) {
               onSetDiffContent(suggestedText);
             } else {
               onSuggestionAccept({
                 messageId: (lastMessage as any).id || String(Date.now()),
                 sectionId: activeSectionId,
-                oldValue: '',
+                oldValue: liveOldValue,
                 newValue: suggestedText,
                 source: "ai"
               });
@@ -541,59 +743,28 @@ export function AIChatSidebar({
     if (!runtime) return;
     lastUserMessageRef.current = message;
 
-    const hadSelection =
-      useTiptap && !!getEditorSelectionContext?.()?.selection?.trim();
+    const selectionCtx =
+      pinnedSelectionContext ??
+      getEditorSelectionContext?.() ??
+      null;
+    const hadSelection = useTiptap && !!selectionCtx?.selection?.trim();
 
-    // When user has selection: run the edit flow and add user + confirmation to the thread without streaming.
-    if (useTiptap && hadSelection && getEditorSelectionContext && onRequestAIEditWithSelection) {
-      const ctx = getEditorSelectionContext();
-      if (ctx?.selection?.trim()) {
-        onRequestAIEditWithSelection(ctx, message);
-
-        // Add user message and a static assistant confirmation so the user sees their message and a reply.
-        const setMessages = setMessagesRef.current;
-        if (typeof setMessages === "function") {
-          const threadState = runtime.thread.getState();
-          const rawMessages = threadState.messages ?? [];
-          const existing = Array.from(rawMessages) as Array<{ id?: string; role?: string; content?: unknown }>;
-          const toParts = (m: (typeof existing)[0]) => {
-            const content = m.content;
-            if (Array.isArray(content)) {
-              const textPart = content.find((p: { type?: string; text?: string }) => p?.type === "text");
-              return [{ type: "text" as const, text: (textPart as { text?: string })?.text ?? "" }];
-            }
-            return [{ type: "text" as const, text: typeof content === "string" ? content : "" }];
-          };
-          const uiMessages = existing.map((m, i) => ({
-            id: m.id ?? `msg-${i}`,
-            role: (m.role === "assistant" ? "assistant" : "user") as "user" | "assistant",
-            parts: toParts(m),
-          }));
-          const ts = Date.now();
-          uiMessages.push(
-            { id: `user-sel-${ts}`, role: "user", parts: [{ type: "text" as const, text: message }] },
-            {
-              id: `assistant-sel-${ts}`,
-              role: "assistant",
-              parts: [
-                {
-                  type: "text" as const,
-                  text: "I've suggested an edit to your selection. Review the popup to accept or reject.",
-                },
-              ],
-            }
-          );
-          setMessages(uiMessages);
-        }
-        return;
-      }
+    // When user has selection: stash for transport body (evaluated at fetch time) and run ai-edit in parallel.
+    if (hadSelection && selectionCtx) {
+      pendingSelectionForBodyRef.current = selectionCtx;
+      selectionEditActiveRef.current = true;
+      onRequestAIEditWithSelection?.(selectionCtx, message);
+    } else {
+      pendingSelectionForBodyRef.current = null;
+      selectionEditActiveRef.current = false;
     }
 
-    // No selection: normal chat — append user message and let the transport stream the reply.
+    // Always append to thread — both flows use the chat stream so the AI SDK shows its native loader/skills.
     await runtime.thread.append({
       role: 'user',
       content: [{ type: 'text', text: message }],
     });
+    pendingSelectionForBodyRef.current = null;
   };
 
   return (
