@@ -61,9 +61,14 @@ interface ReportLayoutProps {
 
   // Peer Review (only for peer-review mode)
   peerReview?: PeerReview;
-  onAddReviewComment?: (comment: string, type: "issue" | "suggestion" | "comment") => void;
-  onAddHighlightComment?: (highlightedText: string, sectionId: number | string, comment: string, type: "issue" | "suggestion" | "comment") => void;
-  onResolveComment?: (commentId: number) => void;
+  onAddReviewComment?: (comment: string, type: "issue" | "suggestion" | "comment") => void | Promise<void>;
+  onAddHighlightComment?: (
+    highlightedText: string,
+    sectionId: number | string,
+    comment: string,
+    type: "issue" | "suggestion" | "comment"
+  ) => void | Promise<void | { id: string | number } | null>;
+  onResolveComment?: (commentId: number | string) => void | Promise<void>;
   onCompleteReview?: () => void;
   onOpenRatingModal?: () => void;
   initialReviewNotes?: string;
@@ -115,13 +120,16 @@ export function ReportLayout({
   // Chat sidebar state - passed to AIChatSidebar component
   const [isChatCollapsed, setIsChatCollapsed] = useState(false);
   const [chatWidth, setChatWidth] = useState(384); // Default 384px (w-96)
-  const [activeHighlightCommentId, setActiveHighlightCommentId] = useState<number | null>(null);
+  const [activeHighlightCommentId, setActiveHighlightCommentId] = useState<number | string | null>(null);
 
   const [isGeneratingEdit, setIsGeneratingEdit] = useState(false);
   // Range of the inline diff currently applied to the editor
   const [inlineDiffRange, setInlineDiffRange] = useState<{ from: number; to: number } | null>(null);
   // Doc-level unresolved edits (from editor scan; responds to Undo) — used for bottom Accept/Reject banner
   const [hasUnresolvedEdits, setHasUnresolvedEdits] = useState(false);
+  const [appliedPeerSuggestionIds, setAppliedPeerSuggestionIds] = useState<Set<string>>(
+    () => new Set(),
+  );
 
   // Ref to Tiptap editor for client-context (selection + surrounding) AI edit
   const editorRef = useRef<TiptapEditorHandle | null>(null);
@@ -228,6 +236,38 @@ export function ReportLayout({
 
   // Handles propose_structure_insertion tool calls: replace_section uses
   // applyLibraryDiff for inline diff; insert anchors use insertAtPosition.
+  /** Direct markdown replace (no inline diff UI); uses editor history so Ctrl+Z can undo. */
+  const handleApplyPeerSuggestion = useCallback(
+    (commentId: number | string) => {
+      if (inlineDiffRange || hasUnresolvedEdits) {
+        alert(
+          "Please accept or undo the pending AI edits in the document before applying another suggestion.",
+        );
+        return;
+      }
+      const c = peerReview?.comments?.find((x) => String(x.id) === String(commentId));
+      if (!c || c.type !== "suggestion" || !c.highlightedText?.trim() || !c.comment?.trim()) return;
+      if (String(c.sectionId ?? "main-content") !== "main-content") {
+        alert("Applying suggestions is only supported in the main report body.");
+        return;
+      }
+      if (!editorRef.current) return;
+      const range = editorRef.current.findRangeForPlainText(c.highlightedText);
+      if (!range) {
+        alert("Could not find the highlighted text in the document.");
+        return;
+      }
+      const body = stripLeadingHeading(c.comment.trim());
+      editorRef.current.replaceRange(range, body);
+      setAppliedPeerSuggestionIds((prev) => new Set(prev).add(String(commentId)));
+    },
+    [peerReview, inlineDiffRange, hasUnresolvedEdits],
+  );
+
+  const handleAppliedPeerSuggestionIdsChange = useCallback((next: Set<string>) => {
+    setAppliedPeerSuggestionIds(next);
+  }, []);
+
   const handleEditSuggestion = useCallback((suggestion: EditSuggestion) => {
     if (!editorRef.current) return;
     const { suggestedText, originalText, insertAnchor } = suggestion;
@@ -405,6 +445,9 @@ export function ReportLayout({
         pinnedSelectionRange={pinnedSelectionContext?.range ?? null}
         onAllDiffChangesResolved={() => setInlineDiffRange(null)}
         onHasUnresolvedEditsChange={setHasUnresolvedEdits}
+        onApplyPeerSuggestion={handleApplyPeerSuggestion}
+        appliedPeerSuggestionIds={appliedPeerSuggestionIds}
+        onAppliedPeerSuggestionIdsChange={handleAppliedPeerSuggestionIdsChange}
       />
 
       {/* AI Chat Sidebar - Extracted to AIChatSidebar component */}

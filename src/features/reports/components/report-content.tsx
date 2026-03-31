@@ -1,7 +1,7 @@
 'use client';
 
 import ReactMarkdown from 'react-markdown';
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -15,7 +15,6 @@ import {
 } from "@/components/ui/select";
 import { EditableText } from "./editable-text";
 import { RewritableText } from "./rewritable-text";
-import { HighlightableText } from "./highlightable-text";
 import { PeerReviewPanel } from "@/features/dashboard/components/peer-review-panel";
 import { ImageWithFallback } from "@/components/ui/image-with-fallback";
 import { SecureImage } from "@/components/ui/secure-image";
@@ -79,9 +78,18 @@ interface ReportContentProps {
 
   // Peer Review (only for peer-review mode)
   peerReview?: PeerReview;
-  onAddReviewComment?: (comment: string, type: "issue" | "suggestion" | "comment") => void;
-  onAddHighlightComment?: (highlightedText: string, sectionId: number | string, comment: string, type: "issue" | "suggestion" | "comment") => void;
-  onResolveComment?: (commentId: number) => void;
+  onAddReviewComment?: (comment: string, type: "issue" | "suggestion" | "comment") => void | Promise<void>;
+  onAddHighlightComment?: (
+    highlightedText: string,
+    sectionId: number | string,
+    comment: string,
+    type: "issue" | "suggestion" | "comment"
+  ) => void | Promise<void | { id: string | number } | null>;
+  onResolveComment?: (commentId: number | string) => void | Promise<void>;
+  /** Apply peer suggestion text over the highlight (direct replace; main body only). */
+  onApplyPeerSuggestion?: (commentId: number | string) => void;
+  appliedPeerSuggestionIds?: Set<string>;
+  onAppliedPeerSuggestionIdsChange?: (next: Set<string>) => void;
   onCompleteReview?: () => void;
   onOpenRatingModal?: () => void;
   initialReviewNotes?: string;
@@ -135,6 +143,9 @@ export function ReportContent({
   onAddReviewComment,
   onAddHighlightComment,
   onResolveComment,
+  onApplyPeerSuggestion,
+  appliedPeerSuggestionIds,
+  onAppliedPeerSuggestionIdsChange,
   onCompleteReview,
   onOpenRatingModal,
   initialReviewNotes,
@@ -159,7 +170,60 @@ export function ReportContent({
   // Local state for pending changes if not managed by parent
   const [localPendingChange, setLocalPendingChange] = useState<PendingChange | null>(null);
   const [localDiffContent, setLocalDiffContent] = useState<string | null>(null);
-  const [activeHighlightCommentId, setActiveHighlightCommentId] = useState<number | null>(null);
+  const [activeHighlightCommentId, setActiveHighlightCommentId] = useState<number | string | null>(null);
+  /** Bumps when the user asks to scroll to a highlight again (same id as before — React would otherwise skip re-running the scroll effect). */
+  const [highlightScrollNonce, setHighlightScrollNonce] = useState(0);
+
+  const requestHighlightScroll = useCallback((commentId: number | string) => {
+    setActiveHighlightCommentId(commentId);
+    setHighlightScrollNonce((n) => n + 1);
+  }, []);
+
+  /** When the user picks a comment in the panel, scroll the matching highlight into view (retry until marks are in the DOM). */
+  useEffect(() => {
+    if (activeHighlightCommentId == null) return;
+    const id = String(activeHighlightCommentId);
+    let cancelled = false;
+    let attempts = 0;
+    const maxAttempts = 24;
+
+    const tryScroll = () => {
+      if (cancelled) return;
+      const roots = document.querySelectorAll(
+        ".peer-review-editor-root .review-comment[data-comment-id]"
+      );
+      for (const el of roots) {
+        if (el.getAttribute("data-comment-id") === id) {
+          el.scrollIntoView({ behavior: "smooth", block: "center", inline: "nearest" });
+          return;
+        }
+      }
+      attempts += 1;
+      if (attempts < maxAttempts) {
+        requestAnimationFrame(tryScroll);
+      }
+    };
+
+    requestAnimationFrame(tryScroll);
+    const t = window.setTimeout(tryScroll, 50);
+    const t2 = window.setTimeout(tryScroll, 200);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(t);
+      window.clearTimeout(t2);
+    };
+  }, [activeHighlightCommentId, highlightScrollNonce]);
+
+  useEffect(() => {
+    if (activeHighlightCommentId == null) return;
+    const list = peerReview?.comments;
+    if (!list?.length) {
+      setActiveHighlightCommentId(null);
+      return;
+    }
+    const exists = list.some((c) => String(c.id) === String(activeHighlightCommentId));
+    if (!exists) setActiveHighlightCommentId(null);
+  }, [peerReview?.comments, activeHighlightCommentId]);
 
   // Use parent-managed state if provided, otherwise use local state
   const pendingChange = pendingChangeProp !== undefined ? pendingChangeProp : localPendingChange;
@@ -222,19 +286,6 @@ export function ReportContent({
   const handleRejectChange = () => {
     setPendingChange(null);
     setDiffContent(null);
-  };
-
-  const handleHighlightEdit = (highlightedText: string, sectionId: number | string, newText: string) => {
-    const section = reportContent.sections.find(s => s.id === sectionId);
-    if (section) {
-      setPendingChange({
-        messageId: Date.now(),
-        sectionId: sectionId,
-        oldValue: section.content,
-        newValue: section.content.replace(highlightedText, newText),
-        source: "peer-review"
-      });
-    }
   };
 
   const handleItemClickInternal = (context: SelectedContext) => {
@@ -358,7 +409,9 @@ export function ReportContent({
                 onAddComment={onAddReviewComment || (() => { })}
                 onAddHighlightComment={onAddHighlightComment || (() => { })}
                 onResolveComment={onResolveComment || (() => { })}
-                onHighlightClick={(commentId) => setActiveHighlightCommentId(commentId)}
+                onApplyPeerSuggestion={onApplyPeerSuggestion}
+                appliedPeerSuggestionIds={appliedPeerSuggestionIds}
+                onHighlightClick={requestHighlightScroll}
                 onCompleteReview={onCompleteReview || (() => { })}
                 onOpenRatingModal={onOpenRatingModal || (() => { })}
                 isCompleted={peerReview.status === "completed"}
@@ -562,14 +615,20 @@ export function ReportContent({
                         <div className={`grid grid-cols-1 gap-6 ${hasImages ? 'sm:grid-cols-2' : ''}`}>
                           {/* Text Content */}
                           <div className={`min-w-0 ${hasImages ? 'md:col-span-2' : ''}`}>
-                            {useTiptap && section.id === "main-content" ? (
-                              // Use TiptapEditor for main content with inline diff support
+                            {useTiptap && (section.id === "main-content" || (mode === "peer-review" && peerReview)) ? (
+                              // TipTap: main body (AI + diff) or any section in peer-review mode (inline comments)
                               <TiptapEditor
-                                ref={editorRef as React.RefObject<TiptapEditorHandle>}
+                                ref={
+                                  section.id === "main-content"
+                                    ? (editorRef as React.RefObject<TiptapEditorHandle>)
+                                    : undefined
+                                }
                                 content={section.content || ""}
                                 onUpdate={onEditorUpdate || ((newMarkdown) => onSectionChange(section.id, newMarkdown))}
-                                editable={mode === "edit" && !isSelectionMode}
-                                diffContent={diffContent}
+                                editable={
+                                  (mode === "edit" || mode === "peer-review") && !isSelectionMode
+                                }
+                                diffContent={section.id === "main-content" ? diffContent : undefined}
                                 onAcceptDiff={() => {
                                   if (diffContent) {
                                     onSectionChange(section.id, diffContent);
@@ -579,22 +638,26 @@ export function ReportContent({
                                 onRejectDiff={() => {
                                   setDiffContent(null);
                                 }}
-                                onSelectionChange={onSelectionChange}
-                                pinnedSelectionRange={pinnedSelectionRange}
+                                onSelectionChange={section.id === "main-content" ? onSelectionChange : undefined}
+                                pinnedSelectionRange={section.id === "main-content" ? pinnedSelectionRange : undefined}
                                 onAllDiffChangesResolved={onAllDiffChangesResolved}
                                 onHasUnresolvedEditsChange={onHasUnresolvedEditsChange}
-                              />
-                            ) : mode === "peer-review" && peerReview && peerReview.comments ? (
-                              <HighlightableText
-                                content={section.content}
+                                peerReviewMode={mode === "peer-review" && !!peerReview}
                                 sectionId={section.id}
-                                comments={peerReview.comments}
-                                onAddHighlightComment={onAddHighlightComment}
-                                onAddHighlightEdit={handleHighlightEdit}
-                                onHighlightClick={(commentId) => setActiveHighlightCommentId(commentId)}
-                                activeCommentId={activeHighlightCommentId}
-                                disabled={isSelectionMode}
-                                onTextSelection={(text) => handleTextSelectionInternal(text, section.id, section.title)}
+                                peerReviewComments={peerReview?.comments ?? []}
+                                activePeerReviewCommentId={activeHighlightCommentId}
+                                onPeerReviewHighlightComment={
+                                  onAddHighlightComment
+                                    ? async (text, sid, comment, type) =>
+                                        await onAddHighlightComment(text, sid, comment, type)
+                                    : undefined
+                                }
+                                onPeerReviewCommentMarkClick={(id) => requestHighlightScroll(id)}
+                                onApplyPeerSuggestion={
+                                  section.id === "main-content" ? onApplyPeerSuggestion : undefined
+                                }
+                                appliedPeerSuggestionIds={appliedPeerSuggestionIds}
+                                onAppliedPeerSuggestionIdsChange={onAppliedPeerSuggestionIdsChange}
                               />
                             ) : (
                               <RewritableText

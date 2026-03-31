@@ -492,19 +492,122 @@ function ReportViewerContent() {
     }
   }, [reportId]);
 
-  const handleAddReviewComment = (reviewId: number | string, comment: string, type: "comment" | "suggestion" | "issue" | "question") => {
-    // Mock implementation
-    console.log("Added comment:", { reviewId, comment, type });
-  };
+  const refreshAssignedReview = useCallback(async () => {
+    if (!fromPeerReview || !reportId || reportId === "0") return;
+    try {
+      const res = await fetch(apiRoutes.report.assignedReview(reportId));
+      const data = await res.json();
+      if (data.review) setAssignedReview(data.review);
+      else setAssignedReview(null);
+    } catch {
+      /* keep existing state */
+    }
+  }, [fromPeerReview, reportId]);
 
-  const handleAddHighlightComment = (reviewId: number | string, highlightedText: string, sectionId: number | string, comment: string, type: "comment" | "suggestion" | "issue" | "question") => {
-    // Mock implementation
-    console.log("Added highlight comment:", { reviewId, highlightedText, sectionId, comment, type });
-  };
+  const handleAddReviewComment = useCallback(
+    async (reviewId: number | string, comment: string, type: "comment" | "suggestion" | "issue") => {
+      try {
+        const res = await fetch(apiRoutes.report.reviewComment, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            reviewRequestId: reviewId,
+            comment,
+            type,
+          }),
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          alert(data.error || "Failed to save comment");
+          return;
+        }
+        if (data.comment) {
+          setAssignedReview((prev) => {
+            if (!prev) return prev;
+            return { ...prev, comments: [...prev.comments, data.comment] };
+          });
+        } else {
+          await refreshAssignedReview();
+        }
+      } catch (e) {
+        console.error(e);
+        alert("Failed to save comment");
+      }
+    },
+    [refreshAssignedReview]
+  );
 
-  const handleResolveComment = (reviewId: number | string, commentId: number | string) => {
-    console.log("Resolved comment:", { reviewId, commentId });
-  };
+  const handleAddHighlightComment = useCallback(
+    async (
+      reviewId: number | string,
+      highlightedText: string,
+      sectionId: number | string,
+      comment: string,
+      type: "comment" | "suggestion" | "issue"
+    ) => {
+      try {
+        const res = await fetch(apiRoutes.report.reviewComment, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            reviewRequestId: reviewId,
+            comment,
+            type,
+            highlightedText,
+            sectionId: String(sectionId),
+          }),
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          alert(data.error || "Failed to save comment");
+          return null;
+        }
+        if (data.comment) {
+          setAssignedReview((prev) => {
+            if (!prev) return prev;
+            return { ...prev, comments: [...prev.comments, data.comment] };
+          });
+          return data.comment;
+        }
+        await refreshAssignedReview();
+        return null;
+      } catch (e) {
+        console.error(e);
+        alert("Failed to save comment");
+        return null;
+      }
+    },
+    [refreshAssignedReview]
+  );
+
+  const handleResolveComment = useCallback(
+    async (reviewId: number | string, commentId: number | string) => {
+      if (!assignedReview || String(assignedReview.id) !== String(reviewId)) return;
+      const existing = assignedReview.comments.find((c) => String(c.id) === String(commentId));
+      if (!existing) return;
+      try {
+        const res = await fetch(apiRoutes.report.reviewCommentById(commentId), {
+          method: "DELETE",
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          alert(data.error || "Failed to remove comment");
+          return;
+        }
+        setAssignedReview((prev) => {
+          if (!prev) return prev;
+          return {
+            ...prev,
+            comments: prev.comments.filter((c) => String(c.id) !== String(commentId)),
+          };
+        });
+      } catch (e) {
+        console.error(e);
+        alert("Failed to remove comment");
+      }
+    },
+    [assignedReview]
+  );
 
   const handleCompleteReview = (reviewId: number | string) => {
     console.log("Completed review:", reviewId);
