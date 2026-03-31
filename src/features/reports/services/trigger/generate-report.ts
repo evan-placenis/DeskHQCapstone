@@ -1,3 +1,4 @@
+import "./trigger-sentry";
 import { task } from "@trigger.dev/sdk/v3";
 import { Container } from "@/lib/container";
 import { v4 as uuidv4 } from "uuid";
