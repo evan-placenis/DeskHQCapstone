@@ -189,6 +189,13 @@ If the user asks for a specific format (e.g. bullet points, report section), str
       const file = data.photos[i];
       const takenAt = data.takenAtMs[i] ?? 0;
 
+      if (!file || file.size === 0) {
+        console.warn(
+          `[capture] Skipping empty photo part at index ${i} (session ${sessionId})`
+        );
+        continue;
+      }
+
       const uploadedImage = await this.storageService.uploadProjectImage(
         projectId,
         organizationId,
@@ -207,6 +214,13 @@ If the user asks for a specific format (e.g. bullet points, report section), str
       }, client);
 
       uploadedImageRows.push(uploadedImage);
+    }
+
+    if (data.photos.length > 0 && uploadedImageRows.length === 0) {
+      throw new ServiceError(
+        "Photo file was missing or empty. Please capture the image again and retry.",
+        400
+      );
     }
 
     let audioResult: { public_url: string; storage_path: string } | null = null;

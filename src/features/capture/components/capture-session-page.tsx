@@ -43,6 +43,34 @@ function isUsableImageBlob(blob: unknown): blob is Blob {
   return false;
 }
 
+/**
+ * Materialize a fresh Blob for multipart upload. IndexedDB-backed Blobs sometimes
+ * report a non-zero size but read as empty when sent over fetch on Safari/iOS.
+ */
+function materializeImageBlobForUpload(blob: Blob): Blob | null {
+  if (!(blob instanceof Blob) || blob.size === 0) return null;
+  const type = blob.type || "image/jpeg";
+  return blob.slice(0, blob.size, type);
+}
+
+function preparePhotosForUpload(
+  rows: { photoId: number; blob: Blob; takenAtMs: number }[]
+): { ready: { photoId: number; blob: Blob; takenAtMs: number }[]; invalidPhotoIds: number[] } {
+  const ready: { photoId: number; blob: Blob; takenAtMs: number }[] = [];
+  const invalidPhotoIds: number[] = [];
+  for (const row of rows) {
+    const typed = row.blob.type ? row.blob : new Blob([row.blob], { type: "image/jpeg" });
+    const blob = materializeImageBlobForUpload(typed);
+    if (!blob || blob.size === 0) {
+      console.error("CRITICAL: Attempted to upload an empty or missing photo blob!", row);
+      invalidPhotoIds.push(row.photoId);
+      continue;
+    }
+    ready.push({ photoId: row.photoId, blob, takenAtMs: row.takenAtMs });
+  }
+  return { ready, invalidPhotoIds };
+}
+
 export function CaptureSessionPage({
   onClose,
   onSuccessRedirect,
@@ -649,11 +677,27 @@ export function CaptureSessionPage({
           .map((p) => ({ photoId: p.id, blob: p.blob, takenAtMs: p.takenAtMs }));
       }
 
-      setTotalUploadCount(photosToUpload.length);
+      const { ready: photosReady, invalidPhotoIds } = preparePhotosForUpload(photosToUpload);
+      for (const id of invalidPhotoIds) {
+        void captureIDB.removePhoto(sessionId, id).catch(() => {});
+      }
+      if (photosReady.length === 0 && photosToUpload.length > 0) {
+        throw new Error(
+          "Photos could not be read for upload (they may have been cleared from browser storage). Try capturing again."
+        );
+      }
+
+      setTotalUploadCount(photosReady.length);
       setUploadedCount(0);
 
-      for (let i = 0; i < photosToUpload.length; i++) {
-        const photo = photosToUpload[i];
+      for (let i = 0; i < photosReady.length; i++) {
+        const photo = photosReady[i];
+        if (!photo.blob || photo.blob.size === 0) {
+          console.error("CRITICAL: Attempted to upload an empty or missing photo blob!", photo);
+          throw new Error(
+            "A photo was empty right before upload. Please go back and capture your photos again."
+          );
+        }
         const form = new FormData();
         form.append("photos", photo.blob, `photo-${photo.photoId}.jpg`);
         form.append("taken_at_ms", String(photo.takenAtMs));
@@ -664,7 +708,7 @@ export function CaptureSessionPage({
         });
         if (!res.ok) {
           const err = await res.json().catch(() => ({}));
-          throw new Error(err.error || `Photo upload failed (${i + 1}/${photosToUpload.length})`);
+          throw new Error(err.error || `Photo upload failed (${i + 1}/${photosReady.length})`);
         }
 
         await captureIDB.markPhotoUploaded(sessionId, photo.photoId).catch(() => {});
