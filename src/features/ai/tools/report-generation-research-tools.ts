@@ -1,6 +1,8 @@
 import { tool } from '@langchain/core/tools';
 import { z } from 'zod';
 import { Container } from '@/lib/container';
+import { logger } from '@/lib/logger';
+
 function sanitizeQuery(rawQuery: string): string {
   // Matches standard UUIDv4 formats
   const uuidRegex = /[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}/g;
@@ -21,7 +23,7 @@ export const researchTools = (
     async ({ query }) => {
       try {
         const cleanQuery = sanitizeQuery(query);
-        console.log(`🧠 [Research Skill] Searching Internal Memory: "${cleanQuery}"`);
+        logger.info(`🧠 [Research Skill] Searching Internal Memory: "${cleanQuery}"`);
         // KnowledgeService.search takes string[] and returns string[]
         const results = await Container.knowledgeService.search([cleanQuery], projectId);
 
@@ -36,7 +38,7 @@ export const researchTools = (
         return `[MEMORY MATCH FOUND]:\n${formattedText}`;
 
       } catch (error) {
-        console.error("Error searching internal memory:", error);
+        logger.error("Error searching internal memory:", error);
         return "Error accessing internal memory.";
       }
     },
@@ -64,7 +66,7 @@ export const researchTools = (
     async ({ query}) => {
       try {
         const cleanQuery = sanitizeQuery(query);
-        console.log(`🌎 [Skill] Searching Web (Exa): "${cleanQuery}"`);
+        logger.info(`🌎 [Skill] Searching Web (Exa): "${cleanQuery}"`);
 
         const result = await Container.exa.searchAndContents(cleanQuery, {
           type: "neural",
@@ -87,12 +89,12 @@ export const researchTools = (
           content,
           primaryUrl,
           projectId
-        ).catch((err: any) => console.error("❌ [Skill] Background save failed:", err));
+        ).catch((err: any) => logger.error("❌ [Skill] Background save failed:", err));
 
         return content;
 
       } catch (error) {
-        console.error("Exa search failed:", error);
+        logger.error("Exa search failed:", error);
         return "Error executing web search.";
       }
     },

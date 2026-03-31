@@ -186,6 +186,13 @@ export const generateReportTask = task({
       }
       // 6. SELECT THE APPROPRIATE WORKFLOW GRAPH
       const workflowGraph = getWorkflow(workflowType);
+      if (!workflowGraph) {
+        return {
+          success: false,
+          reportId: draftReportId,
+          message: `Workflow type '${workflowType}' is not available.`,
+        };
+      }
 
       // 7. PREPARE LANGGRAPH STATE
       // Use explicit strings so state never has undefined for systemPrompt/structureInstructions (builder/architect expect them)
@@ -459,6 +466,13 @@ async function handleResumeAction(
 
     // 1. Get the workflow graph (observation workflow has checkpointer)
     const workflowGraph = getWorkflow('observation');
+    if (!workflowGraph) {
+      return {
+        reportId,
+        success: false,
+        message: "Observation workflow is not available.",
+      };
+    }
 
     // 2. Config with thread_id = reportId (how LangGraph tracks executions)
     const config = {

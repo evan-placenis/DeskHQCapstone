@@ -2,6 +2,7 @@ import { tool } from 'ai';
 import { z } from 'zod/v3';
 import { Container } from '@/lib/container';
 import { SupabaseClient } from '@supabase/supabase-js';
+import { logger } from '@/lib/logger';
 
 export const reportTools = (
   projectId: string,
@@ -17,7 +18,7 @@ export const reportTools = (
     }),
     execute: async () => {
       try {
-        console.log(`📂 [Tool: ListImages] Listing images for project ${projectId}`);
+        logger.info(`📂 [Tool: ListImages] Listing images for project ${projectId}`);
 
         const adminClient = await Container.adminClient;
 
@@ -33,7 +34,7 @@ export const reportTools = (
         const { data, error } = await query;
 
         if (error) {
-          console.error('❌ [Tool: ListImages] DB Error:', error.message);
+          logger.error('❌ [Tool: ListImages] DB Error:', error.message);
           return { status: 'ERROR', message: error.message };
         }
 
@@ -51,7 +52,7 @@ export const reportTools = (
           })),
         };
       } catch (error) {
-        console.error('💥 [Tool: ListImages] Critical Exception:', error);
+        logger.error('💥 [Tool: ListImages] Critical Exception:', error);
         return { status: 'ERROR', message: error instanceof Error ? error.message : 'Failed to list project images.' };
       }
     },
@@ -74,12 +75,12 @@ export const reportTools = (
           .single();
 
         if (projError || !projectData?.organization_id) {
-          console.error('❌ [Tool: GetImages] Could not find Organization ID for project:', projError);
+          logger.error('❌ [Tool: GetImages] Could not find Organization ID for project:', projError);
           return { status: 'ERROR', message: 'Failed to resolve Organization ID internally.' };
         }
 
         const organizationId = projectData.organization_id;
-        console.log(`🔍 [Tool: GetImages] Fetching ${imageIds.length} images. Path Structure: ${organizationId}/${projectId}/...`);
+        logger.info(`🔍 [Tool: GetImages] Fetching ${imageIds.length} images. Path Structure: ${organizationId}/${projectId}/...`);
 
         const { data: images, error } = await adminClient
           .from('project_images')
@@ -88,7 +89,7 @@ export const reportTools = (
           .eq('project_id', projectId);
 
         if (error) {
-          console.error('❌ [Tool: GetImages] DB Error:', error);
+          logger.error('❌ [Tool: GetImages] DB Error:', error);
           return { status: 'ERROR', message: `Database error: ${error.message}` };
         }
 
@@ -108,7 +109,7 @@ export const reportTools = (
               return { id: img.id, url: null, error: 'Missing storage path' };
             }
 
-            console.log(`🔑 [Tool: GetImages] Signing path: ${finalPath}`);
+            logger.info(`🔑 [Tool: GetImages] Signing path: ${finalPath}`);
             const BUCKET_NAME = 'project-images';
 
             const { data: signedData, error: signError } = await adminClient.storage
@@ -116,7 +117,7 @@ export const reportTools = (
               .createSignedUrl(finalPath, 3600);
 
             if (signError || !signedData?.signedUrl) {
-              console.error(`❌ [Tool: GetImages] Signing failed for ${finalPath}:`, signError);
+              logger.error(`❌ [Tool: GetImages] Signing failed for ${finalPath}:`, signError);
               return {
                 id: img.id,
                 url: null,
@@ -143,7 +144,7 @@ export const reportTools = (
           images: validImages,
         };
       } catch (error) {
-        console.error('💥 [Tool: GetImages] Critical Exception:', error);
+        logger.error('💥 [Tool: GetImages] Critical Exception:', error);
         return { status: 'ERROR', message: 'Internal server error while fetching images' };
       }
     },
@@ -174,7 +175,7 @@ export const reportTools = (
           },
         };
       } catch (error) {
-        console.error('Error fetching project specs:', error);
+        logger.error('Error fetching project specs:', error);
         return { status: 'ERROR', message: 'Failed to fetch project details' };
       }
     },
@@ -230,7 +231,7 @@ export const reportTools = (
     }),
     execute: async ({ reportId, sectionId, heading, content, order }) => {
       try {
-        console.log(`📝 [Report Tool] Writing section: ${sectionId} (${heading}) to report ${reportId}`);
+        logger.info(`📝 [Report Tool] Writing section: ${sectionId} (${heading}) to report ${reportId}`);
 
         await Container.reportService.updateSectionInReport(reportId, sectionId, heading, content, order ?? 0, client);
 
@@ -244,7 +245,7 @@ export const reportTools = (
           order: order ?? 0,
         };
       } catch (error) {
-        console.error('Error writing section:', error);
+        logger.error('Error writing section:', error);
         return {
           status: 'ERROR',
           message: `Failed to write section: ${error instanceof Error ? error.message : 'Unknown error'}`,

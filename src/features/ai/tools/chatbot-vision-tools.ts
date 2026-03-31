@@ -1,6 +1,7 @@
 import { tool } from 'ai';
 import { z } from 'zod/v3';
 import { Container } from '@/lib/container';
+import { logger } from '@/lib/logger';
 
 export const visionTools = {
   analyze_batch_images: tool({
@@ -26,7 +27,7 @@ export const visionTools = {
 
         return results.join('\n\n');
       } catch (error) {
-        console.error('Error analyzing batch images:', error);
+        logger.error('Error analyzing batch images:', error);
         return 'Error analyzing batch images.';
       }
     },
@@ -44,7 +45,7 @@ export const visionTools = {
         const analysis = await Container.sitePhotoAgent.analyzeImage(imageUrl, imageId || 'schematic');
         return analysis.description;
       } catch (error) {
-        console.error('Error analyzing schematic:', error);
+        logger.error('Error analyzing schematic:', error);
         return 'Error analyzing schematic image.';
       }
     },

@@ -1,3 +1,5 @@
+import { logger } from "@/lib/logger";
+
 /**
  * Phase 2: Human Approval (Interrupt Point)
  * 
@@ -8,7 +10,7 @@
 export async function humanApprovalNode(state: any) {
   const { approvalStatus, userFeedback } = state;
 
-  console.log(`👤 Human Approval Check: Status = ${approvalStatus}`);
+  logger.info(`👤 Human Approval Check: Status = ${approvalStatus}`);
 
   // Decision logic
   if (approvalStatus === 'APPROVED') {
@@ -26,7 +28,7 @@ export async function humanApprovalNode(state: any) {
   } else {
     // 3. Pending -> Something is wrong
     // If we resumed the graph, the state SHOULD have been updated to APPROVED or REJECTED.
-    console.warn('⚠️ Graph resumed but status is still PENDING. Defaulting to REJECTED for safety.');
+    logger.warn('⚠️ Graph resumed but status is still PENDING. Defaulting to REJECTED for safety.');
     return {
         next_step: 'architect',
         userFeedback: "System Error: No approval decision received.",

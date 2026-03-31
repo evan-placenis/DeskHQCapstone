@@ -1,5 +1,6 @@
 import fs from 'fs';
 import path from 'path';
+import { logger } from '@/lib/logger';
 
 export interface SkillDocument {
   name: string;
@@ -50,7 +51,7 @@ export function loadSkill(skillName: string): SkillDocument {
   const filePath = resolveSkillPath(skillName);
 
   if (!fs.existsSync(filePath)) {
-    console.error(`[skill-loader] Skill file not found at: ${filePath}`);
+    logger.error(`[skill-loader] Skill file not found at: ${filePath}`);
     return {
       name: skillName,
       description: `Skill "${skillName}" could not be loaded.`,

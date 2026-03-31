@@ -1,11 +1,12 @@
 import { tool } from '@langchain/core/tools';
 import { z } from 'zod';
+import { logger } from '@/lib/logger';
 
 export const planningTools = () => [
   // Define a tool for the architect to output the plan in structured format
    tool(
     async ({ sections, strategy, user_questions}) => {
-      console.log(`📐 Architect: Plan created with ${sections.length} sections`);
+      logger.info(`📐 Architect: Plan created with ${sections.length} sections`);
       return {
         status: 'SUCCESS',
         message: 'Report plan created. Awaiting approval.',

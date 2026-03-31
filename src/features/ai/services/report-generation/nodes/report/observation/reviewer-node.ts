@@ -3,6 +3,7 @@ import { ModelStrategy } from "../../../models/model-strategy";
 import { tool } from "@langchain/core/tools";
 import { z } from "zod";
 import { ObservationState } from "../../../state/pretium/observation-state";
+import { logger } from "@/lib/logger";
 
 export async function reviewerNode(state: typeof ObservationState.State) {
   const { 
@@ -14,7 +15,7 @@ export async function reviewerNode(state: typeof ObservationState.State) {
     heliconeInput,
   } = state;
 
-  console.log("🧐 [Reviewer] Starting holistic audit (Single Pass)...");
+  logger.info("🧐 [Reviewer] Starting holistic audit (Single Pass)...");
 
   // 1. PREPARE THE FULL MANUSCRIPT
   // We format it clearly so the LLM can see the flow.
@@ -34,7 +35,7 @@ export async function reviewerNode(state: typeof ObservationState.State) {
   // These tools allow the AI to surgically alter the state.
   
   const rewriteTool = tool(async ({ sectionTitle, newContent, reason }) => {
-      console.log(`  ✏️ [Reviewer] Rewriting "${sectionTitle}"...`);
+      logger.info(`  ✏️ [Reviewer] Rewriting "${sectionTitle}"...`);
       return { status: "UPDATED", sectionTitle, newContent, reason };
   }, {
       name: "rewrite_section",
@@ -47,7 +48,7 @@ export async function reviewerNode(state: typeof ObservationState.State) {
   });
 
   const mergeTool = tool(async ({ title1, title2, newTitle, mergedContent }) => {
-      console.log(`  🔗 [Reviewer] Merging "${title1}" and "${title2}"...`);
+      logger.info(`  🔗 [Reviewer] Merging "${title1}" and "${title2}"...`);
       return { status: "MERGED", title1, title2, newTitle, mergedContent };
   }, {
       name: "merge_sections",
@@ -61,7 +62,7 @@ export async function reviewerNode(state: typeof ObservationState.State) {
   });
 
   const deleteTool = tool(async ({ sectionTitle, reason }) => {
-      console.log(`  🗑️ [Reviewer] Deleting "${sectionTitle}"...`);
+      logger.info(`  🗑️ [Reviewer] Deleting "${sectionTitle}"...`);
       return { status: "DELETED", sectionTitle, reason };
   }, {
       name: "delete_section",
@@ -99,9 +100,14 @@ export async function reviewerNode(state: typeof ObservationState.State) {
 
   // 4. INVOKE MODEL (With Tools)
   const baseModel = ModelStrategy.getModel(provider || 'gemini', 'heavyweight', heliconeInput);
-    if (typeof baseModel.bindTools !== 'function') {
-    throw new Error("Model does not support tools");
- }
+  if (typeof baseModel.bindTools !== "function") {
+    logger.error("Reviewer: Model does not support tools");
+    return {
+      sectionDrafts,
+      reviewScore: 0,
+      critiqueNotes: "Review skipped: model does not support tool calling.",
+    };
+  }
   const model = baseModel.bindTools(tools);
   
   // We allow the model to make multiple tool calls in parallel (Gemini/OpenAI support this)
@@ -149,7 +155,7 @@ export async function reviewerNode(state: typeof ObservationState.State) {
   // Base 100, minus penalties for errors found.
   const finalScore = Math.max(0, 100 - scorePenalty);
   
-  console.log(`✅ [Reviewer] Edit Complete. Score: ${finalScore}. Changes: ${changeLog.length}`);
+  logger.info(`✅ [Reviewer] Edit Complete. Score: ${finalScore}. Changes: ${changeLog.length}`);
 
   // 6. RETURN UPDATES
   return {

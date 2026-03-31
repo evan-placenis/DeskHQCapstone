@@ -9,6 +9,7 @@ import {
     type HeliconeContextInput,
 } from './gateway/helicone-context-builder';
 import type { AiSdkChatProvider } from "@/lib/ai-providers";
+import { logger } from "@/lib/logger";
 
 export class ModelStrategy {
     static getModel(
@@ -19,12 +20,12 @@ export class ModelStrategy {
         if (heliconeInput) {
             try {
                 helicone = HeliconeContextBuilder.build(heliconeInput);
-                console.log('[Helicone] AI SDK routing ACTIVE for provider:', provider, '| baseURL:', helicone.baseURL, '| headers:', Object.keys(helicone.headers).join(', '));
+                logger.info('[Helicone] AI SDK routing ACTIVE for provider:', provider, '| baseURL:', helicone.baseURL, '| headers:', Object.keys(helicone.headers).join(', '));
             } catch (err: any) {
-                console.error('[Helicone] Failed to build context, falling back to direct:', err.message);
+                logger.error('[Helicone] Failed to build context, falling back to direct:', err.message);
             }
         } else {
-            console.log('[Helicone] No heliconeInput provided — routing directly to provider:', provider);
+            logger.info('[Helicone] No heliconeInput provided — routing directly to provider:', provider);
         }
 
         switch (provider) {

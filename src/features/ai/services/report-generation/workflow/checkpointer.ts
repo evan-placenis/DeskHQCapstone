@@ -1,21 +1,22 @@
 import { PostgresSaver } from "@langchain/langgraph-checkpoint-postgres";
 import { Pool } from "pg";
+import { logger } from "@/lib/logger";
 
 // 1. Setup the connection pool using PostgreSQL connection string
 const connectionString = process.env.DATABASE_SESSION_URL
 
-console.log('🔌 Checkpointer: Initializing...');
-console.log('   DATABASE_SESSION_URL:', process.env.DATABASE_SESSION_URL ? '✅ Found' : '❌ Not set');
+logger.info('🔌 Checkpointer: Initializing...');
+logger.info('   DATABASE_SESSION_URL:', process.env.DATABASE_SESSION_URL ? '✅ Found' : '❌ Not set');
 if (!connectionString) {
-  console.error('❌ CRITICAL: No PostgreSQL connection string found!');
-  console.error('   Add to .env.local: DATABASE_URL=postgresql://postgres...');
-  console.error('   Get it from: Supabase Dashboard → Settings → Database → Connection string → URI');
+  logger.error('❌ CRITICAL: No PostgreSQL connection string found!');
+  logger.error('   Add to .env.local: DATABASE_URL=postgresql://postgres...');
+  logger.error('   Get it from: Supabase Dashboard → Settings → Database → Connection string → URI');
 } else if (connectionString.startsWith('https://') || connectionString.startsWith('http://')) {
-  console.error('❌ CRITICAL: Connection string is HTTP URL, not PostgreSQL URL!');
-  console.error('   Current:', connectionString);
-  console.error('   You need the PostgreSQL connection string from Supabase Dashboard');
+  logger.error('❌ CRITICAL: Connection string is HTTP URL, not PostgreSQL URL!');
+  logger.error('   Current:', connectionString);
+  logger.error('   You need the PostgreSQL connection string from Supabase Dashboard');
 } else {
-  console.log('   Using connection string: ✅ Valid PostgreSQL URL');
+  logger.info('   Using connection string: ✅ Valid PostgreSQL URL');
 }
 
 const pool = new Pool({
@@ -28,12 +29,12 @@ const pool = new Pool({
 // Test connection
 pool.connect()
   .then((client) => {
-    console.log('✅ Checkpointer: PostgreSQL connection successful');
+    logger.info('✅ Checkpointer: PostgreSQL connection successful');
     client.release();
   })
   .catch((err) => {
-    console.error('❌ Checkpointer: PostgreSQL connection failed:', err.message);
-    console.error('   Make sure DATABASE_URL is set correctly');
+    logger.error('❌ Checkpointer: PostgreSQL connection failed:', err.message);
+    logger.error('   Make sure DATABASE_URL is set correctly');
   });
 
 
@@ -44,5 +45,5 @@ export const sharedCheckpointer = new PostgresSaver(pool);
 // 4. (Optional) Initialize tables on startup
 // Since you already created them in SQL, this is just a safeguard.
 sharedCheckpointer.setup().catch((err) => {
-  console.error("⚠️ Error verifying checkpoint tables:", err.message);
+  logger.error("⚠️ Error verifying checkpoint tables:", err.message);
 });

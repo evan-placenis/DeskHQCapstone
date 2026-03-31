@@ -1,6 +1,7 @@
 import { tool } from 'ai';
 import { z } from 'zod';
 import { SupabaseClient } from '@supabase/supabase-js';
+import { logger } from '@/lib/logger';
 
 export const referenceTools = (client: SupabaseClient) => ({
   findBestPracticeExample: tool({
@@ -10,7 +11,7 @@ export const referenceTools = (client: SupabaseClient) => ({
       category: z.string().describe('The trade or topic (e.g., "Roofing", "Electrical", "Executive Summary")'),
     }),
     execute: async ({ category }) => {
-      console.log(`📚 [Reference Tool] Looking for perfect examples of: ${category}`);
+      logger.info(`📚 [Reference Tool] Looking for perfect examples of: ${category}`);
 
       const { data, error } = await client
         .from('report_examples')

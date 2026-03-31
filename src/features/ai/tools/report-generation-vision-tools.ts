@@ -2,6 +2,7 @@ import { tool } from '@langchain/core/tools';
 import { z } from 'zod';
 import { Container } from '@/lib/container';
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { logger } from '@/lib/logger';
 
 /**
  * Vision tools with optional report context. When reportId and client are provided,
@@ -15,7 +16,7 @@ export function visionToolsWithReport(reportId?: string, client?: SupabaseClient
       try {
         const analysisRequests = images.map((img: { url: string; id: string }) => ({ id: img.id, url: img.url }));
 
-        console.log(`👁️ Analyzing batch of ${images.length} images...`);
+        logger.info(`👁️ Analyzing batch of ${images.length} images...`);
         const analyses = await Container.sitePhotoAgent.analyzeBatch(analysisRequests);
 
         // Persist AI descriptions to report_images when in report context
@@ -27,10 +28,10 @@ export function visionToolsWithReport(reportId?: string, client?: SupabaseClient
               .eq('report_id', reportId)
               .eq('image_id', a.imageId);
             if (error) {
-              console.warn(`[Vision] Could not update report_images.ai_description for image ${a.imageId}:`, error.message);
+              logger.warn(`[Vision] Could not update report_images.ai_description for image ${a.imageId}:`, error.message);
             }
           }
-          console.log(`✅ Stored ${analyses.length} AI description(s) to report_images`);
+          logger.info(`✅ Stored ${analyses.length} AI description(s) to report_images`);
         }
 
         const results = analyses.map((analysis: { imageId: string; description: string }) => {
@@ -39,7 +40,7 @@ export function visionToolsWithReport(reportId?: string, client?: SupabaseClient
         });
         return results.join('\n\n---\n\n');
       } catch (error) {
-        console.error("Error analyzing batch images:", error);
+        logger.error("Error analyzing batch images:", error);
         return "Error: Failed to analyze images. Please verify URLs are accessible.";
       }
     },
@@ -63,7 +64,7 @@ export function visionToolsWithReport(reportId?: string, client?: SupabaseClient
         const analysis = await Container.sitePhotoAgent.analyzeImage(imageUrl, imageId || 'schematic');
         return analysis.description;
       } catch (error) {
-        console.error("Error analyzing schematic:", error);
+        logger.error("Error analyzing schematic:", error);
         return "Error analyzing schematic image.";
       }
     },
