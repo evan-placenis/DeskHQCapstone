@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { Container } from "@/lib/container";
 import { createAuthenticatedClient } from "@/app/api/utils";
+import { ServiceError } from "@/features/capture/services/capture-service";
 
 export async function POST(
     request: Request,
@@ -50,9 +51,10 @@ export async function POST(
         return NextResponse.json(result, { status: 201 });
     } catch (err: unknown) {
         console.error("❌ Capture session upload:", err);
+        const status = err instanceof ServiceError ? err.statusCode : 500;
         return NextResponse.json(
             { error: err instanceof Error ? err.message : "Upload failed" },
-            { status: 500 }
+            { status }
         );
     }
 }
