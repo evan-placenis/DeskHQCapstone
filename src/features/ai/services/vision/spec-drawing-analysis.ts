@@ -6,6 +6,7 @@ import { ModelStrategy } from "../models/model-strategy";
 import pLimit from "p-limit";
 import type { AiSdkChatProvider } from "@/lib/ai-providers";
 import { DEFAULT_AI_SDK_CHAT_PROVIDER } from "@/lib/ai-providers";
+import { logger } from "@/lib/logger";
 
 const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -67,13 +68,13 @@ export class SpecAgent implements VisionStrategy<SpecAnalysisResult> {
 
         if (isRetryable && attempt < MAX_RETRIES) {
           const delay = attempt * 500;
-          console.warn(
+          logger.warn(
             `[SpecAgent] ⚠️ Attempt ${attempt} failed for image ${imageId} (${err.status ?? "error"}). Retrying in ${delay}ms...`
           );
           await wait(delay);
           continue;
         }
-        console.error(
+        logger.error(
           `[SpecAgent] ❌ Final Error analyzing image ${imageId}:`,
           error
         );

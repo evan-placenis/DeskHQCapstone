@@ -6,6 +6,7 @@ import { Camera, X, Mic, Loader2, CheckCircle2, Search, Plus, Check, Pause, Play
 import { Project } from "@/lib/types";
 import { supabase } from "@/lib/supabase-browser-client";
 import { apiRoutes } from "@/lib/api-routes";
+import { logger } from "@/lib/logger";
 import * as tus from "tus-js-client";
 import { captureIDB } from "../services/capture-idb";
 import { pickSupportedAudioMimeType, useCaptureSession } from "../hooks/use-capture-session";
@@ -200,7 +201,7 @@ export function CaptureSessionPage({
               );
             }
           } catch (e) {
-            console.warn("IDB audio recovery load failed:", e);
+            logger.warn("IDB audio recovery load failed:", e);
           }
 
           let action: string | null = null;
@@ -231,7 +232,7 @@ export function CaptureSessionPage({
           return;
         }
       } catch (e) {
-        console.warn("IDB recovery check failed:", e);
+        logger.warn("IDB recovery check failed:", e);
       }
       if (!cancelled) setNeedsNewSession(true);
     })();
@@ -245,7 +246,7 @@ export function CaptureSessionPage({
       try {
         await captureIDB.clearAllCaptureData();
       } catch (e) {
-        console.warn("IDB clear before new session failed:", e);
+        logger.warn("IDB clear before new session failed:", e);
       }
       if (cancelled) return;
       const res = await fetch(apiRoutes.captureSessions.root, { method: "POST" });
@@ -266,7 +267,7 @@ export function CaptureSessionPage({
           transcriptEntries: [],
           localAudioCaptured: false,
           createdAt: Date.now(),
-        }).catch((e) => console.warn("IDB save failed:", e));
+        }).catch((e) => logger.warn("IDB save failed:", e));
       }
     })();
     return () => { cancelled = true; };
@@ -313,7 +314,7 @@ export function CaptureSessionPage({
       if (fatalErrors.has(e.error)) {
         isRecordingRef.current = false;
       }
-      if (e.error !== "no-speech") console.warn("SpeechRecognition error:", e.error);
+      if (e.error !== "no-speech") logger.warn("SpeechRecognition error:", e.error);
     };
 
     recognition.onend = () => {
@@ -405,7 +406,7 @@ export function CaptureSessionPage({
           },
         ]);
         captureIDB.savePhoto(sessionId!, id, blob, takenAtMs)
-          .catch((e) => console.warn("IDB photo save failed:", e));
+          .catch((e) => logger.warn("IDB photo save failed:", e));
       },
       "image/jpeg",
       0.9
@@ -420,7 +421,7 @@ export function CaptureSessionPage({
     });
     if (sessionId) {
       captureIDB.removePhoto(sessionId, id)
-        .catch((e) => console.warn("IDB photo remove failed:", e));
+        .catch((e) => logger.warn("IDB photo remove failed:", e));
     }
   }, [sessionId]);
 
@@ -431,7 +432,7 @@ export function CaptureSessionPage({
       captureIDB.updateSession(sessionId, {
         step: "choose-project",
         transcriptEntries,
-      }).catch((e) => console.warn("IDB session update failed:", e));
+      }).catch((e) => logger.warn("IDB session update failed:", e));
     }
     setProjectsLoading(true);
     fetch(apiRoutes.project.list())
@@ -450,7 +451,7 @@ export function CaptureSessionPage({
       }
     } catch (err) {
       if (!(err instanceof DOMException && err.name === "AbortError")) {
-        console.error("Save to device after capture:", err);
+        logger.error("Save to device after capture:", err);
         alert(
           err instanceof Error
             ? err.message
@@ -556,7 +557,14 @@ export function CaptureSessionPage({
       });
       if (!finalizeRes.ok) {
         const err = await finalizeRes.json().catch(() => ({}));
-        throw new Error(err.error || "Finalize failed");
+        const msg =
+          typeof err === "object" && err !== null && "error" in err && typeof (err as { error: unknown }).error === "string"
+            ? (err as { error: string }).error
+            : "Finalize failed";
+        logger.error("Finalize failed:", err);
+        setUploadError(msg);
+        setUploadProgress("error");
+        return;
       }
       const finalizeData = await finalizeRes.json();
       const { organizationId, folderName: fn } = finalizeData;
@@ -577,10 +585,20 @@ export function CaptureSessionPage({
       if (!audioClientUploaded && audioBlob && audioBlob.size > 0 && organizationId && fn) {
         const { data: { session } } = await supabase.auth.getSession();
         const token = session?.access_token;
-        if (!token) throw new Error("Not authenticated. Please log in to upload audio.");
+        if (!token) {
+          logger.error("Audio upload: not authenticated");
+          setUploadError("Not authenticated. Please log in to upload audio.");
+          setUploadProgress("error");
+          return;
+        }
 
         const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-        if (!supabaseUrl) throw new Error("Missing Supabase configuration.");
+        if (!supabaseUrl) {
+          logger.error("Audio upload: missing NEXT_PUBLIC_SUPABASE_URL");
+          setUploadError("Missing Supabase configuration.");
+          setUploadProgress("error");
+          return;
+        }
 
         const safeFolder = fn.replace(/\//g, "-");
         const fileName = `session-audio-${sessionId}.webm`;
@@ -658,7 +676,14 @@ export function CaptureSessionPage({
         });
         if (!res.ok) {
           const err = await res.json().catch(() => ({}));
-          throw new Error(err.error || `Photo upload failed (${i + 1}/${photosToUpload.length})`);
+          const msg =
+            typeof err === "object" && err !== null && "error" in err && typeof (err as { error: unknown }).error === "string"
+              ? (err as { error: string }).error
+              : `Photo upload failed (${i + 1}/${photosToUpload.length})`;
+          logger.error("Photo upload failed:", err);
+          setUploadError(msg);
+          setUploadProgress("error");
+          return;
         }
 
         await captureIDB.markPhotoUploaded(sessionId, photo.photoId).catch(() => {});
@@ -697,7 +722,14 @@ export function CaptureSessionPage({
         });
         if (!metaRes.ok) {
           const err = await metaRes.json().catch(() => ({}));
-          throw new Error(err.error || "Failed to save session metadata");
+          const msg =
+            typeof err === "object" && err !== null && "error" in err && typeof (err as { error: unknown }).error === "string"
+              ? (err as { error: string }).error
+              : "Failed to save session metadata";
+          logger.error("Session metadata save failed:", err);
+          setUploadError(msg);
+          setUploadProgress("error");
+          return;
         }
         await captureIDB.updateSession(sessionId, { metadataSent: true }).catch(() => {});
       }
@@ -707,7 +739,7 @@ export function CaptureSessionPage({
       try {
         await captureIDB.clearSession(sessionId);
       } catch (e) {
-        console.warn("IDB clearSession failed, retrying:", e);
+        logger.warn("IDB clearSession failed, retrying:", e);
         await captureIDB.clearSession(sessionId).catch(() => {});
       }
       setUploadProgress("done");

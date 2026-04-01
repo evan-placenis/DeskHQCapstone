@@ -4,6 +4,8 @@
  * and upload progress is tracked per-photo so partial uploads can resume.
  */
 
+import { logger } from "@/lib/logger";
+
 const DB_NAME = "deskhq-capture";
 /** Must never be lower than the version already on disk for this origin (opens with VersionError). */
 const DB_VERSION = 3;
@@ -155,7 +157,8 @@ export const captureIDB = {
     takenAtMs: number
   ): Promise<void> {
     if (!isImageBlob(blob)) {
-      throw new Error("Invalid photo blob: expected a non-empty image blob.");
+      logger.error("Invalid photo blob: expected a non-empty image blob.");
+      return;
     }
 
     const db = await openDB();

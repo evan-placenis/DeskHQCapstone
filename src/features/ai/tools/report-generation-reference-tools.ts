@@ -1,13 +1,14 @@
 import { tool } from '@langchain/core/tools';
 import { z } from 'zod';
 import { SupabaseClient } from '@supabase/supabase-js';
+import { logger } from '@/lib/logger';
 
 export const referenceTools = (client: SupabaseClient) => [
   
   // 🧠 The "Smart" Tool: Allows the agent to look up how to write well
   tool(
     async ({ category }) => {
-      console.log(`📚 [Reference Skill] Looking for perfect examples of: ${category}`);
+      logger.info(`📚 [Reference Skill] Looking for perfect examples of: ${category}`);
 
       // 1. (Simple Version) Query a 'report_templates' or 'examples' table
       // In the future, you can upgrade this to Vector Search (Embeddings)

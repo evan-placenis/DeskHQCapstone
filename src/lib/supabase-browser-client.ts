@@ -1,5 +1,6 @@
 // 🟢 CHANGE THIS IMPORT
 import { createBrowserClient } from "@supabase/ssr";
+import { logger } from "@/lib/logger";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
@@ -7,7 +8,7 @@ const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 const globalForSupabase = global as unknown as { supabase: any }
 
 if (!supabaseUrl || !supabaseAnonKey) {
-    console.error("⚠️ Missing Supabase environment variables.");
+    logger.error("⚠️ Missing Supabase environment variables.");
 }
 
 // 🟢 USE createBrowserClient HERE

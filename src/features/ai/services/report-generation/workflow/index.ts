@@ -1,4 +1,4 @@
-
+import { logger } from "@/lib/logger";
 import { observationReportGraph } from "./report/observation-report-graph";
 import { CompiledStateGraph } from "@langchain/langgraph";
 
@@ -19,19 +19,19 @@ export type WorkflowType = keyof typeof WORKFLOWS;
 /**
  * Get a workflow graph by type
  * @param workflowType - The type of workflow to retrieve
- * @returns The compiled workflow graph
- * @throws Error if workflow type is not found
+ * @returns The compiled workflow graph, or null if the type is unknown
  */
-export function getWorkflow(workflowType: string): CompiledStateGraph<any, any> {
+export function getWorkflow(workflowType: string): CompiledStateGraph<any, any> | null {
   const workflow = WORKFLOWS[workflowType];
-  
+
   if (!workflow) {
     const availableWorkflows = Object.keys(WORKFLOWS).join(", ");
-    throw new Error(
+    logger.error(
       `Workflow type '${workflowType}' not found. Available workflows: ${availableWorkflows}`
     );
+    return null;
   }
-  
+
   return workflow;
 }
 

@@ -1,5 +1,6 @@
 import { tool } from 'ai';
 import { z } from 'zod/v3';
+import { logger } from '@/lib/logger';
 
 export const audioTools = {
   audioSKill1TODO: tool({
@@ -19,7 +20,7 @@ export const audioTools = {
 
         return 'TODO';
       } catch (error) {
-        console.error('Error:', error);
+        logger.error('Error:', error);
         return 'Error.';
       }
     },
@@ -38,7 +39,7 @@ export const audioTools = {
         void imageId;
         return 'TODO';
       } catch (error) {
-        console.error('Error :', error);
+        logger.error('Error :', error);
         return 'Error.';
       }
     },

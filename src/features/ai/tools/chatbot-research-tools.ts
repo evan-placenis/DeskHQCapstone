@@ -1,6 +1,7 @@
 import { tool } from 'ai';
 import { z } from 'zod/v3';
 import { Container } from '@/lib/container';
+import { logger } from '@/lib/logger';
 
 function sanitizeQuery(rawQuery: string): string {
   const uuidRegex = /[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}/g;
@@ -18,7 +19,7 @@ export const researchTools = (projectId: string) => ({
     execute: async ({ query }) => {
       try {
         const cleanQuery = sanitizeQuery(query);
-        console.log(`🧠 [Research Tool] Searching Internal Memory: "${cleanQuery}"`);
+        logger.info(`🧠 [Research Tool] Searching Internal Memory: "${cleanQuery}"`);
         const results = await Container.knowledgeService.search([cleanQuery], projectId);
 
         const formattedContext = results.map(doc => {
@@ -31,7 +32,7 @@ export const researchTools = (projectId: string) => ({
 
         return 'No matches found in internal memory.';
       } catch (error) {
-        console.error('Error searching internal memory:', error);
+        logger.error('Error searching internal memory:', error);
         return 'Error accessing internal memory.';
       }
     },
@@ -46,7 +47,7 @@ export const researchTools = (projectId: string) => ({
     execute: async ({ query }) => {
       try {
         const cleanQuery = sanitizeQuery(query);
-        console.log(`🌎 [Tool] Searching Web (Exa): "${cleanQuery}"`);
+        logger.info(`🌎 [Tool] Searching Web (Exa): "${cleanQuery}"`);
 
         const result = await Container.exa.searchAndContents(cleanQuery, {
           type: 'neural',
@@ -64,11 +65,11 @@ export const researchTools = (projectId: string) => ({
 
         Container.knowledgeService
           .saveWebDataToDatabase(content, primaryUrl, projectId)
-          .catch((err: any) => console.error('❌ [Tool] Background save failed:', err));
+          .catch((err: any) => logger.error('❌ [Tool] Background save failed:', err));
 
         return content;
       } catch (error) {
-        console.error('Exa search failed:', error);
+        logger.error('Exa search failed:', error);
         return 'Error executing web search.';
       }
     },

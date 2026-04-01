@@ -8,6 +8,7 @@ import { extractTextContent } from "../../../utils/streaming-adapter";
 import { createNodeBroadcaster } from "../../../utils/node-broadcast";
 import path from 'path';
 import fs from 'fs';
+import { logger } from "@/lib/logger";
 /**
  * Phase 1: The Architect
  * * Analyzes inputs (photos, notes, instructions) and proposes a Report Plan.
@@ -178,9 +179,9 @@ export async function architectNode(state: typeof ObservationState.State) {
         plan: reportPlan,          
         status: 'AWAITING_APPROVAL' 
       }, client);
-      console.log('✅ Architect: Report plan saved to database');
+      logger.info('✅ Architect: Report plan saved to database');
     } catch (error) {
-      console.error('❌ Architect: Failed to save report plan:', error);
+      logger.error('❌ Architect: Failed to save report plan:', error);
     }
   }
 

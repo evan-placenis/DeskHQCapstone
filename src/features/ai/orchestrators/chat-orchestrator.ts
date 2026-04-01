@@ -8,6 +8,7 @@ import { buildSkillPrompt } from '@/features/ai/services/chatbot/skill-loader';
 import { SupabaseClient } from '@supabase/supabase-js';
 import type { HeliconeContextInput } from '@/src/features/ai/services/models/gateway/helicone-context-builder';
 import type { AiSdkChatProvider } from "@/lib/ai-providers";
+import { logger } from "@/lib/logger";
 
 /**
  * Chat Orchestrator using AI-SDK.
@@ -45,7 +46,7 @@ export class ChatOrchestrator {
         // [ChatContext] Debug: log context available to orchestrator
         const hasDocumentTools = !!(fullReportMarkdown?.trim());
         const hasMapLens = !!(documentOutline?.trim());
-        console.log('[ChatContext] ChatOrchestrator.generateStream:', {
+        logger.info('[ChatContext] ChatOrchestrator.generateStream:', {
             hasDocumentTools,
             fullReportMarkdownLen: fullReportMarkdown?.length ?? 0,
             hasMapLens,
@@ -78,8 +79,8 @@ export class ChatOrchestrator {
                 ? ['core-conversation', 'knowledge-search', 'image-schematic-analysis', 'report-context-chat']
                 : ['core-conversation', 'knowledge-search', 'image-schematic-analysis'])
             : ['(overridden by systemMessage)'];
-        console.log(`[Chat] Skills injected into system prompt: [${skillNames.join(', ')}] (${systemPrompt.length} chars)`);
-        console.log(`[Chat] Tools registered: [${registeredToolNames.join(', ')}]`);
+        logger.info(`[Chat] Skills injected into system prompt: [${skillNames.join(', ')}] (${systemPrompt.length} chars)`);
+        logger.info(`[Chat] Tools registered: [${registeredToolNames.join(', ')}]`);
 
         // When the user sent a selection-based edit, the actual rewrite is handled
         // by the /api/report/[id]/ai-edit route on the client.  Force toolChoice
@@ -99,16 +100,16 @@ export class ChatOrchestrator {
             onFinish,
 
             experimental_onToolCallStart({ toolCall }: { toolCall: { toolName: string; toolCallId: string } }) {
-                console.log(`[Chat] Tool call started: ${toolCall.toolName} (${toolCall.toolCallId})`);
+                logger.info(`[Chat] Tool call started: ${toolCall.toolName} (${toolCall.toolCallId})`);
             },
 
             experimental_onToolCallFinish({ toolCall, durationMs, success }: { toolCall: { toolName: string; toolCallId: string }; durationMs: number; success: boolean }) {
                 const status = success ? 'OK' : 'FAILED';
-                console.log(`[Chat] Tool call finished: ${toolCall.toolName} [${status}] (${durationMs}ms)`);
+                logger.info(`[Chat] Tool call finished: ${toolCall.toolName} [${status}] (${durationMs}ms)`);
             },
 
             onStepFinish({ finishReason }: { finishReason: string }) {
-                console.log(`[Chat] Step finished — reason: ${finishReason}`);
+                logger.info(`[Chat] Step finished — reason: ${finishReason}`);
             },
         } as any);
     }

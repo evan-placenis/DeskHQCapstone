@@ -1,5 +1,6 @@
 import fs from 'fs/promises'; // <-- CHANGED to promises
 import path from 'path';
+import { logger } from '@/lib/logger';
 
 // Memory Leak Fix: Use a Map to store timestamps so we can clean up old runs
 const activeAgents = new Map<string, number>();
@@ -115,7 +116,7 @@ export async function dumpAgentContext(
           // We use .then() here to run this file op in the background without blocking the main logger
           fs.mkdir(reasoningDir, { recursive: true })
             .then(() => fs.appendFile(reasoningFile, extractedReasoning))
-            .catch(err => console.error("❌ Failed to append reasoning log:", err));
+            .catch(err => logger.error("❌ Failed to append reasoning log:", err));
         }
       }
       // 👆 --- END NEW BLOCK --- 👆
@@ -133,6 +134,6 @@ export async function dumpAgentContext(
     await fs.appendFile(filepath2, output);
 
   } catch (error) {
-    console.error(`❌ [Debug Logger] Failed to dump context:`, error);
+    logger.error(`❌ [Debug Logger] Failed to dump context:`, error);
   }
 }

@@ -1,5 +1,6 @@
 import { createServerClient, type CookieOptions } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
+import { logger } from '@/lib/logger'
 
 export async function proxy(request: NextRequest) {
 
@@ -11,7 +12,7 @@ export async function proxy(request: NextRequest) {
     return NextResponse.next()
   }
 
-  console.log("Middleware running:", request.nextUrl.pathname)
+  logger.info("Middleware running:", request.nextUrl.pathname)
 
   let response = NextResponse.next({
     request: {
