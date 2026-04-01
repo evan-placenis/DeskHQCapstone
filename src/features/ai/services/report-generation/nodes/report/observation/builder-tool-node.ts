@@ -3,6 +3,7 @@ import { reportTools } from "@/features/ai/tools/report-generation-report-tools"
 import { researchTools } from "@/features/ai/tools/report-generation-research-tools";
 import { ObservationState } from "../../../state/pretium/observation-state";
 import { Container } from "@/lib/container";
+import { logger } from "@/lib/logger";
 
 const SEARCH_TOOL_NAMES = ['searchInternalKnowledge', 'searchWeb'] as const;
 const SEARCH_CIRCUIT_BREAKER_THRESHOLD = 4;
@@ -113,7 +114,7 @@ export async function builderToolsNode(state: typeof ObservationState.State) {
             ? String((call.args as { query?: string }).query || 'unknown')
             : 'unknown';
           const placeholder = `[MISSING: Research Data for "${query}"]`;
-          console.log(`🔌 [BuilderTools] Circuit breaker: search attempt ${searchAttemptCount + 1} blocked. Returning placeholder.`);
+          logger.info(`🔌 [BuilderTools] Circuit breaker: search attempt ${searchAttemptCount + 1} blocked. Returning placeholder.`);
           results.push(new ToolMessage({
             tool_call_id: call.id || "undefined",
             name: call.name,
@@ -124,17 +125,17 @@ export async function builderToolsNode(state: typeof ObservationState.State) {
 
         if (isSearchTool) {
           searchAttemptCount += 1;
-          console.log(`🔍 [BuilderTools] Search attempt ${searchAttemptCount}/${SEARCH_CIRCUIT_BREAKER_THRESHOLD}: ${call.name}`);
+          logger.info(`🔍 [BuilderTools] Search attempt ${searchAttemptCount}/${SEARCH_CIRCUIT_BREAKER_THRESHOLD}: ${call.name}`);
         }
 
-        console.log(`🏗️ [BuilderTools] Executing ${call.name}`);
+        logger.info(`🏗️ [BuilderTools] Executing ${call.name}`);
 
         // 🛡️ SECURITY OVERRIDE: ALWAYS FORCE THE REPORT ID for writeSection
         // The AI often confuses Project ID, User ID, or Title for the Report ID.
         // We ALWAYS override to ensure the correct reportId from state is used.
         if (call.name === 'writeSection') {
           if (!draftReportId) {
-            console.error(`❌ [BuilderTools] CRITICAL: draftReportId is missing in state! Cannot write section.`);
+            logger.error(`❌ [BuilderTools] CRITICAL: draftReportId is missing in state! Cannot write section.`);
             results.push(new ToolMessage({
               tool_call_id: call.id || "undefined",
               name: call.name,
@@ -144,7 +145,7 @@ export async function builderToolsNode(state: typeof ObservationState.State) {
           }
           const aiReportId = call.args.reportId;
           if (aiReportId !== draftReportId) {
-            console.log(`🛡️ [Security] Overriding AI's reportId ("${aiReportId}") with state draftReportId: "${draftReportId}"`);
+            logger.info(`🛡️ [Security] Overriding AI's reportId ("${aiReportId}") with state draftReportId: "${draftReportId}"`);
           }
           call.args.reportId = draftReportId; // ALWAYS override, regardless of what AI provided
         }
@@ -156,7 +157,7 @@ export async function builderToolsNode(state: typeof ObservationState.State) {
             // Reset search circuit breaker after writing a section so next section gets fresh attempts
             if (call.name === 'writeSection') {
               searchAttemptCount = 0;
-              console.log(`✅ [BuilderTools] Section written; searchAttemptCount reset to 0.`);
+              logger.info(`✅ [BuilderTools] Section written; searchAttemptCount reset to 0.`);
             }
 
 
@@ -166,7 +167,7 @@ export async function builderToolsNode(state: typeof ObservationState.State) {
                 content: typeof output === 'string' ? output : JSON.stringify(output)
             }));
         } catch (e: any) {
-            console.error(`❌ [BuilderTools] Error in ${call.name}:`, e);
+            logger.error(`❌ [BuilderTools] Error in ${call.name}:`, e);
             results.push(new ToolMessage({
                 tool_call_id: call.id || "undefined",
                 name: call.name,
@@ -176,7 +177,7 @@ export async function builderToolsNode(state: typeof ObservationState.State) {
       } else {
         // 🛡️ Security Block
         // If the AI hallucinates a tool we didn't give it (e.g. "search_google"), block it.
-        console.warn(`⛔ [BuilderTools] Blocked unauthorized tool: '${call.name}'`);
+        logger.warn(`⛔ [BuilderTools] Blocked unauthorized tool: '${call.name}'`);
         results.push(new ToolMessage({
             tool_call_id: call.id || "undefined",
             name: call.name,

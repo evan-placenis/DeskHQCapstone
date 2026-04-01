@@ -2,6 +2,7 @@ import { tool } from '@langchain/core/tools';
 import { z } from 'zod';
 import { Container } from '@/lib/container';
 import { SupabaseClient } from '@supabase/supabase-js';
+import { logger } from '@/lib/logger';
 
 // Factory function to inject context (like projectId) into tools
 export const reportTools = ( client: SupabaseClient) => [
@@ -49,7 +50,7 @@ export const reportTools = ( client: SupabaseClient) => [
   tool(
     async ({ reportId, sectionId, heading, content, order, metadata }) => {
       try {
-        console.log(`📝 [Report Skill] Writing section: ${sectionId} (${heading}) to report ${reportId}`);
+        logger.info(`📝 [Report Skill] Writing section: ${sectionId} (${heading}) to report ${reportId}`);
 
         // Save section to database immediately
         await Container.reportService.updateSectionInReport(
@@ -73,7 +74,7 @@ export const reportTools = ( client: SupabaseClient) => [
           order: order ?? 0
         };
       } catch (error) {
-        console.error("Error writing section:", error);
+        logger.error("Error writing section:", error);
         return {
           status: 'ERROR',
           message: `Failed to write section: ${error instanceof Error ? error.message : 'Unknown error'}`

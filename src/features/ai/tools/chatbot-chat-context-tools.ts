@@ -1,5 +1,6 @@
 import { tool } from 'ai';
 import { z } from 'zod/v3';
+import { logger } from '@/lib/logger';
 
 /**
  * Parse a markdown string into a map of heading -> section content.
@@ -54,7 +55,7 @@ export function chatContextTools(fullReportMarkdown?: string) {
           .describe('Array of section heading names to retrieve (e.g. ["Executive Summary", "Site Observations"])'),
       }),
       execute: async ({ sections }) => {
-        console.log('[ChatContext] read_specific_sections called:', { sections });
+        logger.info('[ChatContext] read_specific_sections called:', { sections });
         const result: Record<string, string> = {};
         for (const requested of sections) {
           const normalized = requested.trim().toLowerCase();
@@ -92,7 +93,7 @@ export function chatContextTools(fullReportMarkdown?: string) {
         reason: z.string().optional().describe('Brief reason for reading the full report'),
       }),
       execute: async () => {
-        console.log('[ChatContext] read_full_report called, returning', fullReportMarkdown.length, 'chars');
+        logger.info('[ChatContext] read_full_report called, returning', fullReportMarkdown.length, 'chars');
         return { status: 'SUCCESS', markdown: fullReportMarkdown };
       },
     }),
@@ -139,7 +140,7 @@ export function chatContextTools(fullReportMarkdown?: string) {
           }
         }
 
-        console.log('[ChatContext] propose_structure_insertion:', { anchor, contentLen: content.length, reason });
+        logger.info('[ChatContext] propose_structure_insertion:', { anchor, contentLen: content.length, reason });
 
         return {
           status: 'SUCCESS',

@@ -1,7 +1,7 @@
-
 import { HumanMessage, AIMessage } from "@langchain/core/messages";
 import { Container } from '@/lib/container';
 import { getWorkflow } from '@/features/ai/services/report-generation/workflow';
+import { logger } from '@/lib/logger';
 import { CustomLangChainAdapter } from '@/features/ai/services/report-generation/utils/custom-adapter';
 
 import { SupabaseClient } from "@supabase/supabase-js";
@@ -33,33 +33,33 @@ async function* wrapStreamForLogging(stream: AsyncGenerator<any>) {
     
     // 1. NODE START (e.g., "Entering Builder...")
     if (event.event === "on_chain_start" && event.name && event.name !== "LangGraph") {
-      console.log(`\n🟢 [NODE START]: ${event.name}`);
+      logger.info(`\n🟢 [NODE START]: ${event.name}`);
       // console.log("   Input:", JSON.stringify(event.data.input).slice(0, 100) + "..."); 
     }
 
     // 2. NODE END (e.g., "Builder Finished")
     else if (event.event === "on_chain_end" && event.name && event.name !== "LangGraph") {
-      console.log(`🔴 [NODE END]: ${event.name}`);
+      logger.info(`🔴 [NODE END]: ${event.name}`);
       // console.log("   Output:", JSON.stringify(event.data.output).slice(0, 100) + "...");
     }
 
     // 3. TOOL CALL (e.g., "Calling writeSection...")
     else if (event.event === "on_tool_start") {
-      console.log(`🔧 [TOOL CALL]: ${event.name}`);
-      console.log(`   Args:`, JSON.stringify(event.data.input));
+      logger.info(`🔧 [TOOL CALL]: ${event.name}`);
+      logger.info(`   Args:`, JSON.stringify(event.data.input));
     }
 
     // 4. TOOL RESULT (e.g., "Saved successfully")
     else if (event.event === "on_tool_end") {
-      console.log(`✅ [TOOL RESULT]: ${event.name}`);
-      console.log(`   Result:`, typeof event.data.output === 'string' 
+      logger.info(`✅ [TOOL RESULT]: ${event.name}`);
+      logger.info(`   Result:`, typeof event.data.output === 'string' 
         ? event.data.output.slice(0, 100) 
         : JSON.stringify(event.data.output).slice(0, 100));
     }
 
     // 5. CUSTOM EVENTS (If you emit any)
     else if (event.event === "on_custom_event") {
-      console.log(`📢 [EVENT]: ${event.name}`, event.data);
+      logger.info(`📢 [EVENT]: ${event.name}`, event.data);
     }
 
     // 🚀 PASS-THROUGH: Yield the event so the Frontend still gets it!
@@ -97,8 +97,16 @@ export class ReportOrchestrator {
       currentSection: "init",
     };
 
-    // 3. Select Graph from user's choice (fallback to "simple" only when undefined)
-    const workflowGraph = getWorkflow(workflowType ?? 'simple');
+    // 3. Select graph (default observation — only workflow registered)
+    const workflowGraph = getWorkflow(workflowType ?? "observation");
+    if (!workflowGraph) {
+      return new Response(
+        JSON.stringify({
+          error: `Workflow type '${workflowType ?? "observation"}' is not available.`,
+        }),
+        { status: 400, headers: { "Content-Type": "application/json" } }
+      );
+    }
 
     // 4. Start Streaming (Logic decoupled from Response format)
     // Use .streamEvents() for granular token updates if your UI expects typing

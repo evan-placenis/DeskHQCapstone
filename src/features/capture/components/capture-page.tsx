@@ -12,6 +12,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Project } from "@/lib/types";
+import { logger } from "@/lib/logger";
 
 interface CapturePageProps {
   onClose: () => void;
@@ -69,7 +70,7 @@ export function CapturePage({ onClose, onSave, onCreateProject, projects }: Capt
         }
         setCameraError(null);
       } catch (err) {
-        console.error("Error accessing camera:", err);
+        logger.error("Error accessing camera:", err);
         if (err instanceof Error) {
           if (err.name === "NotAllowedError") {
             setCameraError("Camera permission denied. Please allow camera access in your browser settings.");

@@ -2,6 +2,7 @@ import { SystemMessage, HumanMessage } from "@langchain/core/messages";
 import { ModelStrategy } from "../../../models/model-strategy";
 import { ObservationState } from "../../../state/pretium/observation-state";
 import { Container } from "@/lib/container";
+import { logger } from "@/lib/logger";
 import { dumpAgentContext } from "../../../utils/agent-logger";
 import * as fs from 'fs';
 import * as path from 'path';
@@ -17,10 +18,10 @@ export async function synthesisBuilderNode(state: typeof ObservationState.State)
     heliconeInput,
   } = state;
   if (!reportPlan) {
-    console.error("❌ [Synthesis] No report plan found!");
+    logger.error("❌ [Synthesis] No report plan found!");
     return { next_step: "FINISH" };
   }
-  console.log("🧩 [Synthesis] Checking for missing report sections...");
+  logger.info("🧩 [Synthesis] Checking for missing report sections...");
 
 
   // 1. IDENTIFY GAPS: We look at the Master Plan and see what the Builder didn't write.
@@ -30,11 +31,11 @@ export async function synthesisBuilderNode(state: typeof ObservationState.State)
   );
 
   if (sectionsToWrite.length === 0) {
-    console.log("✅ [Synthesis] No gaps found. Report is complete.");
+    logger.info("✅ [Synthesis] No gaps found. Report is complete.");
     return { next_step: "FINISH" };
   }
 
-  console.log(`📝 [Synthesis] Generating: ${sectionsToWrite.map(s => s.title).join(", ")}`);
+  logger.info(`📝 [Synthesis] Generating: ${sectionsToWrite.map(s => s.title).join(", ")}`);
 
   // 2. PREPARE CONTEXT: The LLM needs to read the DETAILED observations to write the high-level summary.
   // CRITICAL: This reads from MEMORY (State). If sectionDrafts is empty here, the Summary will be bad.
@@ -98,7 +99,7 @@ export async function synthesisBuilderNode(state: typeof ObservationState.State)
     // RETRY LOOP FOR CURRENT SECTION
     while (!success && attempts < MAX_RETRIES) {
       attempts++;
-      console.log(`✍️ [Synthesis] Writing "${section.title}"...`);
+      logger.info(`✍️ [Synthesis] Writing "${section.title}"...`);
       try {
         // 📝 Log the INPUT (The prompt + any RAG history it is carrying)
         const taskName = `SynthesisBuilder_Task_${section.title}`;
@@ -135,21 +136,21 @@ export async function synthesisBuilderNode(state: typeof ObservationState.State)
               safeOrder, // Use the correct order from the plan
               freshClient
             );
-            console.log(`💾 [Synthesis] Saved "${section.title}" to DB.`);
+            logger.info(`💾 [Synthesis] Saved "${section.title}" to DB.`);
           } catch (saveErr) {
-            console.error(`❌ [Synthesis] Failed to save "${section.title}" to DB:`, saveErr);
+            logger.error(`❌ [Synthesis] Failed to save "${section.title}" to DB:`, saveErr);
           }
         }
 
       } catch (err) {
         // 🛑 FALLBACK: Retry
-        console.error(`❌ [Synthesis] Failed to write "${section.title}":`, err);
+        logger.error(`❌ [Synthesis] Failed to write "${section.title}":`, err);
         // ⏳ BACKOFF: Wait before retrying (1s, 2s, 3s)
         if (attempts < MAX_RETRIES) {
           await new Promise(resolve => setTimeout(resolve, attempts * 1000));
         } else {
           // ❌ FINAL FAIL
-          console.error(`❌ [Synthesis] Failed after ${MAX_RETRIES} attempts.`);
+          logger.error(`❌ [Synthesis] Failed after ${MAX_RETRIES} attempts.`);
           newContent[section.title] = "Error generating section. Please rewrite manually.";
         }
       }
@@ -168,7 +169,7 @@ export async function synthesisBuilderNode(state: typeof ObservationState.State)
     }
   });
 
-  console.log("✅ [Synthesis] Report assembled in correct order.");
+  logger.info("✅ [Synthesis] Report assembled in correct order.");
 
   // FINISH
   // Merge the new sections into the main draft list and end the graph.

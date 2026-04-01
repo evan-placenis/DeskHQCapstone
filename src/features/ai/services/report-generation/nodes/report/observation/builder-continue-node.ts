@@ -2,6 +2,7 @@ import { AIMessage, ToolMessage, HumanMessage, BaseMessage } from "@langchain/co
 import { Container } from "@/lib/container";
 import { dumpAgentContext } from "../../../utils/agent-logger";
 import { getFlattenedTasks } from "./builder-node";
+import { logger } from "@/lib/logger";
 
 export async function builderContinueNode(state: any) {
     const { 
@@ -23,7 +24,7 @@ export async function builderContinueNode(state: any) {
     // If done or out of bounds, go to Reviewer
     if (!currentTask) return { next_step: 'reviewer' };
   
-    console.log(`🔍 [BuilderContinue] Analyzing result for Task ${currentSectionIndex + 1}: "${currentTask.title}"...`);
+    logger.info(`🔍 [BuilderContinue] Analyzing result for Task ${currentSectionIndex + 1}: "${currentTask.title}"...`);
     const taskName = `BuilderContinue_Task_${currentSectionIndex + 1}`;
     dumpAgentContext(taskName, messages, 'INPUT', reportTitle || '');
   
@@ -58,7 +59,7 @@ export async function builderContinueNode(state: any) {
       // Check if we *also* wrote a section in this turn (rare but possible)
       const wroteSomething = currentTurnMessages.some((m: any) => m.name === 'writeSection');
       if (!wroteSomething) {
-        console.log(`🧠 [BuilderContinue] Research detected. Returning to Builder to process findings.`);
+        logger.info(`🧠 [BuilderContinue] Research detected. Returning to Builder to process findings.`);
         return { 
           next_step: 'builder',
           builderRetries: 0 // Reset retries so research doesn't count against us
@@ -86,11 +87,11 @@ export async function builderContinueNode(state: any) {
           // Capture full content for Synthesis node (reads entire report before writing summaries)
           newDraftContent = content.content ?? "Section saved.";
           
-          console.log(`✅ [BuilderContinue] Verified Tool Save (ID: ${content.sectionId}).`);
+          logger.info(`✅ [BuilderContinue] Verified Tool Save (ID: ${content.sectionId}).`);
           break; // Found our success!
         }
       } catch (e) {
-        console.warn("⚠️ Tool output parsing failed", e);
+        logger.warn("⚠️ Tool output parsing failed", e);
       }
     }
   
@@ -107,7 +108,7 @@ export async function builderContinueNode(state: any) {
          
          // Heuristic: If it wrote a decent amount of text, assume it tried to write the report
          if (text.length > 50) {
-           console.log(`⚠️ [BuilderContinue] AI wrote raw text instead of using tool. Saving as fallback...`);
+           logger.info(`⚠️ [BuilderContinue] AI wrote raw text instead of using tool. Saving as fallback...`);
            newDraftContent = text;
   
            const safeOrder = Math.floor(Number(currentTask.reportOrder));
@@ -123,9 +124,9 @@ export async function builderContinueNode(state: any) {
                freshClient
              );
              success = true;
-             console.log("💾 Fallback Saved to DB.");
+             logger.info("💾 Fallback Saved to DB.");
            } catch (err) {
-             console.error("❌ Fallback save failed:", err);
+             logger.error("❌ Fallback save failed:", err);
            }
          }
       }
@@ -145,7 +146,7 @@ export async function builderContinueNode(state: any) {
           [currentTask.title]: newDraftContent 
       };
   
-      console.log(`🚀 [BuilderContinue] Task Complete. Moving to Index ${nextIndex}`);
+      logger.info(`🚀 [BuilderContinue] Task Complete. Moving to Index ${nextIndex}`);
   
       return {
         sectionDrafts: updatedDrafts, 
@@ -160,7 +161,7 @@ export async function builderContinueNode(state: any) {
       const retryCount = builderRetries || 0;
       
       if (retryCount >= 2) {
-        console.error(`❌ [BuilderContinue] Failed task "${currentTask.title}" 3 times. Skipping.`);
+        logger.error(`❌ [BuilderContinue] Failed task "${currentTask.title}" 3 times. Skipping.`);
         return {
           currentSectionIndex: currentSectionIndex + 1, // Skip task
           builderRetries: 0,
@@ -168,7 +169,7 @@ export async function builderContinueNode(state: any) {
         };
       }
   
-      console.log(`🔄 [BuilderContinue] Task failed. Retrying (Attempt ${retryCount + 1})...`);
+      logger.info(`🔄 [BuilderContinue] Task failed. Retrying (Attempt ${retryCount + 1})...`);
       
       const feedbackMessage = new HumanMessage({
         content: `SYSTEM ERROR: Section not saved. 

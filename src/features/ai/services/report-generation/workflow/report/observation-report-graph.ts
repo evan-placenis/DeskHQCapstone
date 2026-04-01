@@ -14,6 +14,7 @@ import { fetchContextNode } from "../../nodes/report/observation/fetch-context-n
 import { sharedCheckpointer } from "../checkpointer"; 
 
 import { builderToolsNode } from "../../nodes/report/observation/builder-tool-node";
+import { logger } from "@/lib/logger";
 
 const workflow = new StateGraph(ObservationState)
   .addNode("fetch_context", fetchContextNode)
@@ -58,7 +59,7 @@ const workflow = new StateGraph(ObservationState)
   .addConditionalEdges("builder_tools", (state) => {
     const lastMsg = state.messages[state.messages.length - 1];
     if (lastMsg instanceof ToolMessage && lastMsg.name !== 'writeSection') {
-      console.log(`🧠 [Router] Research detected (${lastMsg.name}). Returning to Builder.`);
+      logger.info(`🧠 [Router] Research detected (${lastMsg.name}). Returning to Builder.`);
       return 'builder';
     }
     return 'builder_continue';

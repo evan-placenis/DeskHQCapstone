@@ -1,4 +1,5 @@
 import { Container } from "@/lib/container";
+import { logger } from "@/lib/logger";
 
 /**
  * Characters to accumulate before flushing a broadcast.
@@ -33,7 +34,7 @@ export function createNodeBroadcaster(projectId: string) {
     buffer = '';
     const channel = supabase.channel(channelName);
     await channel.httpSend('agent_thought', { chunk: toSend, projectId }).catch((err: unknown) => {
-      console.warn('[NodeBroadcast] agent_thought failed:', err);
+      logger.warn('[NodeBroadcast] agent_thought failed:', err);
     });
   }
 

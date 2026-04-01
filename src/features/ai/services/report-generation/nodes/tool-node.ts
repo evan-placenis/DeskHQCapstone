@@ -3,6 +3,7 @@ import { reportTools } from "@/features/ai/tools/report-generation-report-tools"
 import { researchTools } from "@/features/ai/tools/report-generation-research-tools";
 import { visionTools } from "@/features/ai/tools/report-generation-vision-tools";
 import { planningTools } from "@/features/ai/tools/report-generation-planning-tool";
+import { logger } from "@/lib/logger";
 
 export async function toolNode(state: any) {
   const { messages, projectId, userId, client, selectedImageIds } = state;
@@ -35,7 +36,7 @@ export async function toolNode(state: any) {
       const tool = allToolsMap[call.name]; // <--- Simple lookup
       
       if (tool) {
-        console.log(`🛠️ ToolNode: Executing ${call.name}`);
+        logger.info(`🛠️ ToolNode: Executing ${call.name}`);
         try {
           // The tool logic lives in your skills file. We just invoke it here.
           const output = await tool.invoke(call.args);
@@ -53,7 +54,7 @@ export async function toolNode(state: any) {
           }));
         }
       } else {
-        console.error(`⚠️ Tool ${call.name} not found in registry.`);
+        logger.error(`⚠️ Tool ${call.name} not found in registry.`);
         // Optional: Return an error to the LLM so it knows it hallucinated
         results.push(new ToolMessage({
             tool_call_id: call.id,

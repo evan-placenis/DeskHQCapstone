@@ -7,6 +7,7 @@ import { ObservationState } from "../../../state/pretium/observation-state";
 import { dumpAgentContext } from "../../../utils/agent-logger";
 import { extractTextContent } from "../../../utils/streaming-adapter";
 import { createNodeBroadcaster } from "../../../utils/node-broadcast";
+import { logger } from "@/lib/logger";
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -30,7 +31,7 @@ export async function builderNode(state: typeof ObservationState.State) {
   } = state;
   // Safety Checks & Identify Task
   if (!reportPlan || !reportPlan.sections) {
-    console.error('❌ Builder: No report plan found!');
+    logger.error('❌ Builder: No report plan found!');
     return { next_step: 'FINISH', messages: [] };
   }
   const freshClient = Container.adminClient;
@@ -41,7 +42,7 @@ export async function builderNode(state: typeof ObservationState.State) {
   const tasks = getFlattenedTasks(reportPlan.sections);
   const currentTask = tasks[currentSectionIndex];
   if (!currentTask) return { next_step: 'FINISH', messages: [] };
-  console.log(`📝 Builder: Starting Task ${currentSectionIndex + 1}/${tasks.length}: ${currentTask.title}`);
+  logger.info(`📝 Builder: Starting Task ${currentSectionIndex + 1}/${tasks.length}: ${currentTask.title}`);
 
   // DETERMINE TASK STATE FIRST
   const lastMsg = messages.length > 0 ? messages[messages.length - 1] : null;
@@ -59,7 +60,7 @@ export async function builderNode(state: typeof ObservationState.State) {
   // 2. a) PREPARE EVIDENCE (Only if NEW task)
   // ==========================================
   if (isNewTask) {
-    console.log(`📝 Builder: Starting NEW Task ${currentSectionIndex + 1}/${tasks.length}: ${currentTask.title}`);
+    logger.info(`📝 Builder: Starting NEW Task ${currentSectionIndex + 1}/${tasks.length}: ${currentTask.title}`);
     const contentParts: any[] = [];
 
     // A. Add Task Text
@@ -82,12 +83,15 @@ export async function builderNode(state: typeof ObservationState.State) {
     // ==========================================
     // 2. b) RESUMING EXISTING TASK AFTER A TOOL CALL
     // ==========================================
-    console.log(`🔄 Builder: Resuming Task ${currentSectionIndex + 1} (Skipping Image Downloads)`);
+    logger.info(`🔄 Builder: Resuming Task ${currentSectionIndex + 1} (Skipping Image Downloads)`);
     
     // The images are already downloaded and stored in the global history array! We just find the last HumanMessage and reuse it.
     const lastHumanMsg = [...messages].reverse().find(m => m.type === 'human' || m._getType?.() === 'human');
     
-    if (!lastHumanMsg) throw new Error("Critical: Lost the HumanMessage task prompt in state!");
+    if (!lastHumanMsg) {
+      logger.error("Builder: Lost the HumanMessage task prompt in state");
+      return { next_step: "FINISH", messages: [] };
+    }
     taskPrompt = lastHumanMsg as BaseMessage;
   }
 
@@ -205,7 +209,7 @@ export async function builderNode(state: typeof ObservationState.State) {
           `${reasoningText}\n\n\n`;
         await fs.promises.appendFile(path.join(reasoningDir, 'all_reasoning.txt'), entry);
       } catch (logErr) {
-        console.warn('[Builder] Could not write Phase 1 reasoning log:', logErr);
+        logger.warn('[Builder] Could not write Phase 1 reasoning log:', logErr);
       }
     }
   }
@@ -343,7 +347,7 @@ async function buildImageEvidenceContent(
   }
 
   if (processingMode === 'TEXT_ONLY') {
-    console.log("📝 [Builder] Using Text Summaries (Skipping Image Download)");
+    logger.info("📝 [Builder] Using Text Summaries (Skipping Image Download)");
     let evidenceBlock = `--- VISUAL EVIDENCE SUMMARIES (${activeImages.length} Photos) ---\n The following images document the conditions. Use these descriptions to write the section.\n\n`;
     activeImages.forEach(img => {
       const description = img.aiDescription || "No detailed analysis available.";
@@ -357,7 +361,7 @@ async function buildImageEvidenceContent(
     return [{ type: "text", text: evidenceBlock }];
   }
 
-  console.log("📝 [Builder] Downloading Images for Multimodal Analysis...");
+  logger.info("📝 [Builder] Downloading Images for Multimodal Analysis...");
   const parts: any[] = [
     { type: "text", text: `--- VISUAL EVIDENCE (${activeImages.length} Photos) ---\nAnalyze these images directly to write the section.` }
   ];
@@ -386,7 +390,7 @@ async function urlToBase64(url: string): Promise<string> {
     const mimeType = response.headers.get('content-type') || 'image/jpeg';
     return `data:${mimeType};base64,${base64}`;
   } catch (error) {
-    console.error("❌ Failed to convert image to base64:", error);
+    logger.error("❌ Failed to convert image to base64:", error);
     return ""; // Return empty string on failure to prevent crash
   }
 }

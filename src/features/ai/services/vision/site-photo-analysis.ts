@@ -7,6 +7,7 @@ import { ModelStrategy } from "../models/model-strategy";
 import pLimit from "p-limit";
 import type { AiSdkChatProvider } from "@/lib/ai-providers";
 import { DEFAULT_AI_SDK_CHAT_PROVIDER } from "@/lib/ai-providers";
+import { logger } from "@/lib/logger";
 
 const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -81,13 +82,13 @@ export class SitePhotoAgent implements VisionStrategy<SitePhotoResult> {
 
         if (isRetryable && attempt < MAX_RETRIES) {
           const delay = attempt * 500;
-          console.warn(
+          logger.warn(
             `[SitePhotoAgent] ⚠️ Attempt ${attempt} failed for image ${imageId} (${err.status ?? "error"}). Retrying in ${delay}ms...`
           );
           await wait(delay);
           continue;
         }
-        console.error(
+        logger.error(
           `[SitePhotoAgent] ❌ Final Error analyzing image ${imageId}:`,
           error
         );

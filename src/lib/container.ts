@@ -28,10 +28,11 @@ import { SitePhotoAgent } from "@/features/ai/services/vision/site-photo-analysi
 
 import { TriggerJobQueue } from "@/features/reports/services/trigger/trigger-job-queue";
 import { createClient, SupabaseClient } from "@supabase/supabase-js";
+import { logger } from "@/lib/logger";
 
 // 🛑 ADD THIS DEBUG CHECK
 if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
-  console.error("🚨 CRITICAL: SUPABASE_SERVICE_ROLE_KEY is missing from process.env!");
+  logger.error("🚨 CRITICAL: SUPABASE_SERVICE_ROLE_KEY is missing from process.env!");
 }
 
 export class Container {

@@ -1,8 +1,9 @@
+import { logger } from "@/lib/logger";
 import { ObservationState } from "../../../state/pretium/observation-state";
 
 export const fetchContextNode = async (state: typeof ObservationState.State) => {
   const { selectedImageIds, client } = state;
-  console.log("🔄 [FetchNode] Hydrating state for images:", selectedImageIds);
+  logger.info("🔄 [FetchNode] Hydrating state for images:", selectedImageIds);
 
   if (!selectedImageIds || selectedImageIds.length === 0) {
      return { 
@@ -17,14 +18,15 @@ export const fetchContextNode = async (state: typeof ObservationState.State) => 
     .in('id', selectedImageIds);
 
   if (error) {
-    throw new Error(`Failed to fetch context: ${error.message}`);
+    logger.error("Failed to fetch project images for context:", error.message);
+    return { imageList: [] };
   }
 
   // 2. Generate Signed URLs (Parallel)
   // We cannot just map() because createSignedUrl is async. 
   // We use Promise.all to do them all at once.
   
-  const enrichedImages = await Promise.all(images.map(async (img: any) => {
+  const enrichedImages = await Promise.all((images ?? []).map(async (img: any) => {
     
     const BUCKET_NAME = 'project-images'; 
     const filePath = img.storage_path; // Adjust based on your DB schema
@@ -43,10 +45,10 @@ export const fetchContextNode = async (state: typeof ObservationState.State) => 
             if (signData?.signedUrl) {
                 signedUrl = signData.signedUrl;
             } else {
-                console.warn(`⚠️ [FetchNode] Failed to sign image ${img.id}:`, signError);
+                logger.warn(`⚠️ [FetchNode] Failed to sign image ${img.id}:`, signError);
             }
         } catch (err) {
-            console.warn(`⚠️ [FetchNode] Exception signing image ${img.id}`, err);
+            logger.warn(`⚠️ [FetchNode] Exception signing image ${img.id}`, err);
         }
     }
 
@@ -71,7 +73,7 @@ export const fetchContextNode = async (state: typeof ObservationState.State) => 
   //   userNote: img.description || "" // This is the user's manual caption
   // }));
 
-  console.log(`✅ [FetchNode] Loaded ${enrichedImages.length} images into State.`);
+  logger.info(`✅ [FetchNode] Loaded ${enrichedImages.length} images into State.`);
   
   // 3. Return the update (this merges into State automatically)
   return {

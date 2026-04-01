@@ -37,11 +37,11 @@ function decodeAudioData(ctx: AudioContext, data: ArrayBuffer): Promise<AudioBuf
   });
 }
 
-function concatAudioBuffers(buffers: AudioBuffer[]): AudioBuffer {
+function concatAudioBuffers(buffers: AudioBuffer[]): AudioBuffer | null {
   const sr = buffers[0].sampleRate;
   const ch = buffers[0].numberOfChannels;
   if (buffers.some((b) => b.sampleRate !== sr || b.numberOfChannels !== ch)) {
-    throw new Error("Audio buffer format mismatch");
+    return null;
   }
   const total = buffers.reduce((n, b) => n + b.length, 0);
   const out = new AudioBuffer({ length: total, numberOfChannels: ch, sampleRate: sr });
@@ -138,6 +138,7 @@ export async function flattenMultiPartAudioBlob(
 
   try {
     const merged = concatAudioBuffers(buffers);
+    if (!merged) return new Blob(segments, { type: mimeHint });
     const encoded = await encodeBufferToBlob(merged);
     return encoded && encoded.size > 0 ? encoded : new Blob(segments, { type: mimeHint });
   } catch {

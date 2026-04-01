@@ -175,12 +175,15 @@ If the user asks for a specific format (e.g. bullet points, report section), str
   ): Promise<{ images: unknown[]; audio: { public_url: string; storage_path: string } | null }> {
     const session = await this.captureSessionRepo.getById(sessionId, client);
     if (!session) {
-      throw new Error("Capture session not found");
+      throw new ServiceError("Capture session not found", 404);
     }
 
     const projectId = session.project_id;
     if (!projectId) {
-      throw new Error("Capture session not finalized. Call finalize with projectId or createProject first.");
+      throw new ServiceError(
+        "Capture session not finalized. Call finalize with projectId or createProject first.",
+        400
+      );
     }
 
     const organizationId = session.organization_id;

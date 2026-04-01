@@ -6,6 +6,7 @@ import { Camera } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/app/context/auth-context";
 import { ROUTES } from "@/app/pages/config/routes";
+import { logger } from "@/lib/logger";
 import { captureIDB } from "../services/capture-idb";
 import {
   CAPTURE_RECOVERY_ACTION_KEY,
@@ -59,7 +60,7 @@ export function CaptureRecoveryGate() {
         setHasPendingUpload(!!session.projectId);
         setOpen(true);
       } catch (e) {
-        console.warn("Capture recovery gate: IDB check failed:", e);
+        logger.warn("Capture recovery gate: IDB check failed:", e);
       }
     })();
 
