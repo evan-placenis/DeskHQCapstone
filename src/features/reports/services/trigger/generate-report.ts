@@ -74,6 +74,7 @@ export const generateReportTask = task({
     factor: 2,
   },
   run: async (payload: TriggerPayload, { ctx }) => {
+    
     // 1. Setup Clients
     // Create a fresh Supabase client to avoid Container singleton issues in Trigger.dev
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;

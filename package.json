@@ -112,6 +112,7 @@
   "devDependencies": {
     "@tailwindcss/postcss": "^4.0.0",
     "@tailwindcss/typography": "^0.5.19",
+    "@trigger.dev/build": "4.4.3",
     "@types/diff": "^7.0.2",
     "@types/diff-match-patch": "^1.0.36",
     "@types/estree": "^1.0.8",
