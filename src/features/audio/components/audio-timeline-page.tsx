@@ -97,6 +97,15 @@ function formatClockTime(sessionStart: Date, offsetSeconds: number) {
     .replace(" ", " ");
 }
 
+/** Only trust `HTMLMediaElement.duration` — never buffered/seekable (those are loaded ranges, not full length). */
+function readStrictMediaDurationSeconds(audio: HTMLAudioElement): number {
+  const d = audio.duration;
+  if (Number.isFinite(d) && d > 0 && d !== Number.POSITIVE_INFINITY) {
+    return d;
+  }
+  return 0;
+}
+
 type TimelineItem =
   | { kind: "segment"; segment: TranscriptSegment; attachedPhotos: TimelinePhoto[] }
   | { kind: "photo"; photo: TimelinePhoto };
@@ -147,6 +156,25 @@ export function AudioTimelinePage({
   const projectName = projectId ? `Project #${projectId}` : "Audio Timeline";
   const audioUrl = sessionData?.audioUrl ?? undefined;
   const audioDurationSeconds = sessionData?.audioDurationSeconds ?? undefined;
+  const apiDurationSec = useMemo(() => {
+    if (audioDurationSeconds == null) return 0;
+    const n = Number(audioDurationSeconds);
+    return Number.isFinite(n) && n > 0 ? n : 0;
+  }, [audioDurationSeconds]);
+
+  /** End of last transcript segment — lower bound on clip length when the browser lies about duration. */
+  const transcriptEndHintSec = useMemo(() => {
+    const segs = sessionData?.segments;
+    if (!segs?.length) return 0;
+    let maxMs = 0;
+    for (const s of segs) {
+      if (typeof s.timestampMs === "number" && Number.isFinite(s.timestampMs)) {
+        maxMs = Math.max(maxMs, s.timestampMs);
+      }
+    }
+    return maxMs > 0 ? maxMs / 1000 + 0.5 : 0;
+  }, [sessionData?.segments]);
+
   const photos = sessionData?.photos;
   const segments: TranscriptSegment[] | undefined = useMemo(() => {
     if (!sessionData || sessionData.segments.length === 0) return undefined;
@@ -172,40 +200,64 @@ export function AudioTimelinePage({
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
-  const [duration, setDuration] = useState(0);
+  /** From `audio.duration` only (full file), when the browser reports it truthfully. */
+  const [strictMediaDurationSec, setStrictMediaDurationSec] = useState(0);
+
+  const totalDuration = Math.max(
+    apiDurationSec,
+    strictMediaDurationSec,
+    transcriptEndHintSec
+  );
+
+  /** Avoid >100% fill when `currentTime` rounds above stored total; grow denom if total was underestimated. */
+  const progressDenominator =
+    totalDuration > 0 ? Math.max(totalDuration, currentTime) : 0;
+  const progressFillPct =
+    progressDenominator > 0
+      ? Math.min(100, (currentTime / progressDenominator) * 100)
+      : 0;
 
   useEffect(() => {
-    const secs = audioDurationSeconds != null ? Number(audioDurationSeconds) : NaN;
-    if (Number.isFinite(secs) && secs > 0) setDuration(secs);
-  }, [audioDurationSeconds]);
+    if (!audioUrl) {
+      setStrictMediaDurationSec(0);
+      setCurrentTime(0);
+      return;
+    }
 
-  useEffect(() => {
+    setStrictMediaDurationSec(0);
+    setCurrentTime(0);
+
     const audio = audioRef.current;
     if (!audio) return;
 
-    const syncDuration = () => {
-      if (Number.isFinite(audio.duration)) setDuration(audio.duration);
+    const pumpStrict = () => {
+      const el = audioRef.current;
+      if (!el) return;
+      const d = readStrictMediaDurationSeconds(el);
+      if (d > 0) setStrictMediaDurationSec((prev) => Math.max(prev, d));
     };
-    const onLoadedMetadata = () => syncDuration();
-    const onTimeUpdate = () => setCurrentTime(audio.currentTime);
+
+    const onTimeUpdate = () => {
+      setCurrentTime(audio.currentTime);
+    };
+    const onLoadedMetadata = () => pumpStrict();
+    const onDurationChange = () => pumpStrict();
     const onEnded = () => setIsPlaying(false);
 
-    audio.addEventListener("loadedmetadata", onLoadedMetadata);
     audio.addEventListener("timeupdate", onTimeUpdate);
+    audio.addEventListener("loadedmetadata", onLoadedMetadata);
+    audio.addEventListener("durationchange", onDurationChange);
     audio.addEventListener("ended", onEnded);
 
     if (audio.readyState >= 1) {
-      syncDuration();
       setCurrentTime(audio.currentTime);
+      pumpStrict();
     }
 
-    const onDurationChange = () => syncDuration();
-    audio.addEventListener("durationchange", onDurationChange);
-
     return () => {
+      audio.removeEventListener("timeupdate", onTimeUpdate);
       audio.removeEventListener("loadedmetadata", onLoadedMetadata);
       audio.removeEventListener("durationchange", onDurationChange);
-      audio.removeEventListener("timeupdate", onTimeUpdate);
       audio.removeEventListener("ended", onEnded);
     };
   }, [audioUrl]);
@@ -260,7 +312,8 @@ export function AudioTimelinePage({
       return;
     }
     if (audio.paused) {
-      if (Number.isFinite(audio.duration)) setDuration(audio.duration);
+      const d = readStrictMediaDurationSeconds(audio);
+      if (d > 0) setStrictMediaDurationSec((prev) => Math.max(prev, d));
       audio.play().catch(() => { });
       setIsPlaying(true);
     } else {
@@ -293,7 +346,12 @@ export function AudioTimelinePage({
         </div>
       )}
       {audioUrl && (
-        <audio ref={audioRef} src={audioUrl} preload="metadata" className="hidden" />
+        <audio
+          ref={audioRef}
+          src={audioUrl}
+          preload="auto"
+          className="hidden"
+        />
       )}
       <AppHeader
         currentPage="dashboard"
@@ -336,7 +394,7 @@ export function AudioTimelinePage({
                 className="w-full bg-theme-action-primary hover:bg-theme-action-primary-hover rounded-lg"
                 size="sm"
                 onClick={togglePlay}
-                disabled={!audioUrl && duration === 0}
+                disabled={!audioUrl}
               >
                 {isPlaying ? <Pause className="w-4 h-4 mr-1.5" /> : <Play className="w-4 h-4 mr-1.5" />}
                 {isPlaying ? "Pause" : "Play"} Audio
@@ -346,13 +404,15 @@ export function AudioTimelinePage({
                   <div
                     className="absolute inset-y-0 left-0 bg-theme-action-primary transition-[width] duration-100"
                     style={{
-                      width: duration > 0 ? `${(currentTime / duration) * 100}%` : "0%",
+                      width: `${progressFillPct}%`,
                     }}
                   />
-                  {duration > 0 && (
+                  {progressDenominator > 0 && (
                     <div
                       className="absolute top-0 bottom-0 w-0.5 bg-theme-action-primary shadow-sm pointer-events-none"
-                      style={{ left: `${(currentTime / duration) * 100}%` }}
+                      style={{
+                        left: `${progressFillPct}%`,
+                      }}
                       aria-hidden
                     />
                   )}
@@ -360,9 +420,11 @@ export function AudioTimelinePage({
                 <div className="flex justify-between text-[10px] text-slate-500">
                   <span>{formatDuration(currentTime)}</span>
                   <span>
-                    {Number.isFinite(duration) && duration > 0
-                      ? formatDuration(duration)
-                      : "0:00"}
+                    {totalDuration > 0
+                      ? formatDuration(totalDuration)
+                      : audioUrl
+                        ? "--:--"
+                        : "0:00"}
                   </span>
                 </div>
               </div>
