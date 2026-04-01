@@ -1,6 +1,6 @@
-import { ReportViewerPage } from "@/features/reports/components/report-viewer-page";
+import { ReportPage } from "@/features/reports/components/report-page";
 
 export default function Page() {
-  return <ReportViewerPage />;
+  return <ReportPage />;
 }
 

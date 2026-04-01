@@ -1,5 +1,4 @@
-import type { Editor } from '@tiptap/react';
-
+import type { Editor } from "@tiptap/react";
 
 export interface OutlineItem {
   level: number;
@@ -25,7 +24,7 @@ export interface ActiveSectionInfo {
 export function extractOutline(editor: Editor): OutlineItem[] {
   const entries: OutlineItem[] = [];
   editor.state.doc.descendants((node, pos) => {
-    if (node.type.name === 'heading') {
+    if (node.type.name === "heading") {
       const level = node.attrs.level as number;
       const text = node.textContent;
       if (text.trim()) {
@@ -40,9 +39,7 @@ export function extractOutline(editor: Editor): OutlineItem[] {
  * Serialize an outline into a plain-text string suitable for a system prompt.
  */
 export function outlineToString(entries: OutlineItem[]): string {
-  return entries
-    .map((e) => `${'#'.repeat(e.level)} ${e.text}`)
-    .join('\n');
+  return entries.map((e) => `${"#".repeat(e.level)} ${e.text}`).join("\n");
 }
 
 /**
@@ -84,7 +81,7 @@ export function extractActiveSection(editor: Editor): ActiveSectionInfo | null {
   // Slice the document between the heading and the section end, then serialize to markdown
   try {
     const slice = doc.slice(active.pos, sectionEnd);
-    const markdown: string = (editor as any).markdown?.serialize?.({ type: 'doc', content: slice.content.toJSON() }) ?? '';
+    const markdown: string = (editor as any).markdown?.serialize?.({ type: "doc", content: slice.content.toJSON() }) ?? "";
     return {
       heading: active.text,
       level: active.level,
@@ -99,10 +96,7 @@ export function extractActiveSection(editor: Editor): ActiveSectionInfo | null {
  * Extract the markdown content for specific sections by heading name.
  * Used by the client-side `read_specific_sections` tool.
  */
-export function extractSectionsByHeading(
-  editor: Editor,
-  headings: string[]
-): Record<string, string> {
+export function extractSectionsByHeading(editor: Editor, headings: string[]): Record<string, string> {
   const outline = extractOutline(editor);
   const doc = editor.state.doc;
   const result: Record<string, string> = {};
@@ -125,10 +119,10 @@ export function extractSectionsByHeading(
 
     try {
       const slice = doc.slice(entry.pos, sectionEnd);
-      const markdown: string = (editor as any).markdown?.serialize?.({ type: 'doc', content: slice.content.toJSON() }) ?? '';
+      const markdown: string = (editor as any).markdown?.serialize?.({ type: "doc", content: slice.content.toJSON() }) ?? "";
       result[entry.text] = markdown;
     } catch {
-      result[entry.text] = '[Error extracting section]';
+      result[entry.text] = "[Error extracting section]";
     }
   }
 
@@ -137,8 +131,8 @@ export function extractSectionsByHeading(
 
 /** Anchor for structure-based insertion or replacement (no selection) */
 export type InsertAnchor =
-  | 'start_of_report'
-  | 'end_of_report'
+  | "start_of_report"
+  | "end_of_report"
   | { afterHeading: string }
   | { replaceSection: string };
 
@@ -147,22 +141,19 @@ export type InsertAnchor =
  * Used when the AI proposes insertion (e.g. intro at start, conclusion at end, section after X).
  * Returns null for replaceSection anchors (use getRangeForReplaceSection instead).
  */
-export function getPositionForInsertAnchor(
-  editor: Editor,
-  anchor: InsertAnchor
-): number | null {
+export function getPositionForInsertAnchor(editor: Editor, anchor: InsertAnchor): number | null {
   const doc = editor.state.doc;
-  if (anchor === 'start_of_report') {
+  if (anchor === "start_of_report") {
     return 0;
   }
-  if (anchor === 'end_of_report') {
+  if (anchor === "end_of_report") {
     return doc.content.size;
   }
-  if (typeof anchor === 'object' && 'replaceSection' in anchor) {
+  if (typeof anchor === "object" && "replaceSection" in anchor) {
     return null; // Use getRangeForReplaceSection for replace operations
   }
   const outline = extractOutline(editor);
-  const targetHeading = typeof anchor === 'object' && 'afterHeading' in anchor ? anchor.afterHeading : '';
+  const targetHeading = typeof anchor === "object" && "afterHeading" in anchor ? anchor.afterHeading : "";
   const normalizedTarget = targetHeading.trim().toLowerCase();
   for (let i = 0; i < outline.length; i++) {
     const entry = outline[i];
@@ -185,10 +176,7 @@ export function getPositionForInsertAnchor(
  * Get the ProseMirror range (from, to) for replacing an entire section by heading name.
  * Used when the AI proposes editing a section (e.g. "make the conclusion more concise").
  */
-export function getRangeForReplaceSection(
-  editor: Editor,
-  heading: string
-): { from: number; to: number } | null {
+export function getRangeForReplaceSection(editor: Editor, heading: string): { from: number; to: number } | null {
   const outline = extractOutline(editor);
   const doc = editor.state.doc;
   const normalizedTarget = heading.trim().toLowerCase();

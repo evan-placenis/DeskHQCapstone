@@ -380,11 +380,11 @@ interface AIChatSidebarProps {
   onSuggestionAccept: (suggestion: any) => void;
   onEditSuggestion?: (suggestion: EditSuggestion) => void;
   /** When user has highlighted text: get selection + markdown + range from editor (client-context edit) */
-  getEditorSelectionContext?: () => import("@/features/reports/components/tiptap-editor").SelectionContext | null;
+  getEditorSelectionContext?: () => import("@/src/features/reports/components/authoring/tiptap/tiptap-editor").SelectionContext | null;
   /** Trigger selection-based edit (streaming). Called with full context (send context.markdown to API). */
-  onRequestAIEditWithSelection?: (context: import("@/features/reports/components/tiptap-editor").SelectionContext, instruction: string) => Promise<void>;
+  onRequestAIEditWithSelection?: (context: import("@/src/features/reports/components/authoring/tiptap/tiptap-editor").SelectionContext, instruction: string) => Promise<void>;
   /** Pinned selection (survives blur) - show Cursor-style "Editing selection" pill when set */
-  pinnedSelectionContext?: import("@/features/reports/components/tiptap-editor").SelectionContext | null;
+  pinnedSelectionContext?: import("@/src/features/reports/components/authoring/tiptap/tiptap-editor").SelectionContext | null;
   onClearPinnedSelection?: () => void;
   isGeneratingEdit?: boolean;
   selectedContexts?: any[];

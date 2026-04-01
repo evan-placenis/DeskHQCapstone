@@ -46,7 +46,7 @@ import {
 } from "lucide-react";
 
 
-import { ReportStructureEditor } from "./report-structure-editor";
+import { ReportStructureEditor } from "@/src/features/reports/components/generation/sections/report-structure-editor";
 import type { ReportGraphProvider } from "@/lib/ai-providers";
 
 

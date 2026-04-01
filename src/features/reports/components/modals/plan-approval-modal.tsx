@@ -9,7 +9,7 @@ import {
   ReportStructureEditor, 
   convertSectionToEditorFormat,
   convertEditorFormatToSection 
-} from "./report-structure-editor";
+} from "@/src/features/reports/components/generation/sections/report-structure-editor";
 import { Photo } from '@/lib/types';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { SecureImage } from "@/components/ui/secure-image";

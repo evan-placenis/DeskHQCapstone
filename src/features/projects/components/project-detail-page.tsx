@@ -3,7 +3,7 @@ import { useAuth } from "@/app/context/auth-context";
 import { useDelete } from "@/features/dashboard/components/use-delete"; // Import the hook
 import { apiRoutes } from "@/lib/api-routes";
 import { AppHeader } from "@/components/layouts/app-header";
-import { NewReportModal } from "@/features/reports/components/new-report-modal";
+import { NewReportModal } from "@/features/reports/components/modals/new-report-modal";
 import { PhotoDetailModal } from "@/features/projects/components/photo-detail-modal";
 import { Project, KnowledgeDocument, PhotoFolder, Photo, Report } from "@/lib/types";
 import { KnowledgeUploadModal } from "@/features/knowledge/components/knowledge-upload-modal";
@@ -54,7 +54,7 @@ import {
   Upload,
   Loader2
 } from "lucide-react";
-import { ReportCard } from "@/features/reports/components/report-card";
+import { ReportCard } from "@/features/reports/components/presentation/report-card";
 
 interface ProjectDetailPageProps {
   project: Project;
