@@ -6,7 +6,7 @@ import { Container } from "@/lib/container";
 import { ObservationState } from "../../../state/pretium/observation-state";
 import { dumpAgentContext } from "../../../utils/agent-logger";
 import { extractTextContent } from "../../../utils/streaming-adapter";
-import { createNodeBroadcaster } from "../../../utils/node-broadcast";
+import { broadcastChunkedReasoning } from "../../../utils/node-broadcast";
 import { logger } from "@/lib/logger";
 import * as fs from 'fs';
 import * as path from 'path';
@@ -163,10 +163,8 @@ export async function builderNode(state: typeof ObservationState.State) {
   // ──────────────────────────────────────────────────────────────────────────
   // 2-call architecture
   //
-  // Phase 1 (streaming, no tools) — only on NEW tasks:
-  //   The model writes its analytical chain of thought as plain text first.
-  //   Tokens are broadcast to the frontend in real-time.
-  //   No tools are bound, so Gemini only emits text chunks → no parse errors.
+  // Phase 1 (non-streaming invoke, no tools) — only on NEW tasks:
+  //   Full chain-of-thought in one REST response; then chunked broadcast replay for UI.
   //
   // Phase 2 (non-streaming, with tools):
   //   A streaming=false model instance calls the actual tools (writeSection,
@@ -177,22 +175,14 @@ export async function builderNode(state: typeof ObservationState.State) {
   let reasoningText = '';
 
   if (isNewTask) {
-    // ── Phase 1: Stream chain-of-thought reasoning ──────────────────────────
-    const streamingModel = ModelStrategy.getModel(provider || 'gemini', 'lightweight', heliconeInput, true);
-    const broadcaster = createNodeBroadcaster(projectId);
+    // ── Phase 1: Invoke reasoning, then chunked broadcast ───────────────────
+    const phase1Model = ModelStrategy.getModel(provider || 'gemini', 'lightweight', heliconeInput, false);
 
     dumpAgentContext(taskName, promptMessages, 'INPUT', reportTitle || '', isNewTask);
 
-    // Phase 1 uses promptMessages which was built with systemBlockPhase1
-    const reasoningStream = await streamingModel.stream(promptMessages);
-    for await (const chunk of reasoningStream) {
-      const text = extractTextContent(chunk);
-      if (text) {
-        reasoningText += text;
-        await broadcaster.push(text);
-      }
-    }
-    await broadcaster.flush();
+    const phase1Response = await ModelStrategy.invokeWithRetry(phase1Model, promptMessages);
+    reasoningText = extractTextContent(phase1Response);
+    await broadcastChunkedReasoning(projectId, reasoningText);
 
     // Persist Phase 1 reasoning to log file for post-run inspection
     if (reasoningText) {
@@ -203,7 +193,7 @@ export async function builderNode(state: typeof ObservationState.State) {
         await fs.promises.mkdir(reasoningDir, { recursive: true });
         const entry =
           `====================================================\n` +
-          `NODE: ${taskName} | PHASE: 1 (streaming reasoning)\n` +
+          `NODE: ${taskName} | PHASE: 1 (invoke reasoning)\n` +
           `TIME: ${new Date().toLocaleString()}\n` +
           `====================================================\n` +
           `${reasoningText}\n\n\n`;
@@ -264,7 +254,7 @@ export async function builderNode(state: typeof ObservationState.State) {
   }
   const model = nonStreamingModel.bindTools(tools);
 
-  const response = await model.invoke(phase2Messages);
+  const response = await ModelStrategy.invokeWithRetry(model, phase2Messages);
   dumpAgentContext(taskName, [response], 'OUTPUT', reportTitle || '', undefined);
 
   // ==========================================

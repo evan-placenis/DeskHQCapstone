@@ -5,7 +5,7 @@ import { ObservationState } from "../../../state/pretium/observation-state";
 import { dumpAgentContext } from "../../../utils/agent-logger";
 import { planningTools } from "@/features/ai/tools/report-generation-planning-tool";
 import { extractTextContent } from "../../../utils/streaming-adapter";
-import { createNodeBroadcaster } from "../../../utils/node-broadcast";
+import { broadcastChunkedReasoning } from "../../../utils/node-broadcast";
 import path from 'path';
 import fs from 'fs';
 import { logger } from "@/lib/logger";
@@ -92,35 +92,22 @@ export async function architectNode(state: typeof ObservationState.State) {
 
   // 4. RUN MODEL — 2-call architecture
   //
-  // Phase 1 (streaming, no tools): The model writes its full analysis as plain text.
-  //   Tokens are broadcast in real-time so the user sees the reasoning as it happens.
-  //   A streaming=true model is used; because no tools are bound, Gemini only outputs
-  //   text chunks — zero risk of "Failed to parse stream".
+  // Phase 1 (non-streaming invoke, no tools): Full analysis in one REST response — avoids
+  //   Gemini SSE/token-stream parse failures. Reasoning is then broadcast in chunked replay.
   //
-  // Phase 2 (non-streaming, forced tool call): A streaming=false model is used to
-  //   produce the structured submitReportPlan JSON. Non-streaming means the Google SDK
-  //   never tries to parse partial SSE tool-call chunks, so it can't crash.
+  // Phase 2 (non-streaming, forced tool call): produce structured submitReportPlan JSON.
 
   const taskName = `Architect_Plan_1`;
-  const broadcaster = createNodeBroadcaster(state.projectId);
 
-  // ── Phase 1: Stream reasoning ──────────────────────────────────────────────
-  const streamingModel = ModelStrategy.getModel(provider || 'gemini', 'heavyweight', heliconeInput, true);
+  // ── Phase 1: Full reasoning via invoke, then chunked broadcast to UI ───────
+  const phase1Model = ModelStrategy.getModel(provider || 'gemini', 'heavyweight', heliconeInput, false);
   const phase1Messages = [new SystemMessage(promptContextPhase1), ...state.messages];
 
   dumpAgentContext(taskName, phase1Messages, 'INPUT', reportTitle || "", undefined);
 
-  let reasoningText = '';
-  const reasoningStream = await streamingModel.stream(phase1Messages);
-
-  for await (const chunk of reasoningStream) {
-    const text = extractTextContent(chunk);
-    if (text) {
-      reasoningText += text;
-      await broadcaster.push(text);
-    }
-  }
-  await broadcaster.flush();
+  const phase1Response = await ModelStrategy.invokeWithRetry(phase1Model, phase1Messages);
+  let reasoningText = extractTextContent(phase1Response);
+  await broadcastChunkedReasoning(state.projectId, reasoningText);
 
   // ── Phase 2: Structured plan (non-streaming, forced tool call) ─────────────
   // Embed the completed reasoning in the system prompt so the model can reference
@@ -142,7 +129,7 @@ export async function architectNode(state: typeof ObservationState.State) {
   const nonStreamingModel = ModelStrategy.getModel(provider || 'gemini', 'heavyweight', heliconeInput, false);
   const planModel = nonStreamingModel.bindTools!(planningTools(), { tool_choice: "submitReportPlan" });
 
-  const response = await planModel.invoke([
+  const response = await ModelStrategy.invokeWithRetry(planModel, [
     new SystemMessage(phase2Prompt),
     ...state.messages,
   ]);

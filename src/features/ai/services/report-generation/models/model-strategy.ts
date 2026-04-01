@@ -2,6 +2,7 @@ import { ChatAnthropic } from "@langchain/anthropic";
 import { ChatGoogleGenerativeAI } from "@langchain/google-genai";
 import { ChatOpenAI } from "@langchain/openai";
 import { BaseChatModel } from "@langchain/core/language_models/chat_models";
+import type { RunnableConfig } from "@langchain/core/runnables";
 import {
     HeliconeContextBuilder,
     HELICONE_TARGET_URLS,
@@ -9,6 +10,7 @@ import {
     type HeliconeContext,
     type HeliconeContextInput,
 } from "../../models/gateway/helicone-context-builder";
+import { invokeWithRetry as invokeWithRetryImpl } from "../utils/model-invoke-retry";
 
 /** Provider keys: anthropic, google, openai, grok (frontend sends claude→anthropic, gemini→google) */
 const MODEL_REGISTRY: Record<string, Record<string, string>> = {
@@ -41,6 +43,19 @@ const PROVIDER_MAP: Record<string, string> = {
 export type ModelSize = 'lightweight' | 'heavyweight';
 
 export class ModelStrategy {
+    /**
+     * Invoke a chat model (including `.bindTools()` results) with retries and exponential backoff.
+     * Prefer this over raw `.invoke()` for resilience; do not wrap the model in RunnableRetry
+     * or `.bindTools()` will break.
+     */
+    static invokeWithRetry(
+        model: { invoke(input: unknown, config?: RunnableConfig): Promise<unknown> },
+        input: unknown,
+        config?: RunnableConfig,
+    ): Promise<unknown> {
+        return invokeWithRetryImpl(model, input, config);
+    }
+
     /**
      * Get a model by provider and size.
      * @param provider   - Frontend value: 'claude' | 'gemini' | 'grok' | 'openai' (or registry key)
