@@ -1,6 +1,6 @@
 export interface PeerReviewComment {
-  id: number;
-  userId: number;
+  id: number | string;
+  userId: number | string;
   userName: string;
   comment: string;
   timestamp: string;

@@ -13,9 +13,12 @@ import {
   CheckCircle2, 
   Clock, 
   Send, 
-  AlertCircle 
+  AlertCircle,
+  Trash2,
 } from "lucide-react";
 import { PeerReviewComment } from "@/lib/types";
+
+const EMPTY_APPLIED_SUGGESTIONS = new Set<string>();
 
 interface PeerReviewPanelProps {
   reviewerName: string;
@@ -23,11 +26,19 @@ interface PeerReviewPanelProps {
   requestDate: string;
   requestNotes?: string;
   comments: PeerReviewComment[];
-  onAddComment: (comment: string, type: PeerReviewComment["type"]) => void;
-  onAddHighlightComment?: (highlightedText: string, sectionId: number, comment: string, type: PeerReviewComment["type"]) => void;
+  onAddComment: (comment: string, type: PeerReviewComment["type"]) => void | Promise<void>;
+  onAddHighlightComment?: (
+    highlightedText: string,
+    sectionId: number | string,
+    comment: string,
+    type: PeerReviewComment["type"]
+  ) => void | Promise<void | { id: string | number } | null>;
   onCompleteReview: () => void;
-  onResolveComment?: (commentId: number) => void; // New prop to resolve comments
-  onHighlightClick?: (commentId: number) => void; // New prop to scroll to highlight
+  onResolveComment?: (commentId: number | string) => void | Promise<void>;
+  /** Apply peer suggestion text over the highlight (main body). */
+  onApplyPeerSuggestion?: (commentId: number | string) => void;
+  appliedPeerSuggestionIds?: Set<string>;
+  onHighlightClick?: (commentId: number | string) => void;
   onOpenRatingModal?: () => void; // New prop to open rating modal
   isCompleted?: boolean;
 }
@@ -42,23 +53,24 @@ export function PeerReviewPanel({
   onAddHighlightComment,
   onCompleteReview,
   onResolveComment,
+  onApplyPeerSuggestion,
+  appliedPeerSuggestionIds,
   onHighlightClick,
   onOpenRatingModal,
   isCompleted = false,
 }: PeerReviewPanelProps) {
+  const appliedIds = appliedPeerSuggestionIds ?? EMPTY_APPLIED_SUGGESTIONS;
   const [newComment, setNewComment] = useState("");
   const [commentType, setCommentType] = useState<PeerReviewComment["type"]>("comment");
 
-  // Calculate unresolved counts
-  const unresolvedIssues = comments.filter(c => c.type === "issue" && !c.resolved).length;
-  const unresolvedSuggestions = comments.filter(c => c.type === "suggestion" && !c.resolved).length;
+  const issueCount = comments.filter((c) => c.type === "issue").length;
+  const suggestionCount = comments.filter((c) => c.type === "suggestion").length;
 
-  const handleSubmitComment = () => {
-    if (newComment.trim()) {
-      onAddComment(newComment, commentType);
-      setNewComment("");
-      setCommentType("comment");
-    }
+  const handleSubmitComment = async () => {
+    if (!newComment.trim()) return;
+    await Promise.resolve(onAddComment(newComment, commentType));
+    setNewComment("");
+    setCommentType("comment");
   };
 
   const getInitials = (name: string) => {
@@ -83,11 +95,11 @@ export function PeerReviewPanel({
   const getCommentBadgeColor = (type: PeerReviewComment["type"]) => {
     switch (type) {
       case "suggestion":
-        return "bg-theme-primary-20 text-theme-primary";
+        return "bg-green-100 text-green-800 border border-green-200";
       case "issue":
-        return "bg-red-100 text-red-700";
+        return "bg-red-100 text-red-800 border border-red-200";
       default:
-        return "bg-slate-100 text-slate-700";
+        return "bg-blue-100 text-blue-800 border border-blue-200";
     }
   };
 
@@ -144,16 +156,16 @@ export function PeerReviewPanel({
               <MessageSquare className="w-4 h-4 text-slate-600" />
               Review Comments ({comments.length})
             </h4>
-            {unresolvedIssues > 0 && (
+            {issueCount > 0 && (
               <Badge className="bg-red-100 text-red-700 rounded-md text-xs">
                 <AlertCircle className="w-3 h-3 mr-1" />
-                {unresolvedIssues} Issue{unresolvedIssues !== 1 ? 's' : ''}
+                {issueCount} Issue{issueCount !== 1 ? 's' : ''}
               </Badge>
             )}
-            {unresolvedSuggestions > 0 && (
+            {suggestionCount > 0 && (
               <Badge className="bg-theme-primary-20 text-theme-primary rounded-md text-xs">
                 <MessageSquare className="w-3 h-3 mr-1" />
-                {unresolvedSuggestions} Suggestion{unresolvedSuggestions !== 1 ? 's' : ''}
+                {suggestionCount} Suggestion{suggestionCount !== 1 ? 's' : ''}
               </Badge>
             )}
           </div>
@@ -195,23 +207,38 @@ export function PeerReviewPanel({
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 mb-1 flex-wrap">
                         <span className="text-sm text-slate-900">{comment.userName}</span>
-                        <Badge className={`text-xs rounded-md ${getCommentBadgeColor(comment.type)}`}>
+                        <Badge
+                          className={`text-xs rounded-md ${getCommentBadgeColor(comment.type)} ${
+                            comment.highlightedText && onHighlightClick
+                              ? "cursor-pointer hover:opacity-90"
+                              : ""
+                          }`}
+                          onClick={() => {
+                            if (comment.highlightedText) onHighlightClick?.(comment.id);
+                          }}
+                          title={
+                            comment.highlightedText
+                              ? "Scroll to highlight in report"
+                              : undefined
+                          }
+                        >
                           {comment.type}
                         </Badge>
-                        {comment.resolved && (
-                          <Badge className="text-xs rounded-md bg-green-100 text-green-700">
-                            Resolved
-                          </Badge>
-                        )}
                         <span className="text-xs text-slate-500">{comment.timestamp}</span>
                       </div>
                       
                       {/* Highlighted Text */}
                       {comment.highlightedText && (
                         <div 
-                          className="mb-2 p-2 bg-yellow-50 border border-yellow-200 rounded cursor-pointer hover:bg-yellow-100 transition-colors"
+                          className={`mb-2 p-2 rounded cursor-pointer transition-colors border ${
+                            comment.type === "issue"
+                              ? "bg-red-50 border-red-200 hover:bg-red-100"
+                              : comment.type === "suggestion"
+                                ? "bg-green-50 border-green-200 hover:bg-green-100"
+                                : "bg-blue-50 border-blue-200 hover:bg-blue-100"
+                          }`}
                           onClick={() => onHighlightClick?.(comment.id)}
-                          title="Click to view in report"
+                          title="Click to scroll to highlight in report"
                         >
                           <p className="text-xs text-slate-500 mb-1">Highlighted text:</p>
                           <p className="text-sm text-slate-700 italic line-clamp-2">"{comment.highlightedText}"</p>
@@ -219,6 +246,37 @@ export function PeerReviewPanel({
                       )}
                       
                       <p className="text-sm text-slate-700">{comment.comment}</p>
+                      {comment.type === "suggestion" &&
+                        comment.highlightedText &&
+                        onApplyPeerSuggestion &&
+                        String(comment.sectionId ?? "main-content") === "main-content" && (
+                          <label className="mt-2 flex cursor-pointer items-start gap-2 rounded-md border border-green-200 bg-green-50/80 px-2 py-1.5 text-xs text-green-950">
+                            <input
+                              type="checkbox"
+                              className="mt-0.5 h-3.5 w-3.5 shrink-0 rounded border-green-600"
+                              checked={appliedIds.has(String(comment.id))}
+                              disabled={appliedIds.has(String(comment.id))}
+                              title={
+                                appliedIds.has(String(comment.id))
+                                  ? "Applied — use Ctrl+Z in the report to undo"
+                                  : "Apply suggested text to the report"
+                              }
+                              onChange={(e) => {
+                                if (e.target.checked && !appliedIds.has(String(comment.id))) {
+                                  onApplyPeerSuggestion(comment.id);
+                                }
+                              }}
+                            />
+                            <span>Apply suggested text to the report (replaces the highlight)</span>
+                          </label>
+                        )}
+                      {comment.type === "suggestion" &&
+                        comment.highlightedText &&
+                        String(comment.sectionId ?? "main-content") !== "main-content" && (
+                          <p className="mt-1 text-xs text-slate-500">
+                            Applying suggestions in the editor is only available for the main report body.
+                          </p>
+                        )}
                     </div>
                   </div>
                 </div>

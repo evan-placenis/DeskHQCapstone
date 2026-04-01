@@ -53,6 +53,9 @@ export const apiRoutes = {
     resume: (reportId: string | number) => `/api/report/${reportId}/resume`,
     aiEdit: (reportId: string | number) => `/api/report/${reportId}/ai-edit`,
     reviewRequest: "/api/report/review-request",
+    reviewComment: "/api/report/review-comment",
+    reviewCommentById: (commentId: string | number) =>
+      `/api/report/review-comment/${encodeURIComponent(String(commentId))}`,
     generate: "/api/report/generate",
   },
   captureSessions: {

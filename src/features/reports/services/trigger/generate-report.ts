@@ -74,6 +74,7 @@ export const generateReportTask = task({
     factor: 2,
   },
   run: async (payload: TriggerPayload, { ctx }) => {
+    
     // 1. Setup Clients
     // Create a fresh Supabase client to avoid Container singleton issues in Trigger.dev
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
@@ -126,32 +127,43 @@ export const generateReportTask = task({
 
       const organizationId = project.organization_id;
 
-      // 4. CREATE DRAFT REPORT IN DATABASE (so we can save plan to it later)
+      // 4. Ensure draft report row exists (API route inserts it first; fallback for legacy/manual runs)
       const title = payload.input.title?.trim()
         ? payload.input.title.trim()
         : `${payload.input.reportType} Report (Draft)`;
 
-      const { error: createError } = await supabase
+      const { data: existingDraft } = await supabase
         .from('reports')
-        .upsert({
-          id: draftReportId,
-          organization_id: organizationId,
-          project_id: payload.projectId,
-          title: title,
-          status: 'GENERATING',
-          template_id: payload.input.templateId || null,
-          created_by: payload.userId,
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-          version_number: 1
-        });
+        .select('id')
+        .eq('id', draftReportId)
+        .maybeSingle();
 
-      if (createError) {
-        console.error('❌ Failed to create draft report:', createError);
-        throw new Error(`Failed to create draft report: ${createError.message}`);
+      if (existingDraft) {
+        console.log(`📝 Draft report ${draftReportId} already exists (created by API)`);
+      } else {
+        console.warn(`⚠️ Draft report ${draftReportId} missing; creating via service-role fallback`);
+        const { error: createError } = await supabase
+          .from('reports')
+          .upsert({
+            id: draftReportId,
+            organization_id: organizationId,
+            project_id: payload.projectId,
+            title: title,
+            status: 'GENERATING',
+            template_id: payload.input.templateId || null,
+            created_by: payload.userId,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+            version_number: 1
+          });
+
+        if (createError) {
+          console.error('❌ Failed to create draft report:', createError);
+          throw new Error(`Failed to create draft report: ${createError.message}`);
+        }
+
+        console.log(`📝 Draft report ${draftReportId} created in database (fallback)`);
       }
-
-      console.log(`📝 Draft report ${draftReportId} created in database`);
 
       // 5. FETCH TEMPLATE FOR CONTEXT (if using observation workflow)
       let system_prompt = "";

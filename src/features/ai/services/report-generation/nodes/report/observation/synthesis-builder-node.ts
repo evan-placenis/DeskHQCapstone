@@ -1,4 +1,4 @@
-import { SystemMessage, HumanMessage } from "@langchain/core/messages";
+import { SystemMessage, HumanMessage, AIMessage } from "@langchain/core/messages";
 import { ModelStrategy } from "../../../models/model-strategy";
 import { ObservationState } from "../../../state/pretium/observation-state";
 import { Container } from "@/lib/container";
@@ -105,10 +105,10 @@ export async function synthesisBuilderNode(state: typeof ObservationState.State)
         const taskName = `SynthesisBuilder_Task_${section.title}`;
         dumpAgentContext(taskName, [systemBlock, new HumanMessage(prompt)], 'INPUT', reportTitle || "", undefined);
 
-        const response = await model.invoke([
+        const response = (await ModelStrategy.invokeWithRetry(model, [
           systemBlock,
           new HumanMessage(prompt)
-        ]);
+        ])) as AIMessage;
 
         // 📝 Log the OUTPUT (What the AI just generated / The tools it wants to call)
         dumpAgentContext(taskName, [response], 'OUTPUT', reportTitle || "", undefined);

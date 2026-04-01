@@ -99,7 +99,7 @@ export async function reviewerNode(state: typeof ObservationState.State) {
   `;
 
   // 4. INVOKE MODEL (With Tools)
-  const baseModel = ModelStrategy.getModel(provider || 'gemini', 'heavyweight', heliconeInput);
+  const baseModel = ModelStrategy.getModel(provider || 'gemini', 'heavyweight', heliconeInput, false);
   if (typeof baseModel.bindTools !== "function") {
     logger.error("Reviewer: Model does not support tools");
     return {
@@ -111,7 +111,7 @@ export async function reviewerNode(state: typeof ObservationState.State) {
   const model = baseModel.bindTools(tools);
   
   // We allow the model to make multiple tool calls in parallel (Gemini/OpenAI support this)
-  const response = await model.invoke([
+  const response = await ModelStrategy.invokeWithRetry(model, [
     new SystemMessage(systemPrompt || "You are a strict Editor."),
     new HumanMessage(editorPrompt)
   ]);

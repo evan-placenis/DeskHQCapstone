@@ -15,7 +15,7 @@ import {
 import { Plus, FolderOpen, Camera, FileText, Clock, ArrowRight, TrendingUp, CheckCircle2, AlertCircle, UserCheck, Edit3, Star, CalendarClock } from "lucide-react";
 import { useState, useMemo, useCallback } from "react";
 import { ProjectCard } from "@/features/projects/components/project-card";
-import { ReportCard } from "@/features/reports/components/report-card";
+import { ReportCard } from "@/features/reports/components/presentation/report-card";
 import { UpcomingReviewCard } from "./upcoming-review-card";
 import { useEffect } from "react";
 import { useDelete } from "@/features/dashboard/components/use-delete";

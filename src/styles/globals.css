@@ -743,4 +743,48 @@ html {
 .diff-hunk-block {
   animation: highlight-fade 1s ease-out;
 }
+
+  /* TipTap peer review mark — issue = red, suggestion = green, comment = blue */
+  .peer-review-editor-root .ProseMirror span.review-comment--issue {
+    border-bottom: 2px solid rgb(220, 38, 38);
+    background: rgba(254, 226, 226, 0.65);
+    border-radius: 2px;
+    cursor: pointer;
+  }
+
+  .peer-review-editor-root .ProseMirror span.review-comment--suggestion {
+    border-bottom: 2px solid rgb(22, 163, 74);
+    background: rgba(220, 252, 231, 0.65);
+    border-radius: 2px;
+    cursor: pointer;
+  }
+
+  .peer-review-editor-root .ProseMirror span.review-comment--comment {
+    border-bottom: 2px solid rgb(37, 99, 235);
+    background: rgba(219, 234, 254, 0.65);
+    border-radius: 2px;
+    cursor: pointer;
+  }
+
+  .peer-review-editor-root .ProseMirror span.review-comment[data-resolved="true"] {
+    opacity: 0.72;
+  }
+
+  .peer-review-editor-root .ProseMirror span.review-comment.peer-review-comment-active--issue {
+    box-shadow: 0 0 0 2px rgb(220, 38, 38);
+    background: rgba(254, 226, 226, 0.85);
+    border-bottom-color: rgb(185, 28, 28);
+  }
+
+  .peer-review-editor-root .ProseMirror span.review-comment.peer-review-comment-active--suggestion {
+    box-shadow: 0 0 0 2px rgb(22, 163, 74);
+    background: rgba(220, 252, 231, 0.9);
+    border-bottom-color: rgb(21, 128, 61);
+  }
+
+  .peer-review-editor-root .ProseMirror span.review-comment.peer-review-comment-active--comment {
+    box-shadow: 0 0 0 2px rgb(37, 99, 235);
+    background: rgba(219, 234, 254, 0.9);
+    border-bottom-color: rgb(29, 78, 216);
+  }
 }

@@ -58,6 +58,56 @@ export async function GET(
       projectName = proj?.name || projectName;
     }
 
+    const { data: commentRows, error: commentsErr } = await supabase
+      .from("report_review_comments")
+      .select(
+        "id, author_id, body, type, highlighted_text, section_id, resolved, created_at"
+      )
+      .eq("review_request_id", review.id)
+      .order("created_at", { ascending: true });
+
+    if (commentsErr) {
+      console.warn("report_review_comments fetch (run migration if missing):", commentsErr.message);
+    }
+
+    const safeRows = commentsErr ? [] : commentRows || [];
+
+    const authorIds = [...new Set(safeRows.map((c: { author_id: string }) => c.author_id))];
+    const { data: authorProfiles } =
+      authorIds.length > 0
+        ? await supabase.from("profiles").select("id, full_name").in("id", authorIds)
+        : { data: [] as { id: string; full_name: string | null }[] };
+
+    const nameById = new Map(
+      (authorProfiles || []).map((p: { id: string; full_name: string | null }) => [
+        p.id,
+        p.full_name || "Unknown",
+      ])
+    );
+
+    const comments = safeRows.map(
+      (c: {
+        id: string;
+        author_id: string;
+        body: string;
+        type: string;
+        highlighted_text: string | null;
+        section_id: string | null;
+        resolved: boolean;
+        created_at: string;
+      }) => ({
+        id: c.id,
+        userId: c.author_id,
+        userName: nameById.get(c.author_id) || "Unknown",
+        comment: c.body,
+        timestamp: new Date(c.created_at).toLocaleString(),
+        type: c.type as "comment" | "suggestion" | "issue",
+        highlightedText: c.highlighted_text || undefined,
+        sectionId: c.section_id || undefined,
+        resolved: c.resolved,
+      })
+    );
+
     const peerReview = {
       id: review.id,
       reportId: review.report_id,
@@ -70,7 +120,7 @@ export async function GET(
       status: review.status,
       requestDate: review.request_date ? new Date(review.request_date).toISOString().split("T")[0] : "",
       requestNotes: review.request_notes || undefined,
-      comments: [],
+      comments,
     };
 
     return NextResponse.json({ review: peerReview });

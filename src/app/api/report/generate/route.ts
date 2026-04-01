@@ -46,39 +46,72 @@ export async function POST(
 
         // Generate reportId upfront so we can return it to the frontend
         const reportId = uuidv4();
-        
+
+        const reportTitle =
+            typeof title === "string" && title.trim()
+                ? title.trim()
+                : `${reportType || "Report"} Report (Draft)`;
+
+        const { data: project, error: projectError } = await supabase
+            .from("projects")
+            .select("organization_id")
+            .eq("id", projectId)
+            .single();
+
+        if (projectError || !project) {
+            return NextResponse.json(
+                { error: "Project not found" },
+                { status: 404 }
+            );
+        }
+
+        const { error: insertError } = await supabase.from("reports").insert({
+            id: reportId,
+            organization_id: project.organization_id,
+            project_id: projectId,
+            title: reportTitle,
+            status: "GENERATING",
+            template_id: templateId || null,
+            created_by: user.id,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+            version_number: 1,
+        });
+
+        if (insertError) {
+            console.error("Failed to create draft report row:", insertError);
+            return NextResponse.json(
+                { error: insertError.message || "Failed to create report" },
+                { status: 500 }
+            );
+        }
+
         console.log("📤 Queuing report generation with:", {
             reportId,
             projectId,
-            title: title ?? '(default)',
+            title: reportTitle,
             reportType,
             modelName,
             workflowType,
             processingMode,
             selectedImageIdsCount: selectedImageIds.length,
             sectionsCount: sections.length,
-            templateId
+            templateId,
         });
 
         // Build Helicone context and serialize for the Trigger worker
         let heliconeContext: string | undefined;
         try {
-            const { data: project } = await supabase
-                .from('projects')
-                .select('organization_id')
-                .eq('id', projectId)
-                .single();
-
             heliconeContext = HeliconeContextBuilder.serializeForTrigger({
                 userId: user.id,
-                organizationId: project?.organization_id ?? undefined,
+                organizationId: project.organization_id ?? undefined,
                 projectId,
                 reportId,
                 templateId: templateId || undefined,
-                feature: 'report_generation',
+                feature: "report_generation",
             });
         } catch (err) {
-            console.warn('[Helicone] Failed to build context for Trigger payload:', err);
+            console.warn("[Helicone] Failed to build context for Trigger payload:", err);
         }
 
         // Queue the report generation task in Trigger.dev
@@ -88,7 +121,7 @@ export async function POST(
             user.id,
             {
                 reportId: reportId,
-                title: title || undefined,
+                title: reportTitle,
                 reportType,
                 modelName: modelName,
                 selectedImageIds: selectedImageIds,

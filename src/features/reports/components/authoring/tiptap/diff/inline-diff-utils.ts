@@ -380,32 +380,6 @@ export function resolveAllChanges(editor: any, action: 'accept' | 'reject') {
     return true; // Dispatches once!
   });
 }
-
-/** 3. Sidebar Action Bridge (Multiple blocks, ONE Undo Step) */
-export function resolveChangeById(editor: any, changeId: string, action: 'accept' | 'reject') {
-  editor.commands.command(({ tr, dispatch }: { tr: any, dispatch: any }) => {
-    if (!dispatch) return true;
-
-    const blockStarts = new Set<number>();
-    tr.doc.descendants((node: any, pos: number) => {
-      if (!node.isText) return;
-      const hasMatch = node.marks?.some((m: any) => 
-        (m.type.name === 'addition' || m.type.name === 'deletion') && 
-        m.attrs.changeId === changeId
-      );
-      if (hasMatch) {
-        const $pos = tr.doc.resolve(pos);
-        blockStarts.add($pos.before(1));
-      }
-    });
-
-    const sortedBlocks = Array.from(blockStarts).sort((a, b) => b - a);
-    sortedBlocks.forEach(start => processBlockOnTransaction(tr, start, action));
-    
-    return true; // Dispatches once!
-  });
-}
-
 /** Strip leading heading from markdown (e.g. "## General\n\ncontent" → "content"). */
 export function stripLeadingHeading(text: string): string {
   return text.replace(/^#{1,6}\s+[^\n]*\n?/, '').trimStart();

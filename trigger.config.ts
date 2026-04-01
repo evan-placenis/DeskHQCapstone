@@ -2,6 +2,7 @@ import { defineConfig } from "@trigger.dev/sdk";
 import dotenv from "dotenv";
 import path from "path";
 import { fileURLToPath } from "url";
+import { additionalFiles } from "@trigger.dev/build/extensions/core"; // 1. Import this
 
 let envPath: string;
 try {
@@ -30,4 +31,12 @@ export default defineConfig({
     },
   },
   dirs: ["./src/features/reports/services/trigger"],
+  // 2. Add the build extension to grab your markdown files
+  build: {
+    extensions: [
+      additionalFiles({
+        files: ["./skills/**/*.md"], // This tells Trigger to upload all .md files in the skills folder
+      }),
+    ],
+  },
 });

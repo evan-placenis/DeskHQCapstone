@@ -1,183 +1,24 @@
 "use client";
 
-import { useState, Suspense, useEffect, useCallback, useRef, memo } from "react";
+import { useState, Suspense, useEffect, useCallback, useRef } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/app/context/auth-context";
 import { AppHeader } from "@/components/layouts/app-header";
 import { Page } from "@/app/pages/config/routes";
 import { Project, PeerReview, ReportContent, Photo } from "@/lib/types";
-import { RequestPeerReviewModal } from "@/features/reports/components/request-peer-review-modal";
-import { RatingModal } from "@/features/reports/components/rating-modal";
-import PlanApprovalModal from "@/features/reports/components/plan-approval-modal";
-import { ReportLayout } from "@/features/reports/components/report-layout";
+import { RequestPeerReviewModal } from "@/features/reports/components/modals/request-peer-review-modal";
+import { RatingModal } from "@/features/reports/components/modals/rating-modal";
+import PlanApprovalModal from "@/features/reports/components/modals/plan-approval-modal";
+import { ReportWorkspace } from "@/features/reports/components/report-workspace";
 import { ROUTES, getRoute } from "@/app/pages/config/routes";
 import { supabase } from "@/lib/supabase-browser-client";
-import { Loader2, FileText, CheckCircle2 } from "lucide-react";
+import { Loader2, FileText } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
-import { useReportStreaming } from "@/features/reports/components/use-report-streaming";
+import { useReportStreaming } from "@/features/reports/components/generation/streaming/use-report-streaming";
+import { ReportLiveStream } from "@/features/reports/components/generation/streaming/report-live-stream";
 import { apiRoutes } from "@/lib/api-routes";
 
-import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
-
-// 1. CONSTANTS
-const MARKDOWN_PLUGINS = [remarkGfm];
-
-// 2. THE RENDERER (Memoized for performance — only re-renders when content changes)
-const StreamRenderer = memo(({ content }: { content: string }) => (
-  <div className="prose prose-sm max-w-none text-slate-700 leading-relaxed
-    prose-p:my-2 prose-ul:my-2 prose-li:my-1
-    prose-headings:font-semibold prose-headings:text-slate-900 prose-headings:mt-5 prose-headings:mb-2
-    prose-h2:text-base prose-h3:text-sm
-    prose-strong:text-slate-900 prose-strong:font-semibold
-    prose-blockquote:border-l-2 prose-blockquote:border-theme-primary/40 prose-blockquote:text-slate-500 prose-blockquote:pl-3
-    prose-pre:bg-slate-100 prose-pre:p-3 prose-pre:rounded-lg prose-code:text-xs">
-    <ReactMarkdown remarkPlugins={MARKDOWN_PLUGINS}>
-      {content}
-    </ReactMarkdown>
-    {/* Blinking cursor while streaming */}
-    <span className="inline-block w-1.5 h-4 ml-0.5 bg-theme-primary/70 animate-pulse align-middle translate-y-[1px] rounded-sm" />
-  </div>
-));
-StreamRenderer.displayName = 'StreamRenderer';
-
-// 3. STATUS INDICATOR
-const StatusFooter = memo(({ status }: { status: string }) => {
-  if (!status || status === 'Initializing...') return null;
-  return (
-    <div className="flex items-center gap-2 px-4 py-2.5 border-t border-slate-100 bg-slate-50/60 animate-in fade-in">
-      <Loader2 className="w-3 h-3 animate-spin text-theme-primary flex-shrink-0" />
-      <span className="text-xs text-slate-500 font-mono truncate">{status}</span>
-    </div>
-  );
-});
-StatusFooter.displayName = 'StatusFooter';
-
-// 4. MAIN COMPONENT — reasoning box while generating; disappears on complete
-export const ReportLiveStream = ({
-  reasoningText,
-  status,
-  isComplete
-}: {
-  reasoningText: string;
-  status: string;
-  isComplete?: boolean;
-}) => {
-  // Auto-scroll: keep a ref to the bottom sentinel and scroll it into view whenever
-  // new text arrives. The scroll container uses overflow-y-auto so it clips correctly.
-  const scrollContainerRef = useRef<HTMLDivElement>(null);
-  const bottomRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!bottomRef.current || !scrollContainerRef.current) return;
-    const container = scrollContainerRef.current;
-    // Only auto-scroll if the user is already near the bottom (within 120px).
-    // This avoids hijacking scroll position if they deliberately scroll up to re-read.
-    const { scrollTop, scrollHeight, clientHeight } = container;
-    const distanceFromBottom = scrollHeight - scrollTop - clientHeight;
-    if (distanceFromBottom < 120) {
-      bottomRef.current.scrollIntoView({ behavior: 'smooth', block: 'end' });
-    }
-  }, [reasoningText]);
-
-  return (
-    <div className="flex flex-col gap-4 max-w-4xl mx-auto mt-8">
-
-      {/* THINKING BOX — only while generating */}
-      {!isComplete && (
-        <Card className="border border-slate-200 shadow-md bg-white overflow-hidden animate-in fade-in slide-in-from-bottom-2 duration-300">
-          {/* Header */}
-          <div className="bg-white border-b border-slate-100 px-4 py-2.5 flex items-center gap-2.5">
-            <div className="relative flex-shrink-0">
-              <div className="w-2 h-2 rounded-full bg-theme-primary animate-ping absolute" />
-              <div className="w-2 h-2 rounded-full bg-theme-primary" />
-            </div>
-            <span className="text-xs font-semibold text-slate-600 uppercase tracking-widest">
-              Analyzing &amp; Planning
-            </span>
-          </div>
-
-          {/* Scrollable content area */}
-          <div
-            ref={scrollContainerRef}
-            className="min-h-[220px] max-h-[60vh] overflow-y-auto bg-white"
-          >
-            <div className="p-5">
-              {!reasoningText ? (
-                <div className="flex flex-col items-center justify-center text-slate-400 gap-3 py-14">
-                  <Loader2 className="w-7 h-7 animate-spin opacity-40" />
-                  <p className="text-sm text-slate-400">Starting agent...</p>
-                </div>
-              ) : (
-                <StreamRenderer content={reasoningText} />
-              )}
-              {/* Bottom sentinel — scrolled into view on each update */}
-              <div ref={bottomRef} className="h-px" />
-            </div>
-          </div>
-
-          {/* Status bar */}
-          <StatusFooter status={status} />
-        </Card>
-      )}
-
-      {/* SUCCESS STATE */}
-      {isComplete && (
-        <Card className="border border-green-200 shadow-md bg-white overflow-hidden animate-in fade-in duration-300">
-          <CardContent className="p-6 flex flex-col items-center justify-center gap-3 min-h-[120px]">
-            <div className="p-3 rounded-full bg-green-50 text-green-500">
-              <CheckCircle2 className="w-7 h-7" />
-            </div>
-            <h2 className="text-base font-semibold text-green-700">Report generated successfully!</h2>
-            <p className="text-sm text-slate-400">Redirecting to report...</p>
-          </CardContent>
-        </Card>
-      )}
-    </div>
-  );
-};
-
-
-// // 🟢 NEW: Component for showing generation progress
-// const GeneratingReportCard = ({ status, reasoningText }: { status: string, reasoningText: string }) => (
-//   <Card className="rounded-xl shadow-md border-2 border-theme-primary bg-blue-50/50 mb-6 animate-in fade-in slide-in-from-top-4 duration-500 mx-auto max-w-4xl mt-8">
-//     <CardContent className="p-6">
-//       <div className="flex flex-col gap-4">
-//         <div className="flex items-center justify-between">
-//           <div className="flex items-center gap-3">
-//             <div className="relative">
-//               <div className="absolute inset-0 bg-theme-primary/20 rounded-full animate-ping"></div>
-//               <div className="relative w-10 h-10 bg-theme-primary/10 rounded-full flex items-center justify-center">
-//                 <Loader2 className="w-5 h-5 text-theme-primary animate-spin" />
-//               </div>
-//             </div>
-//             <div>
-//               <h3 className="font-semibold text-slate-900">Generating Report</h3>
-//               <p className="text-sm text-theme-primary font-medium">{status || "Initializing..."}</p>
-//             </div>
-//           </div>
-//         </div>
-
-//         {reasoningText && (
-//           <div className="bg-white rounded-lg p-4 border border-slate-200 shadow-sm">
-//             <div className="flex items-center gap-2 mb-2 text-xs font-semibold text-slate-500 uppercase tracking-wider">
-//               <span className="w-1.5 h-1.5 rounded-full bg-theme-primary"></span>
-//               AI Thinking Process
-//             </div>
-//             <p className="text-sm text-slate-700 font-mono whitespace-pre-wrap leading-relaxed max-h-[60vh] overflow-y-auto">
-//               {reasoningText}
-//               <span className="inline-block w-2 h-4 ml-1 bg-theme-primary animate-pulse align-middle"></span>
-//             </p>
-//           </div>
-//         )}
-//       </div>
-//     </CardContent>
-//   </Card>
-// );
-
-
-
-function ReportViewerContent() {
+function ReportPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { user: authUser } = useAuth();
@@ -217,6 +58,8 @@ function ReportViewerContent() {
   
   // Human-in-the-Loop approval modal
   const [showApprovalModal, setShowApprovalModal] = useState(false);
+  const showApprovalModalRef = useRef(showApprovalModal);
+  showApprovalModalRef.current = showApprovalModal;
   const [isSaving, setIsSaving] = useState(false);
   const [polledReportPlan, setPolledReportPlan] = useState<any>(null);
 
@@ -228,8 +71,10 @@ function ReportViewerContent() {
   // Ref for lightweight keystroke save path — avoids setState on every keypress
   const latestContentRef = useRef<string>("");
   const editorSaveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  /** Last DB status seen by backup poller — only log when it changes (avoids console spam). */
+  const lastPollStatusRef = useRef<string | null>(null);
 
-  //  ReportContent structure for ReportLayout (minimal, just for compatibility)
+  //  ReportContent structure for ReportWorkspace (minimal, just for compatibility)
   const [reportContent, setReportContent] = useState<ReportContent>({
     title: "Loading...",
     date: "",
@@ -263,7 +108,7 @@ function ReportViewerContent() {
           setMarkdownContent(tiptapContent);
           lastSavedContentRef.current = tiptapContent;
 
-          // 🟢 Create minimal ReportContent structure for ReportLayout compatibility
+          // 🟢 Create minimal ReportContent structure for ReportWorkspace compatibility
           setReportContent({
             title: data.title || "Untitled Report",
             date: new Date(data.updated_at || Date.now()).toLocaleDateString(),
@@ -315,61 +160,62 @@ function ReportViewerContent() {
 
   // 🔔 Handle plan approval request (Human-in-the-Loop)
   useEffect(() => {
-    console.log('🔍 Modal check:', { isPaused, hasReportPlan: !!reportPlan, showApprovalModal });
     if (isPaused && reportPlan) {
-      console.log('📋 Report plan ready for approval:', reportPlan);
-      console.log('✅ Setting showApprovalModal to TRUE');
       setShowApprovalModal(true);
     }
   }, [isPaused, reportPlan]);
 
   // 🔄 BACKUP POLLING: Poll database for AWAITING_APPROVAL status
-  // This is a fallback in case Realtime events don't fire
+  // This is a fallback in case Realtime events don't fire.
+  // Note: do not depend on showApprovalModal — opening the modal would restart this effect and churn intervals.
   useEffect(() => {
     // Use reportId from URL if available, otherwise wait for streamed reportId
-    const pollingReportId = reportId && reportId !== '0' ? reportId : streamedReportId;
-    
+    const pollingReportId = reportId && reportId !== "0" ? reportId : streamedReportId;
+
     if (!isGenerating || !pollingReportId) return;
 
-    console.log(`🔄 Starting backup polling for report ${pollingReportId}`);
+    lastPollStatusRef.current = null;
 
     const pollInterval = setInterval(async () => {
       try {
         const response = await fetch(apiRoutes.report.status(pollingReportId));
         const result = await response.json();
-        
+
         if (result.error) {
-          console.error('Polling error:', result.error);
+          console.error("Polling error:", result.error);
           return;
         }
 
-        console.log(`📊 Poll result: status="${result.status}"`);
+        const status = result.status as string;
+        if (lastPollStatusRef.current !== status) {
+          lastPollStatusRef.current = status;
+          console.log(`📊 Poll result: status="${status}"`);
+        }
 
         // If status is AWAITING_APPROVAL, show the approval modal
         // Keep polling so we can detect when the builder finishes after approval
-        if (result.status === 'AWAITING_APPROVAL' && result.plan && !showApprovalModal) {
-          console.log('✅ Detected AWAITING_APPROVAL via polling!');
+        if (result.status === "AWAITING_APPROVAL" && result.plan && !showApprovalModalRef.current) {
+          console.log("✅ Detected AWAITING_APPROVAL via polling!");
           setPolledReportPlan(result.plan);
           setShowApprovalModal(true);
         }
 
         // If status changed to DRAFT (builder finished) or COMPLETED/FINAL, stop generating
         // Note: initial status is 'GENERATING', so 'DRAFT' only appears after saveReport completes
-        if (result.status === 'DRAFT' || result.status === 'COMPLETED' || result.status === 'FINAL') {
+        if (result.status === "DRAFT" || result.status === "COMPLETED" || result.status === "FINAL") {
           console.log(`🎉 Report completed (detected via polling, status="${result.status}")`);
           setIsGenerating(false);
           clearInterval(pollInterval);
         }
       } catch (err) {
-        console.error('Polling exception:', err);
+        console.error("Polling exception:", err);
       }
     }, 3000); // Poll every 3 seconds
 
     return () => {
-      console.log('🛑 Stopping backup polling');
       clearInterval(pollInterval);
     };
-  }, [isGenerating, reportId, streamedReportId, showApprovalModal]);
+  }, [isGenerating, reportId, streamedReportId]);
 
   const handleNavigate = (page: Page) => {
     router.push(getRoute(page));
@@ -492,19 +338,122 @@ function ReportViewerContent() {
     }
   }, [reportId]);
 
-  const handleAddReviewComment = (reviewId: number | string, comment: string, type: "comment" | "suggestion" | "issue" | "question") => {
-    // Mock implementation
-    console.log("Added comment:", { reviewId, comment, type });
-  };
+  const refreshAssignedReview = useCallback(async () => {
+    if (!fromPeerReview || !reportId || reportId === "0") return;
+    try {
+      const res = await fetch(apiRoutes.report.assignedReview(reportId));
+      const data = await res.json();
+      if (data.review) setAssignedReview(data.review);
+      else setAssignedReview(null);
+    } catch {
+      /* keep existing state */
+    }
+  }, [fromPeerReview, reportId]);
 
-  const handleAddHighlightComment = (reviewId: number | string, highlightedText: string, sectionId: number | string, comment: string, type: "comment" | "suggestion" | "issue" | "question") => {
-    // Mock implementation
-    console.log("Added highlight comment:", { reviewId, highlightedText, sectionId, comment, type });
-  };
+  const handleAddReviewComment = useCallback(
+    async (reviewId: number | string, comment: string, type: "comment" | "suggestion" | "issue") => {
+      try {
+        const res = await fetch(apiRoutes.report.reviewComment, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            reviewRequestId: reviewId,
+            comment,
+            type,
+          }),
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          alert(data.error || "Failed to save comment");
+          return;
+        }
+        if (data.comment) {
+          setAssignedReview((prev) => {
+            if (!prev) return prev;
+            return { ...prev, comments: [...prev.comments, data.comment] };
+          });
+        } else {
+          await refreshAssignedReview();
+        }
+      } catch (e) {
+        console.error(e);
+        alert("Failed to save comment");
+      }
+    },
+    [refreshAssignedReview]
+  );
 
-  const handleResolveComment = (reviewId: number | string, commentId: number | string) => {
-    console.log("Resolved comment:", { reviewId, commentId });
-  };
+  const handleAddHighlightComment = useCallback(
+    async (
+      reviewId: number | string,
+      highlightedText: string,
+      sectionId: number | string,
+      comment: string,
+      type: "comment" | "suggestion" | "issue"
+    ) => {
+      try {
+        const res = await fetch(apiRoutes.report.reviewComment, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            reviewRequestId: reviewId,
+            comment,
+            type,
+            highlightedText,
+            sectionId: String(sectionId),
+          }),
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          alert(data.error || "Failed to save comment");
+          return null;
+        }
+        if (data.comment) {
+          setAssignedReview((prev) => {
+            if (!prev) return prev;
+            return { ...prev, comments: [...prev.comments, data.comment] };
+          });
+          return data.comment;
+        }
+        await refreshAssignedReview();
+        return null;
+      } catch (e) {
+        console.error(e);
+        alert("Failed to save comment");
+        return null;
+      }
+    },
+    [refreshAssignedReview]
+  );
+
+  const handleResolveComment = useCallback(
+    async (reviewId: number | string, commentId: number | string) => {
+      if (!assignedReview || String(assignedReview.id) !== String(reviewId)) return;
+      const existing = assignedReview.comments.find((c) => String(c.id) === String(commentId));
+      if (!existing) return;
+      try {
+        const res = await fetch(apiRoutes.report.reviewCommentById(commentId), {
+          method: "DELETE",
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          alert(data.error || "Failed to remove comment");
+          return;
+        }
+        setAssignedReview((prev) => {
+          if (!prev) return prev;
+          return {
+            ...prev,
+            comments: prev.comments.filter((c) => String(c.id) !== String(commentId)),
+          };
+        });
+      } catch (e) {
+        console.error(e);
+        alert("Failed to remove comment");
+      }
+    },
+    [assignedReview]
+  );
 
   const handleCompleteReview = (reviewId: number | string) => {
     console.log("Completed review:", reviewId);
@@ -636,7 +585,7 @@ function ReportViewerContent() {
         pageTitle={fromPeerReview ? "Peer Review" : "Report Editor"}
       />
 
-      <ReportLayout
+      <ReportWorkspace
         mode={fromPeerReview && assignedReview ? "peer-review" : "edit"}
         projectId={projectId}
         reportId={reportId || undefined}
@@ -703,10 +652,10 @@ function ReportViewerContent() {
   );
 }
 
-export function ReportViewerPage() {
+export function ReportPage() {
   return (
     <Suspense fallback={<div>Loading report...</div>}>
-      <ReportViewerContent />
+      <ReportPageContent />
     </Suspense>
   );
 }
