@@ -9,14 +9,20 @@ function sleep(ms: number): Promise<void> {
 }
 
 /**
- * Heuristic: retry only when failure looks transient (rate limits, overload, network).
+ * Heuristic: retry only when failure looks transient (rate limits, overload, network,
+ * or flaky Gemini/LangChain stream parsing that often succeeds on a second attempt).
  */
 export function isRetryableModelError(error: unknown): boolean {
   if (error == null) return false;
   const msg = error instanceof Error ? error.message : String(error);
-  const lower = msg.toLowerCase();
+  // Include String(error) so non-Error throws and custom stringifiers still match.
+  const lower = `${msg} ${String(error)}`.toLowerCase();
   const any = error as Record<string, unknown>;
   const status = any?.status ?? any?.statusCode ?? any?.code;
+  // Google Generative AI SDK (often no HTTP status) — intermittent SSE/parser failures
+  if (lower.includes("failed to parse stream")) return true;
+  if (lower.includes("failed to parse") && lower.includes("stream")) return true;
+  if (lower.includes("googlegenerativeai") && lower.includes("stream")) return true;
   if (status === 429 || status === 502 || status === 503 || status === 504) return true;
   if (typeof status === "string" && ["429", "502", "503", "504"].includes(status)) return true;
   if (lower.includes("429") || lower.includes("rate limit") || lower.includes("too many requests"))
