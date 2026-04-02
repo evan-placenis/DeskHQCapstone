@@ -1,12 +1,11 @@
 /**
- * Batch transcription for capture-session audio using the same Gemini Flash-Lite model
- * as {@link ModelStrategy.getModel} (`gemini-lite`). Prompt: `skills/capture-audio-transcription.md`.
- * Pattern aligns with `../vision/spec-drawing-analysis.ts` (generateText + ModelStrategy).
+ * Capture-session audio: Gemini Files API + context cache only (Trigger.dev job).
+ * Prompt: `skills/capture-audio-transcription.md` for the master JSON transcript.
  */
-import { generateText } from "ai";
+import { GoogleGenerativeAI } from "@google/generative-ai";
+import type { CachedContentApiResponse } from "@/features/ai/services/audio/gemini-files-cache";
 import { loadSkill } from "@/features/ai/services/chatbot/skill-loader";
 import { logger } from "@/lib/logger";
-import { ModelStrategy } from "@/features/ai/services/models/model-strategy";
 
 export type CaptureTranscriptSegment = { text: string; timestampMs: number };
 
@@ -80,63 +79,125 @@ export type TranscribeCaptureSessionAudioOptions = {
 };
 
 /**
- * Transcribes one recording to timestamped segments (JSON contract in the skill file).
+ * Master transcript: JSON segments + summary + referenced_images (same cache as upload).
  */
 export async function transcribeCaptureSessionAudio(
-  audioBuffer: Buffer,
-  mimeType: string,
+  cachedContent: CachedContentApiResponse,
   options?: TranscribeCaptureSessionAudioOptions,
 ): Promise<CaptureTranscribeAudioResult> {
+  const apiKey = process.env.GOOGLE_API_KEY?.trim();
+  if (!apiKey) {
+    throw new Error("GOOGLE_API_KEY is not set");
+  }
+
   const skill = loadSkill("capture-audio-transcription");
   const systemPrompt = skill.body.trim();
-  const model = ModelStrategy.getModel("gemini-lite");
 
-  const ids = options?.projectImageIds?.filter((id) => typeof id === "string" && id.trim().length > 0) ?? [];
+  const ids =
+    options?.projectImageIds?.filter((id) => typeof id === "string" && id.trim().length > 0) ?? [];
   const contextBlock =
     ids.length > 0
       ? `\n\nProject image UUIDs for this capture (use only these IDs in referenced_images, in order of relevance):\n${ids.map((id) => `- ${id}`).join("\n")}`
       : "";
 
+  const genAI = new GoogleGenerativeAI(apiKey);
+  const model = genAI.getGenerativeModelFromCachedContent(
+    cachedContent as unknown as Parameters<
+      GoogleGenerativeAI["getGenerativeModelFromCachedContent"]
+    >[0],
+    {
+      systemInstruction: systemPrompt,
+    },
+  );
+
+  const userText = `Output only the JSON object described in your instructions.${contextBlock}`;
   const t0 = Date.now();
-  const { text } = await generateText({
-    model,
-    system: systemPrompt,
-    messages: [
-      {
-        role: "user",
-        content: [
-          {
-            type: "file",
-            data: new Uint8Array(audioBuffer),
-            mediaType: mimeType || "audio/webm",
-          },
-          {
-            type: "text",
-            text: `Output only the JSON object described in your instructions.${contextBlock}`,
-          },
-        ],
-      },
-    ],
-    temperature: 0.2,
-    maxOutputTokens: 8192,
-    providerOptions: {
-      google: {
-        responseMimeType: "application/json",
-      },
+
+  const result = await model.generateContent({
+    contents: [{ role: "user", parts: [{ text: userText }] }],
+    generationConfig: {
+      temperature: 0.2,
+      maxOutputTokens: 8192,
+      responseMimeType: "application/json",
     },
   });
 
-  const raw = (text ?? "").trim();
+  const raw = (result.response.text() ?? "").trim();
   const parsed = parseSttJsonResponse(raw);
   const durationMs = Date.now() - t0;
-  logger.info("[CaptureAudio] Gemini generateText + parse", {
+  logger.info("[CaptureAudio] master transcript (cached)", {
     durationMs,
-    inputBytes: audioBuffer.length,
-    mimeType: mimeType || "audio/webm",
+    cacheName: cachedContent.name,
     segmentCount: parsed.segments.length,
     durationSeconds: parsed.durationSeconds,
     summaryChars: parsed.summary_note.length,
     referencedImages: parsed.referenced_images.length,
   });
   return parsed;
+}
+
+/** Image bytes as base64 for Gemini `inlineData` (same bucket as project gallery). */
+export type PhotoProbeImageInput = {
+  mimeType: string;
+  base64: string;
+};
+
+/** Non-overlapping audio slice for this photo (seconds from session start). */
+export type PhotoProbeAudioWindow = {
+  startSec: number;
+  endSec: number;
+};
+
+/**
+ * Per-photo description: multimodal (image + cached session audio) with a dynamic [startSec, endSec] window.
+ */
+export async function describePhotoFromCachedAudio(
+  cachedContent: CachedContentApiResponse,
+  projectImageId: string,
+  window: PhotoProbeAudioWindow,
+  image: PhotoProbeImageInput,
+): Promise<string> {
+  const apiKey = process.env.GOOGLE_API_KEY?.trim();
+  if (!apiKey) {
+    throw new Error("GOOGLE_API_KEY is not set");
+  }
+
+  const startSec = Math.max(0, window.startSec);
+  const endSec = Math.max(startSec, window.endSec);
+
+  const genAI = new GoogleGenerativeAI(apiKey);
+  const model = genAI.getGenerativeModelFromCachedContent(
+    cachedContent as unknown as Parameters<
+      GoogleGenerativeAI["getGenerativeModelFromCachedContent"]
+    >[0],
+    {
+      systemInstruction:
+        "You are a professional field inspector. You see one photo from the site and hear this session's recording. Cross-check what is visible in the image with what is said in the assigned audio time range. Reply with plain English only. No markdown, no bullet list labels, no image id prefix.",
+    },
+  );
+
+  const userText = `Photo id (for your context only; do not repeat it in the answer): ${projectImageId}.\n\nLook at the image. Listen to the cached audio from ${startSec.toFixed(2)} seconds through ${endSec.toFixed(2)} seconds (inclusive of that segment). Write a specific, professional description of what is shown in the image, grounded in both the visual evidence and the narration in that time window. If the audio does not mention this subject, say what you see visually and note only relevant audio. Write 2–5 short sentences. Output only the description.`;
+
+  const result = await model.generateContent({
+    contents: [
+      {
+        role: "user",
+        parts: [
+          {
+            inlineData: {
+              mimeType: image.mimeType,
+              data: image.base64,
+            },
+          },
+          { text: userText },
+        ],
+      },
+    ],
+    generationConfig: {
+      temperature: 0.35,
+      maxOutputTokens: 512,
+    },
+  });
+
+  return (result.response.text() ?? "").trim();
 }
