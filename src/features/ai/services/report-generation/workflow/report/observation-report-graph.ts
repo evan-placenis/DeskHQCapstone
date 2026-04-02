@@ -11,7 +11,7 @@ import { synthesisBuilderNode} from "../../nodes/report/observation/synthesis-bu
 import { toolNode } from "../../nodes/tool-node";
 import { AIMessage } from "@langchain/core/messages";
 import { fetchContextNode } from "../../nodes/report/observation/fetch-context-node";
-import { sharedCheckpointer } from "../checkpointer"; 
+import { getSharedCheckpointer } from "../checkpointer";
 
 import { builderToolsNode } from "../../nodes/report/observation/builder-tool-node";
 import { logger } from "@/lib/logger";
@@ -83,9 +83,9 @@ const workflow = new StateGraph(ObservationState)
   .addEdge("synthesis_builder", END)
 
 
-// Compile with SHARED checkpointer
-// CRITICAL: Must use sharedCheckpointer (not new MemorySaver()) so resume route can access the same state
+// Compile with SHARED checkpointer (lazy — see checkpointer.ts)
+// CRITICAL: Must use getSharedCheckpointer() (not new MemorySaver()) so resume route can access the same state
 export const observationReportGraph = workflow.compile({
-  checkpointer: sharedCheckpointer,
+  checkpointer: getSharedCheckpointer(),
   interruptBefore: ["human_approval"], // Pauses BEFORE human_approval node runs
 });

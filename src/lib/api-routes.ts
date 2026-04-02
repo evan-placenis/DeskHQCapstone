@@ -40,6 +40,8 @@ export const apiRoutes = {
       folderName != null
         ? `/api/project/${encodeURIComponent(projectId)}/audio-timeline?folderName=${encodeURIComponent(folderName)}`
         : `/api/project/${encodeURIComponent(projectId)}/audio-timeline`,
+    captureSessions: (projectId: string | number) =>
+      `/api/project/${encodeURIComponent(String(projectId))}/capture-sessions`,
   },
   knowledge: {
     store: (projectId?: string | number) =>
@@ -62,6 +64,9 @@ export const apiRoutes = {
     root: "/api/capture-sessions",
     finalize: (sessionId: string) => `/api/capture-sessions/${sessionId}/finalize`,
     upload: (sessionId: string) => `/api/capture-sessions/${sessionId}/upload`,
+    imageIds: (sessionId: string) => `/api/capture-sessions/${sessionId}/image-ids`,
+    /** Server-side Gemini STT; writes transcript and deletes temp audio. */
+    transcribe: "/api/capture-sessions/transcribe",
   },
 } as const;
 

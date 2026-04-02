@@ -1,5 +1,8 @@
 import { SupabaseClient } from "@supabase/supabase-js";
 
+/** DB check: idle | queued | ready | failed */
+export type TranscriptionStatus = "idle" | "queued" | "ready" | "failed";
+
 export interface CaptureSession {
     id: string;
     organization_id: string;
@@ -12,8 +15,16 @@ export interface CaptureSession {
     audio_duration_seconds?: number | null;
     notes_text?: string | null;
     transcript_text?: string | null;
+    transcription_status?: TranscriptionStatus;
+    /** User-visible message when transcription_status is failed */
+    transcription_error?: string | null;
     created_at?: string;
 }
+
+export type CaptureSessionListRow = Pick<
+    CaptureSession,
+    "id" | "folder_name" | "transcription_status" | "transcription_error"
+>;
 
 export interface CaptureSessionImage {
     capture_session_id: string;
@@ -28,4 +39,5 @@ export interface CaptureSessionRepository {
     insertSessionImage(image: CaptureSessionImage, client: SupabaseClient): Promise<void>;
     getSessionByFolderAndProject(folderName: string, projectId: string, client: SupabaseClient): Promise<CaptureSession | null>;
     getSessionImagesBySessionId(sessionId: string, imageIds: string[], client: SupabaseClient): Promise<CaptureSessionImage[]>;
+    listByProjectId(projectId: string, client: SupabaseClient): Promise<CaptureSessionListRow[]>;
 }

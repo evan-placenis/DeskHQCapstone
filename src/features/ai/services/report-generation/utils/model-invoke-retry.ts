@@ -58,6 +58,13 @@ export async function invokeWithRetry(
       if (attempt >= MAX_ATTEMPTS || !isRetryableModelError(e)) {
         throw e;
       }
+      // ========================================== 
+      // ✅ ADDED OBSERVABILITY LOGGING HERE //
+      const errorMessage = e instanceof Error ? e.message : String(e); 
+      console.warn(`⚠️ [Retry Triggered] Model failed on attempt ${attempt}/${MAX_ATTEMPTS}. Retrying...`); 
+      console.warn(`📝 [Retry Reason] ${errorMessage}`); 
+      // ==========================================
+      
       const exp = BASE_BACKOFF_MS * Math.pow(2, attempt - 1);
       const jitter = Math.floor(Math.random() * 200);
       await sleep(exp + jitter);
