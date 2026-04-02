@@ -274,7 +274,30 @@ export function PhotoFolderView({
                   <CollapsibleTrigger className="flex items-center gap-2 sm:gap-3 flex-1 min-w-0">
                     <FolderOpen className="w-4 h-4 sm:w-5 sm:h-5 text-theme-action-primary flex-shrink-0" />
                     <div className="text-left flex-1 min-w-0">
-                      <h4 className="text-slate-900 text-sm sm:text-base line-clamp-1">{folder.name}</h4>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <h4 className="text-slate-900 text-sm sm:text-base line-clamp-1">{folder.name}</h4>
+                        {folder.transcriptionStatus === "queued" && (
+                          <Badge
+                            variant="secondary"
+                            className="shrink-0 text-[11px] sm:text-xs bg-amber-100 text-amber-900 border-amber-200"
+                          >
+                            Processing
+                          </Badge>
+                        )}
+                        {folder.transcriptionStatus === "failed" && (
+                          <Badge
+                            variant="destructive"
+                            className="shrink-0 text-[11px] sm:text-xs max-w-[min(100%,280px)] truncate"
+                            title={
+                              folder.transcriptionError?.trim()
+                                ? `Processing failed: ${folder.transcriptionError.trim()}`
+                                : "Processing failed"
+                            }
+                          >
+                            Processing failed
+                          </Badge>
+                        )}
+                      </div>
                       <p className="text-[13px] sm:text-sm text-slate-600">
                         {folderPhotos.length} photo{folderPhotos.length !== 1 ? 's' : ''}
                         {mode === "select" && selectedPhotoIds.length > 0 && (

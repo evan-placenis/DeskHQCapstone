@@ -44,6 +44,8 @@ export interface TimelinePhoto {
   name?: string;
   /** Milliseconds from start of recording when photo was taken */
   takenAtMs: number;
+  /** From `project_images.ai_description` (e.g. field note from capture STT). */
+  aiDescription?: string | null;
 }
 
 export type ProcessingStatus = "idle" | "transcribing" | "matching" | "complete";
@@ -58,6 +60,8 @@ interface AudioTimelineApiResponse {
   audioStoragePath: string | null;
   audioDurationSeconds: number | null;
   segments: Array<{ text: string; timestampMs: number }>;
+  summaryNote?: string | null;
+  referencedImages?: string[];
   photos: TimelinePhoto[];
 }
 
@@ -195,7 +199,6 @@ export function AudioTimelinePage({
   const processingStatus = (segments ? "complete" : undefined) as ProcessingStatus | undefined;
   const sessionStartTime: Date | undefined = undefined;
   const linkedSegmentCount = segments?.filter((s) => s.linkedPhotoId != null).length;
-  const descriptions: Record<string | number, string> | undefined = undefined;
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -533,6 +536,20 @@ export function AudioTimelinePage({
                 <CardTitle className="text-sm">Timeline &amp; Transcript</CardTitle>
               </CardHeader>
               <CardContent>
+                {sessionData?.summaryNote ? (
+                  <div className="mb-4 p-3 rounded-lg bg-slate-50 border border-slate-200">
+                    <div className="flex items-center gap-2 mb-1.5">
+                      <Sparkles className="w-4 h-4 text-amber-600 shrink-0" />
+                      <span className="text-xs font-semibold text-slate-700">Field note</span>
+                    </div>
+                    <p className="text-sm text-slate-800 whitespace-pre-wrap">{sessionData.summaryNote}</p>
+                    {sessionData.referencedImages && sessionData.referencedImages.length > 0 ? (
+                      <p className="text-xs text-slate-500 mt-2">
+                        Referenced images: {sessionData.referencedImages.join(", ")}
+                      </p>
+                    ) : null}
+                  </div>
+                ) : null}
                 {hasSegments ? (
                   <div className="relative max-h-[65vh] overflow-y-auto pr-1 -mr-1">
                     <div className="absolute left-[40px] top-0 bottom-0 w-px bg-slate-200" />
@@ -660,51 +677,63 @@ export function AudioTimelinePage({
                 {hasPhotos ? (
                   <div className="space-y-4 max-h-[65vh] overflow-y-auto pr-1 -mr-1">
                     {sortedPhotos.map((photo, idx) => {
-                      const desc = descriptions?.[photo.id];
                       const linkedSegs = segments?.filter(
                         (s) => s.linkedPhotoId === photo.id
                       );
                       const hasLinkedTranscript = linkedSegs && linkedSegs.length > 0;
+                      const aiDesc =
+                        typeof photo.aiDescription === "string" && photo.aiDescription.trim().length > 0
+                          ? photo.aiDescription.trim()
+                          : null;
 
                       return (
                         <div
                           key={photo.id}
                           className="border border-slate-200 rounded-lg overflow-hidden"
                         >
-                          {/* Description content */}
-                          <div className="p-4">
-                            {desc ? (
-                              <p className="text-sm text-slate-800 leading-relaxed">
-                                {desc}
-                              </p>
-                            ) : hasLinkedTranscript ? (
-                              <div className="space-y-2">
-                                {linkedSegs!.map((seg) => (
-                                  <p
-                                    key={seg.id}
-                                    className="text-sm text-slate-600 leading-relaxed italic"
-                                  >
-                                    {seg.text}
-                                  </p>
-                                ))}
-                                <div className="flex items-center gap-1.5 mt-2">
-                                  <Sparkles className="w-3.5 h-3.5 text-slate-400" />
-                                  <span className="text-xs text-slate-400">
-                                    AI description will be generated from this transcript
-                                  </span>
+                          <div className="p-4 flex flex-col sm:flex-row gap-4">
+                            <div className="w-full sm:w-40 shrink-0 aspect-[4/3] rounded-lg overflow-hidden border border-slate-200 bg-slate-100">
+                              <SecureImage
+                                src={photo.url}
+                                storagePath={photo.storagePath}
+                                alt={photo.name || "Session photo"}
+                                className="w-full h-full object-cover"
+                              />
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              {aiDesc ? (
+                                <p className="text-sm text-slate-800 leading-relaxed whitespace-pre-wrap">
+                                  {aiDesc}
+                                </p>
+                              ) : hasLinkedTranscript ? (
+                                <div className="space-y-2">
+                                  {linkedSegs!.map((seg) => (
+                                    <p
+                                      key={seg.id}
+                                      className="text-sm text-slate-600 leading-relaxed italic"
+                                    >
+                                      {seg.text}
+                                    </p>
+                                  ))}
+                                  <div className="flex items-center gap-1.5 mt-2">
+                                    <Sparkles className="w-3.5 h-3.5 text-slate-400" />
+                                    <span className="text-xs text-slate-400">
+                                      AI description will be generated from this transcript
+                                    </span>
+                                  </div>
                                 </div>
-                              </div>
-                            ) : (
-                              <div className="flex flex-col items-center py-4 text-center gap-2">
-                                <Sparkles className="w-5 h-5 text-slate-300" />
-                                <p className="text-sm text-slate-400">
-                                  No description added yet
-                                </p>
-                                <p className="text-xs text-slate-400">
-                                  Description will be generated from transcript &amp; photo context
-                                </p>
-                              </div>
-                            )}
+                              ) : (
+                                <div className="flex flex-col items-start py-1 gap-2">
+                                  <Sparkles className="w-5 h-5 text-slate-300" />
+                                  <p className="text-sm text-slate-400">
+                                    No description added yet
+                                  </p>
+                                  <p className="text-xs text-slate-400">
+                                    Field notes from capture will appear here when linked to this photo.
+                                  </p>
+                                </div>
+                              )}
+                            </div>
                           </div>
 
                           {/* Photo label bar */}
