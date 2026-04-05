@@ -78,7 +78,8 @@ export function CaptureSessionPage({
   onSuccessRedirect,
 }: {
   onClose: () => void;
-  onSuccessRedirect: () => void;
+  /** Called after a successful upload; pass the project the session was uploaded to. */
+  onSuccessRedirect: (projectId: string) => void;
 }) {
   const [step, setStep] = useState<Step>("capture");
   const [sessionId, setSessionId] = useState<string | null>(null);
@@ -813,7 +814,11 @@ export function CaptureSessionPage({
         await captureIDB.clearSession(sessionId).catch(() => {});
       }
       setUploadProgress("done");
-      onSuccessRedirect();
+      if (selectedProjectId) {
+        onSuccessRedirect(selectedProjectId);
+      } else {
+        onClose();
+      }
     } catch (e) {
       setUploadError(e instanceof Error ? e.message : "Upload failed");
       setUploadProgress("error");
@@ -825,6 +830,7 @@ export function CaptureSessionPage({
     getAudioBlob,
     getRawAudioSegmentsAndMime,
     onSuccessRedirect,
+    onClose,
   ]);
 
   useEffect(() => {

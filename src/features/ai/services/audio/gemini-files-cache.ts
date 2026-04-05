@@ -1,9 +1,10 @@
 /**
- * Phase 2: Gemini Files API + context caching (Node / Trigger.dev).
+ * Gemini Files API + context caching (Node / Trigger.dev).
  *
- * Slice 2+: `runCaptureTranscribeJob` uploads audio here, creates a cache, runs
- * `transcribeCaptureSessionAudio` (and per-photo probes), then deletes file + cache in `finally`.
- * Uses the same API key as {@link ModelStrategy} (`GOOGLE_API_KEY`).
+ * `runCaptureTranscribeJob` uploads audio here, creates a cache, runs
+ * `describePhotoFromCachedAudio` (per-photo probes), then deletes the uploaded Gemini file
+ * + cache in `finally` (see `capture-audio-transcription.ts`).
+ * Uses `GOOGLE_API_KEY`.
  */
 import fs from "fs/promises";
 import os from "os";
@@ -87,14 +88,15 @@ export async function uploadLocalAudioToGoogleFiles(
 
 /**
  * Poll until the uploaded file is ACTIVE (required before creating a context cache).
+ * Defaults: 10 min timeout, 5 s poll interval — large field recordings can take a while to process.
  */
 export async function waitForGeminiFileActive(
   apiKey: string,
   fileName: string,
   options?: { timeoutMs?: number; pollMs?: number },
 ): Promise<void> {
-  const timeoutMs = options?.timeoutMs ?? 180_000;
-  const pollMs = options?.pollMs ?? 2000;
+  const timeoutMs = options?.timeoutMs ?? 600_000;
+  const pollMs = options?.pollMs ?? 5000;
   const fileManager = new GoogleAIFileManager(apiKey);
   const deadline = Date.now() + timeoutMs;
 

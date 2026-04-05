@@ -277,7 +277,7 @@ If the user asks for a specific format (e.g. bullet points, report section), str
       storagePath: string;
       name: string;
       takenAtMs: number;
-      aiDescription: string | null;
+      audioDescription: string | null;
     }>;
   }> {
     const session = await this.captureSessionRepo.getSessionByFolderAndProject(folderName, projectId, client);
@@ -307,9 +307,9 @@ If the user asks for a specific format (e.g. bullet points, report section), str
       storagePath: img.storage_path,
       name: img.file_name,
       takenAtMs: takenAtMap[img.id] ?? idx * 1000,
-      aiDescription:
-        typeof img.ai_description === "string" && img.ai_description.trim().length > 0
-          ? img.ai_description.trim()
+      audioDescription:
+        typeof img.audio_description === "string" && img.audio_description.trim().length > 0
+          ? img.audio_description.trim()
           : null,
     }));
 

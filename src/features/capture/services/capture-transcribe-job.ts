@@ -1,8 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import {
-  describePhotoFromCachedAudio,
-  transcribeCaptureSessionAudio,
-} from "@/features/ai/services/audio/capture-audio-transcription";
+import { describePhotoFromCachedAudio } from "@/features/ai/services/audio/capture-audio-transcription";
 import {
   createContextCacheFromFile,
   deleteContextCache,
@@ -22,31 +19,21 @@ export const PROJECT_AUDIO_BUCKET = "project-audio";
 /** Gallery bucket (`storage-service` / `project_images.storage_path`). */
 export const PROJECT_IMAGES_BUCKET = "project-images";
 
-function resolveAudioEndSeconds(
-  durationSeconds: number | null,
-  segments: { timestampMs: number }[],
-  lastPhotoTakenAtMs: number,
-): number {
-  if (durationSeconds != null && Number.isFinite(durationSeconds) && durationSeconds > 0) {
-    return durationSeconds;
-  }
-  if (segments.length > 0) {
-    const lastMs = segments[segments.length - 1].timestampMs;
-    return Math.max(1, Math.ceil(lastMs / 1000) + 2);
-  }
-  return Math.max(1, lastPhotoTakenAtMs / 1000 + 60);
-}
+/**
+ * Upper bound for the last photo's audio window end (seconds). Gemini uses actual cached audio length.
+ */
+const LAST_PHOTO_AUDIO_END_SEC = 9_999_999;
 
-/** Dynamic window: photo i gets audio from previous shutter (or 0) to next shutter (or end of recording). */
+/** Dynamic window: photo i gets audio from previous shutter (or 0) to next shutter (or LAST_PHOTO_AUDIO_END_SEC for last photo). */
 function probeWindowSeconds(
   i: number,
   rows: { taken_at_ms: number }[],
-  audioEndSec: number,
 ): { startSec: number; endSec: number } {
   const startSec = i === 0 ? 0 : rows[i - 1].taken_at_ms / 1000;
-  let endSec = i === rows.length - 1 ? audioEndSec : rows[i + 1].taken_at_ms / 1000;
+  let endSec =
+    i === rows.length - 1 ? LAST_PHOTO_AUDIO_END_SEC : rows[i + 1].taken_at_ms / 1000;
   if (endSec <= startSec) {
-    endSec = Math.min(audioEndSec, startSec + 1);
+    endSec = Math.min(LAST_PHOTO_AUDIO_END_SEC, startSec + 1);
   }
   return { startSec, endSec };
 }
@@ -120,21 +107,25 @@ async function mapWithConcurrencySettled<T, R>(
 export type CaptureTranscribeJobPayload = {
   sessionId: string;
   storagePath: string;
+  /** Optional; reserved for future use (not used for full-session STT). */
   projectImageIds?: string[];
 };
 
 export type CaptureTranscribeJobResult = {
   sessionId: string;
-  segmentCount: number;
-  durationSeconds: number | null;
-  summaryChars: number;
-  referencedImageIds: number;
   tempAudioDeleted: boolean;
-  photoProbesOk?: number;
-  photoProbesFailed?: number;
+  photoProbesOk: number;
+  photoProbesFailed: number;
 };
 
 const MAX_TRANSCRIPTION_ERROR_CHARS = 4000;
+
+/** Empty transcript payload (no master STT — photo probes only). */
+const EMPTY_TRANSCRIPT_JSON = serializeTranscriptForDb({
+  segments: [],
+  summary_note: "",
+  referenced_images: [],
+});
 
 /**
  * Persist terminal transcription failure for Realtime/UI (called from Trigger task catch).
@@ -166,14 +157,15 @@ export async function persistTranscriptionFailure(
 }
 
 /**
- * Download temp audio → Gemini Files + cache → master transcript + per-photo probes → DB → purge storage.
+ * Download temp audio → Gemini Files + cache → per-photo probes only → DB.
+ * (Supabase audio purge is disabled — see commented block below — so recordings stay available if parsing fails.)
  * Runs inside Trigger.dev (no Next.js request context).
  */
 export async function runCaptureTranscribeJob(
   admin: SupabaseClient,
   payload: CaptureTranscribeJobPayload,
 ): Promise<CaptureTranscribeJobResult> {
-  const { sessionId, storagePath, projectImageIds = [] } = payload;
+  const { sessionId, storagePath } = payload;
 
   const { data: session, error: sessionErr } = await admin
     .from("capture_sessions")
@@ -245,12 +237,6 @@ export async function runCaptureTranscribeJob(
       cacheModel: cached.model,
     });
 
-    const result = await transcribeCaptureSessionAudio(cached, {
-      projectImageIds: projectImageIds.length > 0 ? projectImageIds : undefined,
-    });
-
-    const { segments, durationSeconds, summary_note, referenced_images } = result;
-
     const { data: sessionImages, error: siErr } = await admin
       .from("capture_session_images")
       .select("project_image_id, taken_at_ms")
@@ -270,9 +256,6 @@ export async function runCaptureTranscribeJob(
       ) as { project_image_id: string; taken_at_ms: number }[];
 
     const conc = photoProbeConcurrency(probeRows.length);
-    const lastTakenMs =
-      probeRows.length > 0 ? probeRows[probeRows.length - 1].taken_at_ms : 0;
-    const audioEndSec = resolveAudioEndSeconds(durationSeconds, segments, lastTakenMs);
 
     const imageIds = probeRows.map((r) => r.project_image_id);
     const { data: imageMetaRows, error: metaErr } =
@@ -304,7 +287,7 @@ export async function runCaptureTranscribeJob(
     const probeItems = probeRows.map((row, i) => ({
       project_image_id: row.project_image_id,
       taken_at_ms: row.taken_at_ms,
-      window: probeWindowSeconds(i, probeRows, audioEndSec),
+      window: probeWindowSeconds(i, probeRows),
     }));
 
     logger.info("[transcribe-job] temporal photo probes", {
@@ -312,7 +295,7 @@ export async function runCaptureTranscribeJob(
       photoCount: probeRows.length,
       concurrency: conc,
       cacheName: cached.name,
-      audioEndSec,
+      lastPhotoAudioEndSec: LAST_PHOTO_AUDIO_END_SEC,
     });
 
     if (probeRows.length > 0 && conc > 0) {
@@ -353,14 +336,14 @@ export async function runCaptureTranscribeJob(
         }
         const { error: upErr } = await admin
           .from("project_images")
-          .update({ ai_description: description })
+          .update({ audio_description: description })
           .eq("id", projectImageId)
           .eq("project_id", projectId)
           .eq("folder_name", folderName);
 
         if (upErr) {
           photoProbesFailed++;
-          logger.error("[transcribe-job] ai_description update failed", { projectImageId, error: upErr });
+          logger.error("[transcribe-job] audio_description update failed", { projectImageId, error: upErr });
         } else {
           photoProbesOk++;
         }
@@ -373,70 +356,37 @@ export async function runCaptureTranscribeJob(
       });
     }
 
-    const transcriptJson = serializeTranscriptForDb({
-      segments,
-      summary_note,
-      referenced_images,
-    });
-
-    logger.info("[transcribe-job] STT result (before DB)", {
+    logger.info("[transcribe-job] saving session (no master transcript)", {
       sessionId,
-      segmentCount: segments.length,
-      durationSeconds,
-      summaryChars: summary_note.length,
-      referencedImageIds: referenced_images.length,
-      payloadBytes: transcriptJson.length,
+      transcriptEmpty: true,
     });
 
     const { error: updateError } = await admin
       .from("capture_sessions")
       .update({
-        transcript_text: transcriptJson,
+        transcript_text: EMPTY_TRANSCRIPT_JSON,
         transcription_status: "ready",
         transcription_error: null,
-        audio_storage_path: null,
-        audio_public_url: null,
-        ...(durationSeconds != null && Number.isFinite(durationSeconds) && durationSeconds > 0
-          ? { audio_duration_seconds: durationSeconds }
-          : {}),
       })
       .eq("id", sessionId);
 
     if (updateError) {
-      logger.error("[transcribe-job] DB update failed after STT (audio not deleted):", updateError);
-      throw new Error(updateError.message || "Failed to save transcript");
-    }
-
-    const { error: removeError } = await admin.storage.from(PROJECT_AUDIO_BUCKET).remove([storagePath]);
-    if (removeError) {
-      logger.error("[transcribe-job] Storage delete failed after successful DB write:", removeError);
-      return {
-        sessionId,
-        segmentCount: segments.length,
-        durationSeconds,
-        summaryChars: summary_note.length,
-        referencedImageIds: referenced_images.length,
-        tempAudioDeleted: false,
-        photoProbesOk,
-        photoProbesFailed,
-      };
+      logger.error("[transcribe-job] DB update failed after probes:", updateError);
+      throw new Error(updateError.message || "Failed to save session after transcription");
     }
 
     logger.info("[transcribe-job] complete", {
       sessionId,
       transcriptSaved: true,
-      tempAudioDeleted: true,
+      tempAudioDeleted: false,
+      audioRetainedInStorage: true,
       photoProbesOk,
       photoProbesFailed,
     });
 
     return {
       sessionId,
-      segmentCount: segments.length,
-      durationSeconds,
-      summaryChars: summary_note.length,
-      referencedImageIds: referenced_images.length,
-      tempAudioDeleted: true,
+      tempAudioDeleted: false,
       photoProbesOk,
       photoProbesFailed,
     };

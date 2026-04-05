@@ -56,14 +56,20 @@ import {
 } from "lucide-react";
 import { ReportCard } from "@/features/reports/components/presentation/report-card";
 
+type ProjectDetailTab = "reports" | "photos" | "knowledge";
+
 interface ProjectDetailPageProps {
   project: Project;
+  /** When set (e.g. from `?tab=photos` after capture upload), opens that tab on first paint. */
+  initialTab?: ProjectDetailTab;
   onNavigate: (page: Page) => void;
   onNavigateToUrl?: (url: string) => void;
   onLogout: () => void;
   onBack: () => void;
   onSelectReport: (reportId: number | string) => void;
 }
+
+const PROJECT_DETAIL_TABS: readonly ProjectDetailTab[] = ["reports", "photos", "knowledge"];
 
 const mockReports = [
   { id: 1, title: "Foundation Assessment - Section A", date: "2025-11-10", status: "Draft", engineer: "John Doe", inspector: "Sarah Smith", reviewer: "John Pogocar", photos: 8, observations: 12, project: "Bridge Inspection", projectId: 1 },
@@ -479,12 +485,15 @@ function mergeTranscriptionStatus(
 
 export function ProjectDetailPage({
   project,
+  initialTab,
   onNavigate,
   onNavigateToUrl,
   onLogout,
   onBack,
   onSelectReport
 }: ProjectDetailPageProps) {
+  const defaultTab: ProjectDetailTab =
+    initialTab && PROJECT_DETAIL_TABS.includes(initialTab) ? initialTab : "reports";
   const { user } = useAuth();
   const TEST_RUNNER_ORG_ID = "b5df0650-c7eb-4b49-afc0-b0640f6a741f";
   const shouldShowMocks = user?.organizationId === TEST_RUNNER_ORG_ID;
@@ -1440,7 +1449,7 @@ export function ProjectDetailPage({
         </div>
 
         {/* Tabs for Reports and Photos */}
-        <Tabs defaultValue="reports" className="space-y-6">
+        <Tabs defaultValue={defaultTab} className="space-y-6">
           <TabsList className="bg-white border border-slate-200 rounded-lg p-1">
             <TabsTrigger value="reports" className="rounded-md">
               <FileText className="w-4 h-4 mr-2" />

@@ -11,6 +11,11 @@ export default function ProjectDetail() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const projectIdParam = searchParams.get("projectId");
+  const tabParam = searchParams.get("tab");
+  const initialTab =
+    tabParam === "photos" || tabParam === "reports" || tabParam === "knowledge"
+      ? tabParam
+      : undefined;
   
   const [project, setProject] = useState<Project | null>(null);
   const [loading, setLoading] = useState(true);
@@ -90,6 +95,7 @@ export default function ProjectDetail() {
   return (
     <ProjectDetailPage
       project={project}
+      initialTab={initialTab}
       onNavigate={handleNavigate}
       onNavigateToUrl={(url) => router.push(url)}
       onLogout={handleLogout}
