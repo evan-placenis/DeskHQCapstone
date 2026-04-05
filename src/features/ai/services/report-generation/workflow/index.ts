@@ -1,20 +1,22 @@
 import { logger } from "@/lib/logger";
-import { observationReportGraph } from "./report/observation-report-graph";
-import { CompiledStateGraph } from "@langchain/langgraph";
+import type { CompiledStateGraph } from "@langchain/langgraph";
 
-// This is your Strategy Registry
-// Add new workflow graphs here as you create them
-// Use type assertion so different graph shapes (node names, state) are accepted in the registry
-const WORKFLOWS: Record<string, CompiledStateGraph<any, any>> = {
-  // "simple": simpleReportGraph as CompiledStateGraph<any, any>,
-  "observation": observationReportGraph as CompiledStateGraph<any, any>,
+export type WorkflowType = "observation";
 
-  // Easy to add more strategies:
-  // "advanced": advancedReportGraph as CompiledStateGraph<any, any>,
-  // "quick": quickReportGraph as CompiledStateGraph<any, any>,
-};
+let observationWorkflowCache: CompiledStateGraph<any, any> | null = null;
 
-export type WorkflowType = keyof typeof WORKFLOWS;
+function getObservationWorkflow(): CompiledStateGraph<any, any> {
+  if (!observationWorkflowCache) {
+    // Lazy require: avoids loading LangGraph graph + Postgres checkpointer until a workflow runs.
+    // (Otherwise any import of this module via ReportOrchestrator would connect to Postgres.)
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const mod = require("./report/observation-report-graph") as {
+      observationReportGraph: CompiledStateGraph<any, any>;
+    };
+    observationWorkflowCache = mod.observationReportGraph;
+  }
+  return observationWorkflowCache;
+}
 
 /**
  * Get a workflow graph by type
@@ -22,23 +24,20 @@ export type WorkflowType = keyof typeof WORKFLOWS;
  * @returns The compiled workflow graph, or null if the type is unknown
  */
 export function getWorkflow(workflowType: string): CompiledStateGraph<any, any> | null {
-  const workflow = WORKFLOWS[workflowType];
-
-  if (!workflow) {
-    const availableWorkflows = Object.keys(WORKFLOWS).join(", ");
-    logger.error(
-      `Workflow type '${workflowType}' not found. Available workflows: ${availableWorkflows}`
-    );
-    return null;
+  if (workflowType === "observation") {
+    return getObservationWorkflow();
   }
 
-  return workflow;
+  const availableWorkflows = "observation";
+  logger.error(
+    `Workflow type '${workflowType}' not found. Available workflows: ${availableWorkflows}`,
+  );
+  return null;
 }
 
 /**
- * Get all available workflow types
- * @returns Array of available workflow type names
+ * Get all available workflow type names
  */
 export function getAvailableWorkflows(): string[] {
-  return Object.keys(WORKFLOWS);
+  return ["observation"];
 }

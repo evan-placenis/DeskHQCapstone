@@ -2,48 +2,55 @@ import { PostgresSaver } from "@langchain/langgraph-checkpoint-postgres";
 import { Pool } from "pg";
 import { logger } from "@/lib/logger";
 
-// 1. Setup the connection pool using PostgreSQL connection string
-const connectionString = process.env.DATABASE_SESSION_URL
+let pool: Pool | null = null;
+let saver: PostgresSaver | null = null;
 
-logger.info('🔌 Checkpointer: Initializing...');
-logger.info('   DATABASE_SESSION_URL:', process.env.DATABASE_SESSION_URL ? '✅ Found' : '❌ Not set');
-if (!connectionString) {
-  logger.error('❌ CRITICAL: No PostgreSQL connection string found!');
-  logger.error('   Add to .env.local: DATABASE_URL=postgresql://postgres...');
-  logger.error('   Get it from: Supabase Dashboard → Settings → Database → Connection string → URI');
-} else if (connectionString.startsWith('https://') || connectionString.startsWith('http://')) {
-  logger.error('❌ CRITICAL: Connection string is HTTP URL, not PostgreSQL URL!');
-  logger.error('   Current:', connectionString);
-  logger.error('   You need the PostgreSQL connection string from Supabase Dashboard');
-} else {
-  logger.info('   Using connection string: ✅ Valid PostgreSQL URL');
-}
+/**
+ * Lazy Postgres checkpointer for LangGraph. Do not instantiate at module load:
+ * many API routes import `Container` → `ReportOrchestrator` → `workflow/index`, and
+ * eager init would connect to Postgres for unrelated requests.
+ */
+export function getSharedCheckpointer(): PostgresSaver {
+  if (saver) return saver;
 
-const pool = new Pool({
-  connectionString: connectionString,
-  ssl: {
-    rejectUnauthorized: false // Required for Supabase connections
+  const connectionString = process.env.DATABASE_SESSION_URL;
+
+  logger.info("🔌 Checkpointer: lazy init (first LangGraph workflow use)…");
+  logger.info("   DATABASE_SESSION_URL:", process.env.DATABASE_SESSION_URL ? "✅ Found" : "❌ Not set");
+
+  if (!connectionString) {
+    logger.error("❌ CRITICAL: No PostgreSQL connection string found!");
+    logger.error("   Add to .env.local: DATABASE_SESSION_URL=postgresql://postgres...");
+    throw new Error("DATABASE_SESSION_URL is not set (required for LangGraph checkpointing)");
   }
-});
+  if (connectionString.startsWith("https://") || connectionString.startsWith("http://")) {
+    logger.error("❌ CRITICAL: Connection string is HTTP URL, not PostgreSQL URL!");
+    throw new Error("DATABASE_SESSION_URL must be a PostgreSQL URI, not an HTTP URL");
+  }
 
-// Test connection
-pool.connect()
-  .then((client) => {
-    logger.info('✅ Checkpointer: PostgreSQL connection successful');
-    client.release();
-  })
-  .catch((err) => {
-    logger.error('❌ Checkpointer: PostgreSQL connection failed:', err.message);
-    logger.error('   Make sure DATABASE_URL is set correctly');
+  logger.info("   Using connection string: ✅ Valid PostgreSQL URL");
+
+  pool = new Pool({
+    connectionString,
+    ssl: {
+      rejectUnauthorized: false,
+    },
   });
 
+  pool
+    .connect()
+    .then((client) => {
+      logger.info("✅ Checkpointer: PostgreSQL connection successful");
+      client.release();
+    })
+    .catch((err: Error) => {
+      logger.error("❌ Checkpointer: PostgreSQL connection failed:", err.message);
+    });
 
-// 3. Create and Export the Saver DIRECTLY
-// This preserves all class methods (list, get, put) automatically.
-export const sharedCheckpointer = new PostgresSaver(pool);
+  saver = new PostgresSaver(pool);
+  saver.setup().catch((err: Error) => {
+    logger.error("⚠️ Error verifying checkpoint tables:", err.message);
+  });
 
-// 4. (Optional) Initialize tables on startup
-// Since you already created them in SQL, this is just a safeguard.
-sharedCheckpointer.setup().catch((err) => {
-  logger.error("⚠️ Error verifying checkpoint tables:", err.message);
-});
+  return saver;
+}

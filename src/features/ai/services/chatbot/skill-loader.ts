@@ -40,7 +40,9 @@ function parseFrontmatter(markdown: string): SkillDocument {
 }
 
 function resolveSkillPath(skillName: string): string {
-  return path.join(SKILLS_DIR, `${skillName}.md`);
+  // Nested skills: e.g. "capture/transcription" -> skills/capture/transcription.md
+  const safe = skillName.replace(/^\//, "").replace(/\.\.(\/|\\|$)/g, "");
+  return path.join(SKILLS_DIR, `${safe}.md`);
 }
 
 export function loadSkill(skillName: string): SkillDocument {

@@ -22,7 +22,15 @@ export const ROUTES = {
   selectOrg: '/pages/select-org',
   orgPassword: '/pages/organization-password',
   dashboard: '/pages/dashboard',
-  project: (id: string | number) => `/pages/project?projectId=${id}`,
+  project: (
+    id: string | number,
+    opts?: { tab?: 'photos' | 'reports' | 'knowledge' },
+  ) => {
+    const params = new URLSearchParams();
+    params.set('projectId', String(id));
+    if (opts?.tab) params.set('tab', opts.tab);
+    return `/pages/project?${params.toString()}`;
+  },
   report: (id: string | number, fromPeerReview: boolean = false) =>
     `/pages/report?id=${id}${fromPeerReview ? '&fromPeerReview=true' : ''}`,
   analytics: '/pages/analytics-dashboard',

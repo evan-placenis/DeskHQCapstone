@@ -1,10 +1,12 @@
 import { CaptureOrchestrator } from '@/features/ai/orchestrators/capture-orchestrator';
+import type { CaptureSession } from "./capture-session-repository";
 import { CaptureSessionRepository } from "./capture-session-repository";
 import { ProjectService } from "@/features/projects/services/project-service";
 import { StorageService } from "@/features/projects/services/storage-service";
 import { SupabaseClient } from '@supabase/supabase-js';
 import { v4 as uuidv4 } from 'uuid';
 import type { AiSdkChatProvider } from "@/lib/ai-providers";
+import { parseTranscriptTextFromDb } from "@/features/capture/lib/transcript-payload";
 
 export interface AnalyzeAudioParams {
   audioUrls: string[];
@@ -164,9 +166,8 @@ If the user asks for a specific format (e.g. bullet points, report section), str
       takenAtMs: number[];
       audioFile: File | null;
       notesText: string | null;
-      transcriptSegments: string | null;
-      /** When true, audio was uploaded client-side via TUS; path is constructed from session. */
-      audioClientUploaded?: boolean;
+      /** JSON string of transcript segments. Omit / undefined = do not overwrite (e.g. server STT already saved). */
+      transcriptSegments?: string | null;
       /** Full recording length in seconds (from client timeline); used for playback UI. */
       audioDurationSeconds?: number | null;
     },
@@ -216,29 +217,22 @@ If the user asks for a specific format (e.g. bullet points, report section), str
 
     let audioResult: { public_url: string; storage_path: string } | null = null;
 
-    if (data.audioClientUploaded) {
-      // Audio was uploaded directly from client via TUS; construct path and update DB
-      const safeFolder = folderName.replace(/\//g, '-');
-      const fileName = `session-audio-${sessionId}.webm`;
-      const storagePath = `${organizationId}/${projectId}/${safeFolder}/${fileName}`;
-      const bucketName = 'project-audio';
-      const { data: { publicUrl } } = client.storage.from(bucketName).getPublicUrl(storagePath);
+    const baseSessionPatch: Partial<CaptureSession> = {
+      notes_text: data.notesText,
+      status: "uploaded",
+    };
+    if (data.transcriptSegments !== undefined) {
+      baseSessionPatch.transcript_text = data.transcriptSegments;
+    }
+    if (
+      data.audioDurationSeconds != null &&
+      Number.isFinite(data.audioDurationSeconds) &&
+      data.audioDurationSeconds > 0
+    ) {
+      baseSessionPatch.audio_duration_seconds = data.audioDurationSeconds;
+    }
 
-      await this.captureSessionRepo.update(sessionId, {
-        audio_storage_path: storagePath,
-        audio_public_url: publicUrl,
-        notes_text: data.notesText,
-        transcript_text: data.transcriptSegments,
-        status: "uploaded",
-        ...(data.audioDurationSeconds != null &&
-        Number.isFinite(data.audioDurationSeconds) &&
-        data.audioDurationSeconds > 0
-          ? { audio_duration_seconds: data.audioDurationSeconds }
-          : {}),
-      }, client);
-
-      audioResult = { public_url: publicUrl, storage_path: storagePath };
-    } else if (data.audioFile && data.audioFile.size > 0) {
+    if (data.audioFile && data.audioFile.size > 0) {
       // Legacy: audio sent in FormData (small files); server uploads via TUS
       const fileName = `session-audio-${sessionId}.webm`;
       const result = await this.storageService.uploadProjectAudio(
@@ -252,30 +246,14 @@ If the user asks for a specific format (e.g. bullet points, report section), str
       );
 
       await this.captureSessionRepo.update(sessionId, {
+        ...baseSessionPatch,
         audio_storage_path: result.storage_path,
         audio_public_url: result.public_url,
-        notes_text: data.notesText,
-        transcript_text: data.transcriptSegments,
-        status: "uploaded",
-        ...(data.audioDurationSeconds != null &&
-        Number.isFinite(data.audioDurationSeconds) &&
-        data.audioDurationSeconds > 0
-          ? { audio_duration_seconds: data.audioDurationSeconds }
-          : {}),
       }, client);
 
       audioResult = { public_url: result.public_url, storage_path: result.storage_path };
     } else {
-      await this.captureSessionRepo.update(sessionId, {
-        notes_text: data.notesText,
-        transcript_text: data.transcriptSegments,
-        status: "uploaded",
-        ...(data.audioDurationSeconds != null &&
-        Number.isFinite(data.audioDurationSeconds) &&
-        data.audioDurationSeconds > 0
-          ? { audio_duration_seconds: data.audioDurationSeconds }
-          : {}),
-      }, client);
+      await this.captureSessionRepo.update(sessionId, baseSessionPatch, client);
     }
 
     return { images: uploadedImageRows, audio: audioResult };
@@ -291,7 +269,16 @@ If the user asks for a specific format (e.g. bullet points, report section), str
     audioStoragePath: string | null;
     audioDurationSeconds: number | null;
     segments: Array<{ text: string; timestampMs: number }>;
-    photos: Array<{ id: string; url: string; storagePath: string; name: string; takenAtMs: number }>;
+    summaryNote: string | null;
+    referencedImages: string[];
+    photos: Array<{
+      id: string;
+      url: string;
+      storagePath: string;
+      name: string;
+      takenAtMs: number;
+      audioDescription: string | null;
+    }>;
   }> {
     const session = await this.captureSessionRepo.getSessionByFolderAndProject(folderName, projectId, client);
 
@@ -300,14 +287,8 @@ If the user asks for a specific format (e.g. bullet points, report section), str
     const audioStoragePath = session?.audio_storage_path ?? null;
     const audioDurationSeconds = session?.audio_duration_seconds ?? null;
 
-    let segments: Array<{ text: string; timestampMs: number }> = [];
-    if (session?.transcript_text) {
-      try {
-        segments = JSON.parse(session.transcript_text);
-      } catch {
-        segments = [];
-      }
-    }
+    const parsedTranscript = parseTranscriptTextFromDb(session?.transcript_text);
+    const { segments, summaryNote, referencedImages } = parsedTranscript;
 
     const folderImages = await this.storageService.getProjectImagesByFolder(projectId, folderName, client);
 
@@ -326,8 +307,21 @@ If the user asks for a specific format (e.g. bullet points, report section), str
       storagePath: img.storage_path,
       name: img.file_name,
       takenAtMs: takenAtMap[img.id] ?? idx * 1000,
+      audioDescription:
+        typeof img.audio_description === "string" && img.audio_description.trim().length > 0
+          ? img.audio_description.trim()
+          : null,
     }));
 
-    return { sessionId, audioUrl, audioStoragePath, audioDurationSeconds, segments, photos };
+    return {
+      sessionId,
+      audioUrl,
+      audioStoragePath,
+      audioDurationSeconds,
+      segments,
+      summaryNote,
+      referencedImages,
+      photos,
+    };
   }
 }

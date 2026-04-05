@@ -1,5 +1,10 @@
 import { SupabaseClient } from '@supabase/supabase-js';
-import { CaptureSessionRepository, CaptureSession, CaptureSessionImage } from "./capture-session-repository";
+import {
+    CaptureSessionRepository,
+    CaptureSession,
+    CaptureSessionImage,
+    CaptureSessionListRow,
+} from "./capture-session-repository";
 
 export class SupabaseCaptureSessionRepository implements CaptureSessionRepository {
 
@@ -80,5 +85,17 @@ export class SupabaseCaptureSessionRepository implements CaptureSessionRepositor
             throw new Error(`Failed to fetch capture session images: ${error.message}`);
         }
         return (data ?? []) as CaptureSessionImage[];
+    }
+
+    async listByProjectId(projectId: string, client: SupabaseClient): Promise<CaptureSessionListRow[]> {
+        const { data, error } = await client
+            .from("capture_sessions")
+            .select("id, folder_name, transcription_status, transcription_error")
+            .eq("project_id", projectId);
+
+        if (error) {
+            throw new Error(`Failed to list capture sessions: ${error.message}`);
+        }
+        return (data ?? []) as CaptureSessionListRow[];
     }
 }

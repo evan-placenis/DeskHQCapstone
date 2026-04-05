@@ -30,11 +30,14 @@ function getAudioContextCtor(): (typeof AudioContext) | null {
   );
 }
 
+/**
+ * Use the Promise-based `decodeAudioData` API only. The legacy callback form can
+ * race with the returned Promise in some browsers, causing `EncodingError` to
+ * reject the Promise while the outer `try/catch` never sees it (uncaught rejection).
+ */
 function decodeAudioData(ctx: AudioContext, data: ArrayBuffer): Promise<AudioBuffer> {
-  return new Promise((resolve, reject) => {
-    const copy = data.slice(0);
-    ctx.decodeAudioData(copy, resolve, reject);
-  });
+  const copy = data.slice(0);
+  return ctx.decodeAudioData(copy);
 }
 
 function concatAudioBuffers(buffers: AudioBuffer[]): AudioBuffer | null {

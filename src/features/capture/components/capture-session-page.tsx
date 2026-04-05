@@ -8,6 +8,7 @@ import { supabase } from "@/lib/supabase-browser-client";
 import { apiRoutes } from "@/lib/api-routes";
 import { logger } from "@/lib/logger";
 import * as tus from "tus-js-client";
+import { parseTranscriptTextFromDb } from "@/features/capture/lib/transcript-payload";
 import { captureIDB } from "../services/capture-idb";
 import { pickSupportedAudioMimeType, useCaptureSession } from "../hooks/use-capture-session";
 import { flattenMultiPartAudioBlob } from "../utils/flatten-multi-part-audio-blob";
@@ -45,12 +46,40 @@ function isUsableImageBlob(blob: unknown): blob is Blob {
   return false;
 }
 
+/** Bounded parallel pool: preserves result order per index (not completion order). */
+async function mapWithConcurrency<T, R>(
+  items: T[],
+  concurrency: number,
+  fn: (item: T, index: number) => Promise<R>,
+): Promise<R[]> {
+  if (items.length === 0) return [];
+  const results: R[] = new Array(items.length);
+  let next = 0;
+  async function worker() {
+    while (true) {
+      const i = next++;
+      if (i >= items.length) return;
+      results[i] = await fn(items[i], i);
+    }
+  }
+  const pool = Math.min(Math.max(1, concurrency), items.length);
+  await Promise.all(Array.from({ length: pool }, () => worker()));
+  return results;
+}
+
+const PHOTO_UPLOAD_CONCURRENCY = 4;
+
+type PhotoUploadOk = { ok: true; projectImageId: string; takenAtMs: number };
+type PhotoUploadFail = { ok: false; message: string };
+type PhotoUploadOneResult = PhotoUploadOk | PhotoUploadFail;
+
 export function CaptureSessionPage({
   onClose,
   onSuccessRedirect,
 }: {
   onClose: () => void;
-  onSuccessRedirect: () => void;
+  /** Called after a successful upload; pass the project the session was uploaded to. */
+  onSuccessRedirect: (projectId: string) => void;
 }) {
   const [step, setStep] = useState<Step>("capture");
   const [sessionId, setSessionId] = useState<string | null>(null);
@@ -81,7 +110,6 @@ export function CaptureSessionPage({
   const streamRef = useRef<MediaStream | null>(null);
   const [captureStream, setCaptureStream] = useState<MediaStream | null>(null);
   const photoIdRef = useRef(0);
-  const recognitionRef = useRef<any>(null);
   const isRecordingRef = useRef(false);
   const isPausedRef = useRef(false);
   /** Set when user chose "Retry Upload" from the global recovery gate (sessionStorage). */
@@ -296,63 +324,6 @@ export function CaptureSessionPage({
     };
   }, [sessionId, step]);
 
-  const startSpeechRecognition = useCallback(() => {
-    recognitionRef.current?.stop();
-    recognitionRef.current = null;
-
-    const SpeechRecognitionCtor =
-      (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-    if (!SpeechRecognitionCtor) return;
-
-    const recognition = new SpeechRecognitionCtor();
-    recognition.continuous = true;
-    recognition.interimResults = false;
-    recognition.lang = "en-US";
-
-    const fatalErrors = new Set(["not-allowed", "service-not-allowed", "aborted"]);
-    recognition.onerror = (e: any) => {
-      if (fatalErrors.has(e.error)) {
-        isRecordingRef.current = false;
-      }
-      if (e.error !== "no-speech") logger.warn("SpeechRecognition error:", e.error);
-    };
-
-    recognition.onend = () => {
-      if (
-        isRecordingRef.current &&
-        !isPausedRef.current &&
-        recognitionRef.current === recognition
-      ) {
-        setTimeout(() => {
-          try {
-            recognition.start();
-          } catch {
-            /* ignore */
-          }
-        }, 100);
-      }
-    };
-
-    recognition.onresult = (event: any) => {
-      for (let i = event.resultIndex; i < event.results.length; i++) {
-        if (event.results[i].isFinal) {
-          const text = event.results[i][0].transcript.trim();
-          if (text) {
-            const timestampMs = getEncodedTimelineMs();
-            setTranscriptEntries((prev) => [...prev, { text, timestampMs }]);
-          }
-        }
-      }
-    };
-
-    try {
-      recognition.start();
-    } catch {
-      /* ignore */
-    }
-    recognitionRef.current = recognition;
-  }, [getEncodedTimelineMs]);
-
   const startCapture = useCallback(() => {
     if (!captureStream) return;
     const cont = getChunkCount() > 0;
@@ -363,24 +334,19 @@ export function CaptureSessionPage({
     }
     startSession({ continue: cont });
     isRecordingRef.current = true;
-    startSpeechRecognition();
   }, [
     captureStream,
     getChunkCount,
     startSession,
-    startSpeechRecognition,
   ]);
 
   const pauseCapture = useCallback(() => {
-    recognitionRef.current?.stop();
-    recognitionRef.current = null;
     pauseSession();
   }, [pauseSession]);
 
   const resumeCapture = useCallback(() => {
     resumeSession();
-    startSpeechRecognition();
-  }, [resumeSession, startSpeechRecognition]);
+  }, [resumeSession]);
 
   const takePhoto = useCallback(() => {
     const video = videoRef.current;
@@ -465,8 +431,6 @@ export function CaptureSessionPage({
   }, [photos, proceedToChooseProject]);
 
   const handleDone = useCallback(async () => {
-    recognitionRef.current?.stop();
-    recognitionRef.current = null;
     isRecordingRef.current = false;
 
     if (isRecording) {
@@ -548,6 +512,8 @@ export function CaptureSessionPage({
       await captureIDB.updateSession(sessionId, { step: "uploading", projectId }).catch(() => {});
 
       const idbState = await captureIDB.getSession(sessionId).catch(() => null);
+      let segmentsForMeta: TranscriptEntry[] =
+        idbState?.transcriptEntries?.length ? idbState.transcriptEntries : transcriptEntries;
 
       // 1. Finalize session (idempotent — safe to call again on retry)
       const finalizeRes = await fetch(apiRoutes.captureSessions.finalize(sessionId), {
@@ -570,73 +536,7 @@ export function CaptureSessionPage({
       const { organizationId, folderName: fn } = finalizeData;
       await captureIDB.updateSession(sessionId, { finalized: true }).catch(() => {});
 
-      // 2. Audio via TUS (skip if already uploaded in a previous attempt)
-      const { segments: audioSegments, mime: segmentMime } = getRawAudioSegmentsAndMime();
-      let audioBlob: Blob | null = null;
-      if (audioSegments.length > 1) {
-        audioBlob = await flattenMultiPartAudioBlob(audioSegments, segmentMime);
-      } else if (audioSegments.length === 1) {
-        audioBlob = audioSegments[0];
-      } else {
-        audioBlob = getAudioBlob();
-      }
-      let audioClientUploaded = idbState?.audioUploaded === true;
-
-      if (!audioClientUploaded && audioBlob && audioBlob.size > 0 && organizationId && fn) {
-        const { data: { session } } = await supabase.auth.getSession();
-        const token = session?.access_token;
-        if (!token) {
-          logger.error("Audio upload: not authenticated");
-          setUploadError("Not authenticated. Please log in to upload audio.");
-          setUploadProgress("error");
-          return;
-        }
-
-        const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-        if (!supabaseUrl) {
-          logger.error("Audio upload: missing NEXT_PUBLIC_SUPABASE_URL");
-          setUploadError("Missing Supabase configuration.");
-          setUploadProgress("error");
-          return;
-        }
-
-        const safeFolder = fn.replace(/\//g, "-");
-        const fileName = `session-audio-${sessionId}.webm`;
-        const filePath = `${organizationId}/${projectId}/${safeFolder}/${fileName}`;
-        const CHUNK_SIZE = 6 * 1024 * 1024;
-        const mimeType = audioBlob.type || segmentMime || "audio/webm";
-
-        await new Promise<void>((resolve, reject) => {
-          const upload = new tus.Upload(audioBlob, {
-            endpoint: `${supabaseUrl}/storage/v1/upload/resumable`,
-            retryDelays: [0, 3000, 5000, 10000, 20000],
-            headers: {
-              authorization: `Bearer ${token}`,
-              "x-upsert": "false",
-            },
-            uploadDataDuringCreation: true,
-            removeFingerprintOnSuccess: true,
-            chunkSize: CHUNK_SIZE,
-            metadata: {
-              bucketName: "project-audio",
-              objectName: filePath,
-              contentType: mimeType,
-              cacheControl: "3600",
-            },
-            onError(error: unknown) {
-              reject(new Error(`Audio upload failed: ${error instanceof Error ? error.message : String(error)}`));
-            },
-            onSuccess() {
-              resolve();
-            },
-          });
-          upload.start();
-        });
-        audioClientUploaded = true;
-        await captureIDB.updateSession(sessionId, { audioUploaded: true }).catch(() => {});
-      }
-
-      // 3. Upload photos one at a time (only those not yet uploaded)
+      // 2. Upload photos first so project_image UUIDs exist for Gemini referenced_images + DB updates
       const currentPhotos = photosRef.current;
       let photosToUpload: { photoId: number; blob: Blob; takenAtMs: number }[];
       try {
@@ -664,57 +564,228 @@ export function CaptureSessionPage({
       setTotalUploadCount(photosToUpload.length);
       setUploadedCount(0);
 
-      for (let i = 0; i < photosToUpload.length; i++) {
-        const photo = photosToUpload[i];
+      const uploadOnePhoto = async (
+        photo: (typeof photosToUpload)[number],
+        index: number,
+      ): Promise<PhotoUploadOneResult> => {
         const form = new FormData();
         form.append("photos", photo.blob, `photo-${photo.photoId}.jpg`);
         form.append("taken_at_ms", String(photo.takenAtMs));
 
-        const res = await fetch(apiRoutes.captureSessions.upload(sessionId), {
-          method: "POST",
-          body: form,
+        try {
+          const res = await fetch(apiRoutes.captureSessions.upload(sessionId), {
+            method: "POST",
+            body: form,
+          });
+          if (!res.ok) {
+            const err = await res.json().catch(() => ({}));
+            const msg =
+              typeof err === "object" && err !== null && "error" in err && typeof (err as { error: unknown }).error === "string"
+                ? (err as { error: string }).error
+                : `Photo upload failed (${index + 1}/${photosToUpload.length})`;
+            logger.error("Photo upload failed:", err);
+            return { ok: false, message: msg };
+          }
+
+          const uploadJson = (await res.json().catch(() => ({}))) as {
+            images?: Array<{ id?: string }>;
+          };
+          const firstId = uploadJson.images?.[0]?.id;
+          if (typeof firstId === "string" && firstId.length > 0) {
+            await captureIDB.markPhotoUploaded(sessionId, photo.photoId).catch(() => {});
+            setUploadedCount((c) => c + 1);
+            return { ok: true, projectImageId: firstId, takenAtMs: photo.takenAtMs };
+          }
+          return { ok: false, message: "No image id returned from server" };
+        } catch (e) {
+          const msg = e instanceof Error ? e.message : String(e);
+          logger.error("Photo upload threw:", e);
+          return { ok: false, message: msg };
+        }
+      };
+
+      const perPhotoResults = await mapWithConcurrency(
+        photosToUpload,
+        PHOTO_UPLOAD_CONCURRENCY,
+        uploadOnePhoto,
+      );
+
+      const succeeded = perPhotoResults.filter((r): r is PhotoUploadOk => r.ok);
+      const failed = perPhotoResults.filter((r): r is PhotoUploadFail => !r.ok);
+
+      if (failed.length > 0 && succeeded.length > 0) {
+        logger.warn("[capture] Partial photo upload failures (continuing)", {
+          failed: failed.length,
+          succeeded: succeeded.length,
+          errors: failed.map((f) => f.message),
         });
-        if (!res.ok) {
-          const err = await res.json().catch(() => ({}));
-          const msg =
-            typeof err === "object" && err !== null && "error" in err && typeof (err as { error: unknown }).error === "string"
-              ? (err as { error: string }).error
-              : `Photo upload failed (${i + 1}/${photosToUpload.length})`;
-          logger.error("Photo upload failed:", err);
-          setUploadError(msg);
+      }
+
+      if (photosToUpload.length > 0 && succeeded.length === 0) {
+        const firstMsg = failed[0]?.message ?? "Photo upload failed";
+        setUploadError(
+          failed.length === 1
+            ? firstMsg
+            : `All ${failed.length} photo uploads failed. ${firstMsg}`,
+        );
+        setUploadProgress("error");
+        return;
+      }
+
+      const uploadedProjectImageIds = succeeded
+        .sort((a, b) => a.takenAtMs - b.takenAtMs)
+        .map((r) => r.projectImageId);
+
+      let projectImageIdsForStt = [...uploadedProjectImageIds];
+      if (projectImageIdsForStt.length === 0) {
+        const idRes = await fetch(apiRoutes.captureSessions.imageIds(sessionId), {
+          credentials: "same-origin",
+        });
+        if (idRes.ok) {
+          const idJson = (await idRes.json().catch(() => ({}))) as { imageIds?: unknown };
+          if (Array.isArray(idJson.imageIds)) {
+            projectImageIdsForStt = idJson.imageIds.filter((x): x is string => typeof x === "string" && x.length > 0);
+          }
+        }
+      }
+
+      // 3. Ephemeral audio: TUS to /temp/, then server Gemini STT (skip if transcribe already succeeded on retry)
+      const { segments: audioSegments, mime: segmentMime } = getRawAudioSegmentsAndMime();
+      let audioBlob: Blob | null = null;
+      if (audioSegments.length > 1) {
+        audioBlob = await flattenMultiPartAudioBlob(audioSegments, segmentMime);
+      } else if (audioSegments.length === 1) {
+        audioBlob = audioSegments[0];
+      } else {
+        audioBlob = getAudioBlob();
+      }
+      const transcribeAlreadyDone = idbState?.audioUploaded === true;
+      let serverDurationSec: number | null = null;
+
+      if (!transcribeAlreadyDone && audioBlob && audioBlob.size > 0 && organizationId && fn) {
+        const { data: { session } } = await supabase.auth.getSession();
+        const token = session?.access_token;
+        if (!token) {
+          logger.error("Audio upload: not authenticated");
+          setUploadError("Not authenticated. Please log in to upload audio.");
           setUploadProgress("error");
           return;
         }
 
-        await captureIDB.markPhotoUploaded(sessionId, photo.photoId).catch(() => {});
-        setUploadedCount(i + 1);
+        const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+        if (!supabaseUrl) {
+          logger.error("Audio upload: missing NEXT_PUBLIC_SUPABASE_URL");
+          setUploadError("Missing Supabase configuration.");
+          setUploadProgress("error");
+          return;
+        }
+
+        const filePath = `${organizationId}/${projectId}/temp/${sessionId}/audio.webm`;
+        const CHUNK_SIZE = 6 * 1024 * 1024;
+        const mimeType = audioBlob.type || segmentMime || "audio/webm";
+
+        await new Promise<void>((resolve, reject) => {
+          const upload = new tus.Upload(audioBlob, {
+            endpoint: `${supabaseUrl}/storage/v1/upload/resumable`,
+            retryDelays: [0, 3000, 5000, 10000, 20000],
+            headers: {
+              authorization: `Bearer ${token}`,
+              "x-upsert": "true",
+            },
+            uploadDataDuringCreation: true,
+            removeFingerprintOnSuccess: true,
+            chunkSize: CHUNK_SIZE,
+            metadata: {
+              bucketName: "project-audio",
+              objectName: filePath,
+              contentType: mimeType,
+              cacheControl: "3600",
+            },
+            onError(error: unknown) {
+              reject(new Error(`Audio upload failed: ${error instanceof Error ? error.message : String(error)}`));
+            },
+            onSuccess() {
+              resolve();
+            },
+          });
+          upload.start();
+        });
+
+        try {
+          const tr = await fetch(apiRoutes.captureSessions.transcribe, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            credentials: "same-origin",
+            body: JSON.stringify({
+              sessionId,
+              storagePath: filePath,
+              ...(projectImageIdsForStt.length > 0 ? { projectImageIds: projectImageIdsForStt } : {}),
+            }),
+          });
+          const trJson = (await tr.json().catch(() => ({}))) as {
+            error?: string;
+            alreadyComplete?: boolean;
+            queued?: boolean;
+            runId?: string | null;
+          };
+          if (!tr.ok) {
+            const msg =
+              typeof trJson.error === "string" ? trJson.error : "Transcription failed";
+            logger.error("Transcribe queue failed:", trJson);
+            setUploadError(msg);
+            setUploadProgress("error");
+            return;
+          }
+
+          if (trJson.alreadyComplete === true) {
+            const { data: row } = await supabase
+              .from("capture_sessions")
+              .select("transcript_text, audio_duration_seconds")
+              .eq("id", sessionId)
+              .maybeSingle();
+            if (row?.transcript_text) {
+              const parsed = parseTranscriptTextFromDb(row.transcript_text);
+              segmentsForMeta = parsed.segments;
+              setTranscriptEntries(parsed.segments);
+              await captureIDB.updateSession(sessionId, { transcriptEntries: parsed.segments }).catch(() => {});
+              if (typeof row.audio_duration_seconds === "number" && row.audio_duration_seconds > 0) {
+                serverDurationSec = Math.ceil(row.audio_duration_seconds);
+              }
+            }
+            await captureIDB.updateSession(sessionId, { audioUploaded: true }).catch(() => {});
+          } else if (trJson.queued === true) {
+            await captureIDB.updateSession(sessionId, { audioUploaded: true }).catch(() => {});
+          } else {
+            setUploadError("Transcription could not be queued.");
+            setUploadProgress("error");
+            return;
+          }
+        } catch (queueErr) {
+          logger.error("Transcribe queue failed:", queueErr);
+          setUploadError(queueErr instanceof Error ? queueErr.message : "Transcription failed");
+          setUploadProgress("error");
+          return;
+        }
       }
 
-      // 4. Send metadata (transcript + audio flag) once after all photos
-      const currentTranscript = idbState?.transcriptEntries?.length
-        ? idbState.transcriptEntries
-        : transcriptEntries;
-
-      if (
-        !(idbState?.metadataSent === true) &&
-        (audioClientUploaded || currentTranscript.length > 0)
-      ) {
+      // 4. Finalize session row (duration, status). Omit transcript_segments — server STT already wrote DB.
+      const idbFresh = await captureIDB.getSession(sessionId).catch(() => null);
+      if (!(idbFresh?.metadataSent === true)) {
         const form = new FormData();
-        if (audioClientUploaded) form.set("audioClientUploaded", "true");
-        if (currentTranscript.length > 0) {
-          form.set("transcript_segments", JSON.stringify(currentTranscript));
-        }
-        const encodedMs = idbState?.audioEncodedDurationMs ?? 0;
+        const encodedMs = idbFresh?.audioEncodedDurationMs ?? idbState?.audioEncodedDurationMs ?? 0;
         const lastTranscriptMs =
-          currentTranscript.length > 0
-            ? Math.max(...currentTranscript.map((e) => e.timestampMs))
+          segmentsForMeta.length > 0
+            ? Math.max(...segmentsForMeta.map((e) => e.timestampMs))
             : 0;
         const inferredDurationSec = Math.ceil(Math.max(encodedMs, lastTranscriptMs) / 1000);
-        if (
-          inferredDurationSec > 0 &&
-          (audioClientUploaded || (audioBlob && audioBlob.size > 0) || currentTranscript.length > 0)
-        ) {
-          form.set("audio_duration_seconds", String(inferredDurationSec));
+        const durationSec =
+          serverDurationSec != null && serverDurationSec > 0
+            ? serverDurationSec
+            : inferredDurationSec > 0
+              ? inferredDurationSec
+              : 0;
+        if (durationSec > 0) {
+          form.set("audio_duration_seconds", String(durationSec));
         }
         const metaRes = await fetch(apiRoutes.captureSessions.upload(sessionId), {
           method: "POST",
@@ -743,8 +814,11 @@ export function CaptureSessionPage({
         await captureIDB.clearSession(sessionId).catch(() => {});
       }
       setUploadProgress("done");
-      setStep("success");
-      setTimeout(() => onSuccessRedirect(), 1500);
+      if (selectedProjectId) {
+        onSuccessRedirect(selectedProjectId);
+      } else {
+        onClose();
+      }
     } catch (e) {
       setUploadError(e instanceof Error ? e.message : "Upload failed");
       setUploadProgress("error");
@@ -756,6 +830,7 @@ export function CaptureSessionPage({
     getAudioBlob,
     getRawAudioSegmentsAndMime,
     onSuccessRedirect,
+    onClose,
   ]);
 
   useEffect(() => {
@@ -914,7 +989,7 @@ export function CaptureSessionPage({
         ) : (
           <>
             <Loader2 className="w-12 h-12 animate-spin text-theme-primary mb-4" />
-            <p className="text-white">
+            <p className="text-white text-center max-w-sm">
               {totalUploadCount > 0
                 ? `Uploading photo ${Math.min(uploadedCount + 1, totalUploadCount)} of ${totalUploadCount}...`
                 : "Uploading..."}

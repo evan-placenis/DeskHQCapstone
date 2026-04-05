@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import { useAuth } from "@/app/context/auth-context";
 import { useDelete } from "@/features/dashboard/components/use-delete"; // Import the hook
 import { apiRoutes } from "@/lib/api-routes";
@@ -56,14 +56,20 @@ import {
 } from "lucide-react";
 import { ReportCard } from "@/features/reports/components/presentation/report-card";
 
+type ProjectDetailTab = "reports" | "photos" | "knowledge";
+
 interface ProjectDetailPageProps {
   project: Project;
+  /** When set (e.g. from `?tab=photos` after capture upload), opens that tab on first paint. */
+  initialTab?: ProjectDetailTab;
   onNavigate: (page: Page) => void;
   onNavigateToUrl?: (url: string) => void;
   onLogout: () => void;
   onBack: () => void;
   onSelectReport: (reportId: number | string) => void;
 }
+
+const PROJECT_DETAIL_TABS: readonly ProjectDetailTab[] = ["reports", "photos", "knowledge"];
 
 const mockReports = [
   { id: 1, title: "Foundation Assessment - Section A", date: "2025-11-10", status: "Draft", engineer: "John Doe", inspector: "Sarah Smith", reviewer: "John Pogocar", photos: 8, observations: 12, project: "Bridge Inspection", projectId: 1 },
@@ -459,15 +465,35 @@ const mockKnowledgeDocuments: KnowledgeDocument[] = [
 ];
 
 import { UploadProgress } from "@/components/ui/upload-progress";
+import { supabase } from "@/lib/supabase-browser-client";
+import type { TranscriptionStatus } from "@/features/capture/services/capture-session-repository";
+
+const TRANSCRIPTION_STATUS_RANK: Record<TranscriptionStatus, number> = {
+  queued: 4,
+  failed: 3,
+  idle: 2,
+  ready: 1,
+};
+
+function mergeTranscriptionStatus(
+  current: TranscriptionStatus | undefined,
+  next: TranscriptionStatus,
+): TranscriptionStatus {
+  if (current === undefined) return next;
+  return TRANSCRIPTION_STATUS_RANK[next] >= TRANSCRIPTION_STATUS_RANK[current] ? next : current;
+}
 
 export function ProjectDetailPage({
   project,
+  initialTab,
   onNavigate,
   onNavigateToUrl,
   onLogout,
   onBack,
   onSelectReport
 }: ProjectDetailPageProps) {
+  const defaultTab: ProjectDetailTab =
+    initialTab && PROJECT_DETAIL_TABS.includes(initialTab) ? initialTab : "reports";
   const { user } = useAuth();
   const TEST_RUNNER_ORG_ID = "b5df0650-c7eb-4b49-afc0-b0640f6a741f";
   const shouldShowMocks = user?.organizationId === TEST_RUNNER_ORG_ID;
@@ -484,6 +510,10 @@ export function ProjectDetailPage({
   const [isKnowledgeUploadModalOpen, setIsKnowledgeUploadModalOpen] = useState(false);
   const [isPhotoUploadModalOpen, setIsPhotoUploadModalOpen] = useState(false);
   const [photoFolders, setPhotoFolders] = useState<PhotoFolder[]>([]);
+  const [transcriptionStatusByFolder, setTranscriptionStatusByFolder] = useState<
+    Record<string, TranscriptionStatus>
+  >({});
+  const [transcriptionErrorByFolder, setTranscriptionErrorByFolder] = useState<Record<string, string>>({});
 
   // Update mocks for static data
   useEffect(() => {
@@ -1100,6 +1130,76 @@ export function ProjectDetailPage({
     };
   }, [photos, photoFolders, photoSearchKeyword, photoFilterDateStart, photoFilterDateEnd, photoFilterUser]);
 
+  const foldersForView = useMemo(
+    () =>
+      filteredFolders.map((f) => ({
+        ...f,
+        transcriptionStatus: transcriptionStatusByFolder[f.name],
+        transcriptionError: transcriptionErrorByFolder[f.name],
+      })),
+    [filteredFolders, transcriptionStatusByFolder, transcriptionErrorByFolder],
+  );
+
+  const loadCaptureStatuses = useCallback(async () => {
+    if (shouldShowMocks) return;
+    const id = String(project.id);
+    try {
+      const res = await fetch(apiRoutes.project.captureSessions(id), { cache: "no-store" });
+      if (!res.ok) return;
+      const data = (await res.json()) as {
+        sessions?: Array<{
+          folder_name: string;
+          transcription_status: string;
+          transcription_error?: string | null;
+        }>;
+      };
+      const sessions = data.sessions ?? [];
+      const map: Record<string, TranscriptionStatus> = {};
+      const errors: Record<string, string> = {};
+      for (const row of sessions) {
+        const name = row.folder_name;
+        const next = (row.transcription_status ?? "idle") as TranscriptionStatus;
+        map[name] = mergeTranscriptionStatus(map[name], next);
+      }
+      for (const row of sessions) {
+        const name = row.folder_name;
+        if (
+          row.transcription_status === "failed" &&
+          typeof row.transcription_error === "string" &&
+          row.transcription_error.trim().length > 0
+        ) {
+          errors[name] = row.transcription_error.trim();
+        }
+      }
+      setTranscriptionStatusByFolder(map);
+      setTranscriptionErrorByFolder(errors);
+    } catch {
+      /* ignore */
+    }
+  }, [project.id, shouldShowMocks]);
+
+  useEffect(() => {
+    if (shouldShowMocks) return;
+    const id = String(project.id);
+    void loadCaptureStatuses();
+    const channel = supabase
+      .channel(`capture_sessions_project_${id}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "capture_sessions",
+          filter: `project_id=eq.${id}`,
+        },
+        () => void loadCaptureStatuses(),
+      )
+      .subscribe();
+    return () => {
+      void supabase.removeChannel(channel);
+    };
+  }, [project.id, shouldShowMocks, loadCaptureStatuses]);
+
   const hasActiveFilters = photoSearchKeyword || photoFilterDateStart || photoFilterDateEnd || photoFilterUser !== "all";
 
   // Scroll to top when component mounts
@@ -1349,7 +1449,7 @@ export function ProjectDetailPage({
         </div>
 
         {/* Tabs for Reports and Photos */}
-        <Tabs defaultValue="reports" className="space-y-6">
+        <Tabs defaultValue={defaultTab} className="space-y-6">
           <TabsList className="bg-white border border-slate-200 rounded-lg p-1">
             <TabsTrigger value="reports" className="rounded-md">
               <FileText className="w-4 h-4 mr-2" />
@@ -1619,7 +1719,7 @@ export function ProjectDetailPage({
 
                     {photoFolders.length > 0 ? (
                       <PhotoFolderView
-                        folders={filteredFolders}
+                        folders={foldersForView}
                         photos={filteredPhotos}
                         mode="view"
                         onPhotoClick={handlePhotoClick}

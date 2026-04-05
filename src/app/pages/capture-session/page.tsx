@@ -10,8 +10,8 @@ export default function CaptureSession() {
   return (
     <CaptureSessionPage
       onClose={() => router.push(ROUTES.dashboard)}
-      onSuccessRedirect={() => {
-        window.location.href = ROUTES.dashboard;
+      onSuccessRedirect={(projectId) => {
+        router.push(ROUTES.project(projectId, { tab: "photos" }));
       }}
     />
   );

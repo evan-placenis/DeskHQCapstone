@@ -124,6 +124,10 @@ export interface PhotoFolder {
   id: number;
   name: string;
   createdDate: string;
+  /** From capture_sessions.transcription_status (site visit audio pipeline). */
+  transcriptionStatus?: "idle" | "queued" | "ready" | "failed";
+  /** From capture_sessions.transcription_error when status is failed */
+  transcriptionError?: string | null;
 }
 
 export interface KnowledgeDocument {

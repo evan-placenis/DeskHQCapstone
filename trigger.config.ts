@@ -30,7 +30,7 @@ export default defineConfig({
       randomize: true,
     },
   },
-  dirs: ["./src/features/reports/services/trigger"],
+  dirs: ["./src/features/reports/services/trigger", "./src/trigger"],
   // 2. Add the build extension to grab your markdown files
   build: {
     extensions: [
