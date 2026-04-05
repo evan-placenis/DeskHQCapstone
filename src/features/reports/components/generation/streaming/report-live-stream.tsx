@@ -5,23 +5,31 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { Loader2, CheckCircle2 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
+import { stripThinkingBlocksForMarkdown } from "./strip-thinking-blocks";
 
 const MARKDOWN_PLUGINS = [remarkGfm];
 
-const StreamRenderer = memo(({ content }: { content: string }) => (
-  <div
-    className="prose prose-sm max-w-none text-slate-700 leading-relaxed
+const StreamRenderer = memo(({ content }: { content: string }) => {
+  const cleaned = stripThinkingBlocksForMarkdown(content);
+  return (
+    <div
+      className="prose prose-sm max-w-none text-slate-700 leading-relaxed
     prose-p:my-2 prose-ul:my-2 prose-li:my-1
     prose-headings:font-semibold prose-headings:text-slate-900 prose-headings:mt-5 prose-headings:mb-2
     prose-h2:text-base prose-h3:text-sm
     prose-strong:text-slate-900 prose-strong:font-semibold
     prose-blockquote:border-l-2 prose-blockquote:border-theme-primary/40 prose-blockquote:text-slate-500 prose-blockquote:pl-3
     prose-pre:bg-slate-100 prose-pre:p-3 prose-pre:rounded-lg prose-code:text-xs"
-  >
-    <ReactMarkdown remarkPlugins={MARKDOWN_PLUGINS}>{content}</ReactMarkdown>
-    <span className="inline-block w-1.5 h-4 ml-0.5 bg-theme-primary/70 animate-pulse align-middle translate-y-[1px] rounded-sm" />
-  </div>
-));
+    >
+      {cleaned ? (
+        <ReactMarkdown remarkPlugins={MARKDOWN_PLUGINS}>{cleaned}</ReactMarkdown>
+      ) : (
+        <span className="text-slate-400 text-sm">…</span>
+      )}
+      <span className="inline-block w-1.5 h-4 ml-0.5 bg-theme-primary/70 animate-pulse align-middle translate-y-[1px] rounded-sm" />
+    </div>
+  );
+});
 StreamRenderer.displayName = "StreamRenderer";
 
 const StatusFooter = memo(({ status }: { status: string }) => {

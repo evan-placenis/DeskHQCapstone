@@ -371,6 +371,8 @@ interface AIChatSidebarProps {
   projectId?: string;
   reportId?: string;
   sessionId: string | null;
+  /** When false, the stream API URL is not wired yet (e.g. waiting for POST /api/chat). Prevents GET /stream 404. Default true for callers that manage session elsewhere. */
+  sessionBootstrapReady?: boolean;
   initialMessages?: Array<{ role: string; content: string; messageId?: string }>;
   activeSectionId?: string;
   isCollapsed: boolean;
@@ -407,6 +409,7 @@ export function AIChatSidebar({
   projectId,
   reportId,
   sessionId,
+  sessionBootstrapReady = true,
   initialMessages = [],
   activeSectionId,
   isCollapsed,
@@ -494,10 +497,12 @@ export function AIChatSidebar({
 
   // Body is a function so it's evaluated at send time — ensures fresh Map & Lens from the live editor.
   // When user had selection, pendingSelectionForBodyRef is set so we send selectionEdit for the chat API.
+  const streamApiReady = Boolean(sessionId && sessionBootstrapReady);
+
   const transport = useMemo(
     () =>
       new AssistantChatTransport({
-        api: sessionId ? apiRoutes.chat.sessionStream(sessionId) : "",
+        api: streamApiReady ? apiRoutes.chat.sessionStream(sessionId!) : "",
         body: () => {
           const ctx = getEditorContext?.();
           const sel = pendingSelectionForBodyRef.current;
@@ -519,7 +524,7 @@ export function AIChatSidebar({
           return body;
         },
       }),
-    [sessionId, activeSectionId, reportId, projectId, chatProvider, getEditorContext]
+    [streamApiReady, sessionId, activeSectionId, reportId, projectId, chatProvider, getEditorContext]
   );
 
   const chat = useChat({ id: sessionId ?? 'pending', transport });
@@ -534,7 +539,7 @@ export function AIChatSidebar({
   initialMessagesRef.current = initialMessages;
 
   useEffect(() => {
-    if (!sessionId) return;
+    if (!sessionId || !sessionBootstrapReady) return;
 
     const setMessages = setMessagesRef.current;
     if (typeof setMessages !== "function") return;
@@ -551,13 +556,21 @@ export function AIChatSidebar({
       return;
     }
 
-    // Otherwise fetch history from the API
+    // Otherwise fetch history from the API (404 = no row yet / empty thread — not an error)
     let cancelled = false;
     const fetchHistory = async () => {
       try {
         const response = await fetch(apiRoutes.chat.sessionStream(sessionId));
         if (cancelled) return;
-        if (!response.ok) return;
+        if (response.status === 404) {
+          return;
+        }
+        if (!response.ok) {
+          if (process.env.NODE_ENV === "development") {
+            console.warn("[AIChatSidebar] GET /stream failed:", response.status, response.statusText);
+          }
+          return;
+        }
         const history = await response.json();
         if (cancelled) return;
         if (!Array.isArray(history) || history.length === 0) return;
@@ -572,13 +585,15 @@ export function AIChatSidebar({
         }));
         setMsgs(uiMessages);
       } catch (err) {
-        if (!cancelled) console.error("fetchHistory error:", err);
+        if (!cancelled && process.env.NODE_ENV === "development") {
+          console.warn("[AIChatSidebar] fetchHistory error:", err);
+        }
       }
     };
 
     fetchHistory();
     return () => { cancelled = true; };
-  }, [sessionId]);
+  }, [sessionId, sessionBootstrapReady]);
 
   // Track processed edits to avoid duplicates
   const lastUserMessageRef = useRef<string | null>(null);
