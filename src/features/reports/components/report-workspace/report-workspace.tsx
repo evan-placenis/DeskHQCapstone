@@ -38,7 +38,10 @@ export function ReportWorkspace({
   initialReviewNotes,
   useTiptap = false,
 }: ReportWorkspaceProps) {
-  const { sessionId, initialChatMessages } = useReportChatSession(projectId, reportId);
+  const { sessionId, initialChatMessages, sessionBootstrapReady } = useReportChatSession(
+    projectId,
+    reportId,
+  );
 
   const [pendingChange, setPendingChange] = useState<PendingChange | null>(null);
   const [diffContent, setDiffContent] = useState<string | null>(null);
@@ -298,6 +301,7 @@ export function ReportWorkspace({
         projectId={projectId != null ? String(projectId) : undefined}
         reportId={reportId != null ? String(reportId) : undefined}
         sessionId={sessionId}
+        sessionBootstrapReady={sessionBootstrapReady}
         initialMessages={initialChatMessages}
         activeSectionId={activeSectionId ? String(activeSectionId) : undefined}
         isCollapsed={isChatCollapsed}

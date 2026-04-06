@@ -5,12 +5,16 @@ export type ChatBootstrapMessage = { role: string; content: string; messageId?: 
 
 /**
  * Ensures a chat session exists for the report and loads initial thread messages when returned by the API.
+ *
+ * `sessionBootstrapReady` becomes true only after POST /api/chat succeeds and a session id is known.
+ * Use this to gate `/api/chat/sessions/:id/stream` so the UI does not GET before the row exists.
  */
 export function useReportChatSession(
   projectId: string | number | undefined,
   reportId: string | number | undefined,
 ) {
   const [sessionId, setSessionId] = useState<string | null>(null);
+  const [sessionBootstrapReady, setSessionBootstrapReady] = useState(false);
   const [initialChatMessages, setInitialChatMessages] = useState<ChatBootstrapMessage[]>([]);
 
   useEffect(() => {
@@ -23,21 +27,26 @@ export function useReportChatSession(
             body: JSON.stringify({ projectId, reportId, message: null }),
           });
 
-          let newSessionId = null;
           if (res.ok) {
             const data = await res.json();
-            newSessionId = data.sessionId || data.session?.sessionId || data.id;
-            setSessionId(newSessionId);
-            if (Array.isArray(data.messages) && data.messages.length > 0) {
-              setInitialChatMessages(
-                data.messages.map(
-                  (m: { role?: string; sender?: string; content?: string; messageId?: string }) => ({
-                    role: m.sender ?? m.role ?? "user",
-                    content: m.content ?? "",
-                    messageId: m.messageId,
-                  }),
-                ),
-              );
+            const newSessionId =
+              data.sessionId ?? data.session?.sessionId ?? data.id ?? null;
+            if (newSessionId != null && String(newSessionId).length > 0) {
+              setSessionId(String(newSessionId));
+              setSessionBootstrapReady(true);
+              if (Array.isArray(data.messages) && data.messages.length > 0) {
+                setInitialChatMessages(
+                  data.messages.map(
+                    (m: { role?: string; sender?: string; content?: string; messageId?: string }) => ({
+                      role: m.sender ?? m.role ?? "user",
+                      content: m.content ?? "",
+                      messageId: m.messageId,
+                    }),
+                  ),
+                );
+              }
+            } else {
+              console.error("ensureSession: POST /api/chat returned no session id", data);
             }
           } else {
             const errBody = await res.json().catch(() => ({}));
@@ -52,5 +61,5 @@ export function useReportChatSession(
     ensureSession();
   }, [sessionId, projectId, reportId]);
 
-  return { sessionId, initialChatMessages };
+  return { sessionId, initialChatMessages, sessionBootstrapReady };
 }
