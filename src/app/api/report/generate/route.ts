@@ -28,8 +28,25 @@ export async function POST(
             workflowType,
             processingMode: bodyProcessingMode,
             modeName: bodyModeName, // legacy key from frontend
+            jobInfoSheet,
         } = body;
         const processingMode = bodyProcessingMode ?? bodyModeName ?? 'IMAGE_AND_TEXT';
+
+        const jobInfoSheetRecord =
+            jobInfoSheet &&
+            typeof jobInfoSheet === "object" &&
+            !Array.isArray(jobInfoSheet)
+                ? (jobInfoSheet as Record<string, unknown>)
+                : null;
+        if (!jobInfoSheetRecord || Object.keys(jobInfoSheetRecord).length === 0) {
+            return NextResponse.json(
+                {
+                    error:
+                        "Job info sheet is required. Upload and parse a valid .xls or .xlsx file in step 2 of report creation.",
+                },
+                { status: 400 }
+            );
+        }
 
         if (!projectId) {
             return NextResponse.json(
@@ -129,6 +146,7 @@ export async function POST(
                 sections: sections,
                 workflowType: workflowType,
                 processingMode: processingMode === 'TEXT_ONLY' ? 'TEXT_ONLY' : 'IMAGE_AND_TEXT',
+                jobInfoSheet: jobInfoSheetRecord,
             },
             heliconeContext,
         );

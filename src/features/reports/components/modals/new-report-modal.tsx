@@ -43,11 +43,14 @@ import {
   Briefcase,
   FlaskConical,
   TrendingUp,
+  FileSpreadsheet,
+  Loader2,
 } from "lucide-react";
-
 
 import { ReportStructureEditor } from "@/src/features/reports/components/generation/sections/report-structure-editor";
 import type { ReportGraphProvider } from "@/lib/ai-providers";
+import { apiRoutes } from "@/lib/api-routes";
+import { logger } from "@/lib/logger";
 
 
 interface NewReportModalProps {
@@ -76,9 +79,51 @@ export function NewReportModal({ open, onOpenChange, projectName, onCreateReport
   const [modelProvider, setModelProvider] = useState<ReportGraphProvider>('gemini');
   const [workflowType, setWorkflowType] = useState<string>("simple");
   const [additionalInstructions, setAdditionalInstructions] = useState("");
+  const [jobInfoSheetData, setJobInfoSheetData] = useState<Record<
+    string,
+    unknown
+  > | null>(null);
+  const [jobInfoSheetFileName, setJobInfoSheetFileName] = useState<string | null>(
+    null
+  );
+  const [jobInfoSheetError, setJobInfoSheetError] = useState<string | null>(null);
+  const [jobInfoSheetParsing, setJobInfoSheetParsing] = useState(false);
 
   // Get the selected template object
   const template = templates.find(t => t.id === selectedTemplate);
+
+  const parseJobInfoSheetFile = async (file: File) => {
+    setJobInfoSheetError(null);
+    setJobInfoSheetParsing(true);
+    setJobInfoSheetFileName(file.name);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      const res = await fetch(apiRoutes.excelParser, {
+        method: "POST",
+        body: formData,
+      });
+      const json = (await res.json().catch(() => ({}))) as {
+        error?: string;
+        data?: unknown;
+      };
+      if (!res.ok) {
+        logger.error("Failed to parse spreadsheet:", json.error ?? "Unknown error");
+        return;
+      }
+      if (!json.data || typeof json.data !== "object" || Array.isArray(json.data)) {
+        logger.error("Invalid response from spreadsheet parser");
+        return;
+      }
+      setJobInfoSheetData(json.data as Record<string, unknown>);
+    } catch (e) {
+      logger.error("Error parsing job info sheet:", e);
+      setJobInfoSheetError(e instanceof Error ? e.message : "Could not parse job info sheet");
+      setJobInfoSheetData(null);
+    } finally {
+      setJobInfoSheetParsing(false);
+    }
+  };
 
   const initializeSectionsFromTemplate = (templateId: string): EditorSection[] => {
     const template = templates.find(t => t.id === templateId);
@@ -158,7 +203,8 @@ export function NewReportModal({ open, onOpenChange, projectName, onCreateReport
       modelName: modelProvider,
       workflowType: workflowType,
       reportType: selectedTemplate ? selectedTemplate.toUpperCase() : "OBSERVATION",
-      additionalInstructions: additionalInstructions || undefined
+      additionalInstructions: additionalInstructions || undefined,
+      jobInfoSheet: jobInfoSheetData ?? undefined,
     };
     
     onCreateReport(reportData);
@@ -175,6 +221,10 @@ export function NewReportModal({ open, onOpenChange, projectName, onCreateReport
     setModelProvider("gemini");
     setWorkflowType("observation");
     setAdditionalInstructions("");
+    setJobInfoSheetData(null);
+    setJobInfoSheetFileName(null);
+    setJobInfoSheetError(null);
+    setJobInfoSheetParsing(false);
     onOpenChange(false);
   };
 
@@ -183,7 +233,15 @@ export function NewReportModal({ open, onOpenChange, projectName, onCreateReport
   // Helper: Check if current step is valid
   const isStepValid = () => {
     if (step === 1) return selectedTemplate !== null;
-    if (step === 2) return title.trim() !== "" && selectedPhotoIds.length > 0;
+    if (step === 2) {
+      const base = title.trim() !== "" && selectedPhotoIds.length > 0;
+      return (
+        base &&
+        !jobInfoSheetParsing &&
+        jobInfoSheetData !== null &&
+        !jobInfoSheetError
+      );
+    }
     return true;
   };
 
@@ -206,7 +264,8 @@ export function NewReportModal({ open, onOpenChange, projectName, onCreateReport
           </div>
           <DialogDescription className="text-xs sm:text-sm">
             {step === 1 && `Step 1 of 4: Choose a report template`}
-            {step === 2 && `Step 2 of 4: Select photos and name your report`}
+            {step === 2 &&
+              `Step 2 of 4: Job info sheet, photos, and report title`}
             {step === 3 && `Step 3 of 4: Organize your report structure`}
             {step === 4 && `Step 4 of 4: Configure report settings`}
           </DialogDescription>
@@ -304,6 +363,58 @@ export function NewReportModal({ open, onOpenChange, projectName, onCreateReport
                   onChange={(e) => setTitle(e.target.value)}
                   className="rounded-lg"
                 />
+              </div>
+
+              <div className="space-y-2 rounded-lg border border-slate-200 bg-slate-50/80 p-3">
+                  <div className="flex items-center gap-2">
+                    <FileSpreadsheet className="h-4 w-4 text-slate-600 shrink-0" />
+                    <Label htmlFor="job-info-sheet" className="text-slate-900">
+                      Job information sheet *
+                    </Label>
+                  </div>
+                  <p className="text-xs text-slate-600">
+                    Upload the Pretium Job Info Sheet (.xls or .xlsx). Project and
+                    client details are read automatically for report generation
+                    (required for every report type).
+                  </p>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Input
+                      id="job-info-sheet"
+                      type="file"
+                      accept=".xls,.xlsx,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                      className="cursor-pointer rounded-lg text-sm file:mr-2"
+                      disabled={jobInfoSheetParsing}
+                      onChange={(e) => {
+                        const f = e.target.files?.[0];
+                        e.target.value = "";
+                        if (!f) return;
+                        const lower = f.name.toLowerCase();
+                        if (!lower.endsWith(".xls") && !lower.endsWith(".xlsx")) {
+                          setJobInfoSheetError(
+                            "Please upload an Excel file (.xls or .xlsx)."
+                          );
+                          setJobInfoSheetData(null);
+                          setJobInfoSheetFileName(null);
+                          return;
+                        }
+                        void parseJobInfoSheetFile(f);
+                      }}
+                    />
+                    {jobInfoSheetParsing && (
+                      <span className="inline-flex items-center gap-1 text-xs text-slate-600">
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        Parsing…
+                      </span>
+                    )}
+                  </div>
+                  {jobInfoSheetFileName && jobInfoSheetData && !jobInfoSheetParsing && (
+                    <p className="text-xs text-emerald-700">
+                      Loaded: {jobInfoSheetFileName}
+                    </p>
+                  )}
+                  {jobInfoSheetError && (
+                    <p className="text-xs text-red-600">{jobInfoSheetError}</p>
+                  )}
               </div>
 
               <div>
@@ -567,6 +678,12 @@ export function NewReportModal({ open, onOpenChange, projectName, onCreateReport
                   <div className="flex justify-between">
                     <span className="text-slate-600">Photos:</span>
                     <span className="text-slate-900">{selectedPhotoIds.length} selected</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-slate-600">Job info sheet:</span>
+                    <span className="text-slate-900">
+                      {jobInfoSheetFileName ?? "—"}
+                    </span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-slate-600">Structure:</span>

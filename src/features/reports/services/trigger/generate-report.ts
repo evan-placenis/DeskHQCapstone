@@ -63,6 +63,7 @@ export interface TriggerPayload {
     sections?: any[]; // Custom sections from frontend
     workflowType?: string;
     processingMode?: 'TEXT_ONLY' | 'IMAGE_AND_TEXT'; // From NewReportModal: TEXT_ONLY = no vision tools
+    jobInfoSheet?: Record<string, unknown>;
   };
 }
 
@@ -218,6 +219,13 @@ export const generateReportTask = task({
         }
       }
 
+      const jobSheet =
+        payload.input.jobInfoSheet &&
+        typeof payload.input.jobInfoSheet === "object" &&
+        !Array.isArray(payload.input.jobInfoSheet)
+          ? payload.input.jobInfoSheet
+          : null;
+
       const inputState = {
         messages: [new HumanMessage("Generate the report.")],
         systemPrompt: system_prompt ?? "",
@@ -234,6 +242,7 @@ export const generateReportTask = task({
         currentSection: "init",
         processingMode: payload.input.processingMode ?? "IMAGE_AND_TEXT",
         heliconeInput,
+        jobInfoSheet: jobSheet,
       };
 
       // 8. RUN THE GRAPH STREAM
