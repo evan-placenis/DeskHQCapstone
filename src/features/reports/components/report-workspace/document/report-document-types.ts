@@ -1,6 +1,7 @@
 import type { RefObject } from "react";
 import type { PeerReview, ReportContent as ReportContentType } from "@/lib/types";
 import type { TiptapEditorHandle } from "../../authoring/tiptap/tiptap-editor";
+import type { ReportExportPdfContext } from "../report-workspace-types";
 
 export interface PendingChange {
   messageId: number | string;
@@ -28,7 +29,8 @@ export interface ReportDocumentProps {
   onStatusChange: (status: string) => void;
 
   onRequestPeerReview?: () => void;
-  onExport?: () => void;
+  onExport?: (ctx: ReportExportPdfContext) => void | Promise<void>;
+  exportPdfLoading?: boolean;
   onSave?: () => void;
   showSaveButton?: boolean;
 

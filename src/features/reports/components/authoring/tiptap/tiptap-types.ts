@@ -32,6 +32,8 @@ export interface TiptapEditorHandle {
   getActiveSection: () => ActiveSectionInfo | null;
   getSectionsByHeading: (headings: string[]) => Record<string, string>;
   getFullMarkdown: () => string;
+  /** Serialized HTML for server-side PDF export */
+  getHtml: () => string;
   clearSelection: () => void;
 }
 
