@@ -15,6 +15,9 @@ export interface Report {
     // Tiptap-compatible content (The stitched Markdown)
     tiptapContent?: string;
 
+    /** Parsed job info workbook JSON (workbookToClientData shape), if stored */
+    jobInfoSheet?: Record<string, unknown> | null;
+
     // Audit Trail
     history?: ReportVersion[];
     createdBy: string;

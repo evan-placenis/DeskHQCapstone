@@ -475,6 +475,10 @@ function ReportPageContent() {
   };
 
   const handleExportPDF = async ({ getTiptapHtml }: ReportExportPdfContext) => {
+    if (!reportId || reportId === "0") {
+      alert("Report must be saved before exporting PDF.");
+      return;
+    }
     const tiptapHtml = getTiptapHtml();
     if (!tiptapHtml.trim()) {
       alert("Report has no content to export.");
@@ -488,6 +492,7 @@ function ReportPageContent() {
         headers: { "Content-Type": "application/json" },
         credentials: "include",
         body: JSON.stringify({
+          reportId,
           tiptapHtml,
           projectData: {
             projectName: projectName.trim() || reportContent.title || "Report",

@@ -5,9 +5,11 @@ import { logger } from "@/lib/logger";
 import { launchPdfBrowser } from "@/lib/pdf/launch-chromium";
 import {
   buildPdfFooterTemplate,
-  buildPdfHeaderTemplate,
   buildReportPdfDocumentHtml,
 } from "@/lib/pdf/report-pdf-html";
+import { buildPretiumPdfHeaderTemplate } from "@/lib/pdf/report-pdf-header";
+import { loadPretiumLogoDataUrl } from "@/lib/pdf/pretium-logo";
+import { templateIdToReportTypeLabel } from "@/lib/pdf/report-pdf-template-label";
 
 export const runtime = "nodejs";
 
@@ -15,6 +17,7 @@ export const runtime = "nodejs";
 export const maxDuration = 60;
 
 const bodySchema = z.object({
+  reportId: z.string().uuid(),
   tiptapHtml: z.string(),
   projectData: z.object({
     projectName: z.string().min(1, "projectName is required"),
@@ -26,7 +29,7 @@ export async function POST(request: Request) {
   let browser: Awaited<ReturnType<typeof launchPdfBrowser>> | null = null;
 
   try {
-    const { user } = await createAuthenticatedClient();
+    const { user, supabase } = await createAuthenticatedClient();
     if (!user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
@@ -40,11 +43,58 @@ export async function POST(request: Request) {
       );
     }
 
-    const { tiptapHtml, projectData } = parsed.data;
-    const logoUrl =
+    const { reportId, tiptapHtml, projectData } = parsed.data;
+
+    const { data: reportRow, error: reportErr } = await supabase
+      .from("reports")
+      .select("id, project_id, template_id, job_info_sheet")
+      .eq("id", reportId)
+      .maybeSingle();
+
+    if (reportErr || !reportRow) {
+      return NextResponse.json(
+        { error: "Report not found" },
+        { status: 404 }
+      );
+    }
+
+    const { data: orderedReports, error: ordErr } = await supabase
+      .from("reports")
+      .select("id")
+      .eq("project_id", reportRow.project_id)
+      .order("created_at", { ascending: true });
+
+    if (ordErr || !orderedReports?.length) {
+      logger.error("export-pdf: failed to list reports for project", ordErr);
+      return NextResponse.json(
+        { error: "Could not resolve report order" },
+        { status: 500 }
+      );
+    }
+
+    const idx = orderedReports.findIndex((r) => r.id === reportId);
+    const reportNumber = idx >= 0 ? idx + 1 : 1;
+
+    const jobInfoSheet =
+      reportRow.job_info_sheet &&
+      typeof reportRow.job_info_sheet === "object" &&
+      !Array.isArray(reportRow.job_info_sheet)
+        ? (reportRow.job_info_sheet as Record<string, unknown>)
+        : null;
+
+    const logoHttpUrl =
       projectData.logoUrl && projectData.logoUrl.length > 0
         ? projectData.logoUrl
         : undefined;
+    const logoDataUrl = logoHttpUrl ? undefined : loadPretiumLogoDataUrl();
+
+    const headerTemplate = buildPretiumPdfHeaderTemplate({
+      jobInfoSheet,
+      reportTypeLabel: templateIdToReportTypeLabel(reportRow.template_id),
+      reportNumber,
+      logoHttpUrl,
+      logoDataUrl,
+    });
 
     browser = await launchPdfBrowser();
     const page = await browser.newPage();
@@ -56,14 +106,11 @@ export async function POST(request: Request) {
       format: "A4",
       printBackground: true,
       displayHeaderFooter: true,
-      headerTemplate: buildPdfHeaderTemplate({
-        projectName: projectData.projectName,
-        logoUrl,
-      }),
+      headerTemplate,
       footerTemplate: buildPdfFooterTemplate(),
       margin: {
-        top: "88px",
-        bottom: "56px",
+        top: "260px",
+        bottom: "36px",
         left: "48px",
         right: "48px",
       },

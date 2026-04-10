@@ -93,6 +93,7 @@ export async function POST(
             created_at: new Date().toISOString(),
             updated_at: new Date().toISOString(),
             version_number: 1,
+            job_info_sheet: jobInfoSheetRecord,
         });
 
         if (insertError) {

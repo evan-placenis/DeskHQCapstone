@@ -1,17 +1,4 @@
-/** Escape text for safe insertion into HTML attribute / template text nodes */
-export function escapeHtml(text: string): string {
-  return text
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
-}
-
-export type ProjectPdfMeta = {
-  projectName: string;
-  /** Optional absolute https URL for header logo */
-  logoUrl?: string;
-};
+export { escapeHtml } from "./html-escape";
 
 const TYPOGRAPHY_CSS = `
   * { box-sizing: border-box; }
@@ -64,26 +51,7 @@ export function buildReportPdfDocumentHtml(tiptapHtml: string): string {
 </html>`;
 }
 
-export function buildPdfHeaderTemplate(meta: ProjectPdfMeta): string {
-  const name = escapeHtml(meta.projectName.trim() || "Project");
-  const logo =
-    meta.logoUrl &&
-    (meta.logoUrl.startsWith("https://") || meta.logoUrl.startsWith("http://"))
-      ? `<img src="${escapeHtml(meta.logoUrl)}" alt="" style="max-height:36px;max-width:140px;object-fit:contain;" />`
-      : `<span style="font-size:11px;font-weight:700;color:#0f172a;letter-spacing:0.02em;">PRETIUM</span>`;
-
-  return `
-<div style="width:100%;-webkit-print-color-adjust:exact;print-color-adjust:exact;padding:8px 56px 10px;font-size:10px;border-bottom:1px solid #e2e8f0;display:flex;align-items:center;justify-content:space-between;box-sizing:border-box;">
-  <div style="display:flex;align-items:center;gap:14px;min-width:0;">
-    ${logo}
-    <span style="font-weight:600;color:#0f172a;font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${name}</span>
-  </div>
-</div>`;
-}
-
+/** Minimal footer — page numbers appear in the Pretium header grid. */
 export function buildPdfFooterTemplate(): string {
-  return `
-<div style="width:100%;-webkit-print-color-adjust:exact;print-color-adjust:exact;padding:6px 56px 0;font-size:9px;color:#64748b;text-align:center;box-sizing:border-box;">
-  Page <span class="pageNumber"></span> of <span class="totalPages"></span>
-</div>`;
+  return `<div style="width:100%;height:1px;font-size:1px;color:transparent;">.</div>`;
 }
