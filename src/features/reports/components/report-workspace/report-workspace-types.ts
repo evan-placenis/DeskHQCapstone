@@ -1,5 +1,10 @@
 import type { PeerReview, ReportContent as ReportContentType } from "@/lib/types";
 
+/** Passed to {@link ReportWorkspaceProps.onExport} so the parent can read Tiptap HTML at click time */
+export type ReportExportPdfContext = {
+  getTiptapHtml: () => string;
+};
+
 export interface SelectedContext {
   type: "photo" | "section" | "text";
   content: string;
@@ -31,7 +36,11 @@ export interface ReportWorkspaceProps {
   onStatusChange: (status: string) => void;
 
   onRequestPeerReview?: () => void;
-  onExport?: () => void;
+  onExport?: (ctx: ReportExportPdfContext) => void | Promise<void>;
+  /** Disables Export PDF and shows loading label */
+  exportPdfLoading?: boolean;
+  onExportDocx?: (ctx: ReportExportPdfContext) => void | Promise<void>;
+  exportDocxLoading?: boolean;
   onSave?: () => void;
   showSaveButton?: boolean;
 

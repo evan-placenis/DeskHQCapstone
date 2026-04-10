@@ -26,6 +26,7 @@ export async function architectNode(state: typeof ObservationState.State) {
     reportTitle,
     client,
     heliconeInput,
+    jobInfoSheet,
   } = state;
   // 1. LOAD THE STATIC SKILLS
   // Repo-root skills/ — run Trigger from project root (see trigger.config.ts).
@@ -58,6 +59,13 @@ export async function architectNode(state: typeof ObservationState.State) {
   dynamicInputs += `- Photo Count: ${imageList?.length || 0}\n\n`;
   dynamicInputs += `AVAILABLE EVIDENCE:\n${photoContext}\n`;
 
+  if (
+    jobInfoSheet &&
+    typeof jobInfoSheet === "object" &&
+    Object.keys(jobInfoSheet).length > 0
+  ) {
+    dynamicInputs += `\nJOB / PROJECT INFO SHEET (from uploaded Excel; treat as authoritative for names, addresses, dates, and parties):\n${JSON.stringify(jobInfoSheet, null, 2)}\n`;
+  }
 
   // Append user feedback if it exists
   if (userFeedback) {

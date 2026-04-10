@@ -9,7 +9,17 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { ReportContent as ReportContentType } from "@/lib/types";
-import { ArrowLeft, Download, Calendar, MapPin, UserCheck, Save, User } from "lucide-react";
+import {
+  ArrowLeft,
+  Download,
+  Calendar,
+  MapPin,
+  UserCheck,
+  Save,
+  User,
+  Loader2,
+  FileType,
+} from "lucide-react";
 
 export function ReportDocumentHeader({
   backLabel,
@@ -22,6 +32,9 @@ export function ReportDocumentHeader({
   showSaveButton,
   onSave,
   onExport,
+  exportPdfLoading,
+  onExportDocx,
+  exportDocxLoading,
 }: {
   backLabel: string;
   onBack: () => void;
@@ -33,6 +46,9 @@ export function ReportDocumentHeader({
   showSaveButton: boolean;
   onSave?: () => void;
   onExport?: () => void;
+  exportPdfLoading?: boolean;
+  onExportDocx?: () => void;
+  exportDocxLoading?: boolean;
 }) {
   return (
     <div className="bg-white border-b border-slate-200 p-3 sm:p-6 flex-shrink-0">
@@ -94,11 +110,39 @@ export function ReportDocumentHeader({
               Save
             </Button>
           )}
-          {onExport && (
-            <Button variant="default" className="rounded-lg text-xs sm:text-sm h-8 sm:h-10" onClick={onExport}>
-              <Download className="w-3 h-3 sm:w-4 sm:h-4 mr-2" />
-              Export PDF
-            </Button>
+          {(onExport || onExportDocx) && (
+            <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
+              {onExport && (
+                <Button
+                  variant="default"
+                  className="rounded-lg text-xs sm:text-sm h-8 sm:h-10"
+                  onClick={onExport}
+                  disabled={exportPdfLoading || exportDocxLoading}
+                >
+                  {exportPdfLoading ? (
+                    <Loader2 className="w-3 h-3 sm:w-4 sm:h-4 mr-2 animate-spin" />
+                  ) : (
+                    <Download className="w-3 h-3 sm:w-4 sm:h-4 mr-2" />
+                  )}
+                  {exportPdfLoading ? "Generating PDF…" : "Export PDF"}
+                </Button>
+              )}
+              {onExportDocx && (
+                <Button
+                  variant="outline"
+                  className="rounded-lg text-xs sm:text-sm h-8 sm:h-10"
+                  onClick={onExportDocx}
+                  disabled={exportPdfLoading || exportDocxLoading}
+                >
+                  {exportDocxLoading ? (
+                    <Loader2 className="w-3 h-3 sm:w-4 sm:h-4 mr-2 animate-spin" />
+                  ) : (
+                    <FileType className="w-3 h-3 sm:w-4 sm:h-4 mr-2" />
+                  )}
+                  {exportDocxLoading ? "Generating Word…" : "Export to Word"}
+                </Button>
+              )}
+            </div>
           )}
         </div>
       </div>

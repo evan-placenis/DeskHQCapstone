@@ -19,6 +19,9 @@ export function ReportDocument({
   onStatusChange,
   onRequestPeerReview,
   onExport,
+  exportPdfLoading,
+  onExportDocx,
+  exportDocxLoading,
   onSave,
   showSaveButton = false,
   peerReview,
@@ -126,7 +129,28 @@ export function ReportDocument({
         onRequestPeerReview={onRequestPeerReview}
         showSaveButton={showSaveButton}
         onSave={onSave}
-        onExport={onExport}
+        exportPdfLoading={exportPdfLoading}
+        exportDocxLoading={exportDocxLoading}
+        onExport={
+          onExport
+            ? () => {
+                onExport({
+                  getTiptapHtml: () =>
+                    editorRef?.current?.getHtml?.() ?? "",
+                });
+              }
+            : undefined
+        }
+        onExportDocx={
+          onExportDocx
+            ? () => {
+                onExportDocx({
+                  getTiptapHtml: () =>
+                    editorRef?.current?.getHtml?.() ?? "",
+                });
+              }
+            : undefined
+        }
       />
 
       <div className="flex-1 overflow-y-auto">

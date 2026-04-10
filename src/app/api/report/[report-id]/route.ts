@@ -29,6 +29,7 @@ export async function GET(
             template_id: report.templateId,
             version_number: report.versionNumber,
             created_by: report.createdBy,
+            job_info_sheet: report.jobInfoSheet ?? null,
         });
     } catch (error: unknown) {
         console.error("Get Report Error:", error);

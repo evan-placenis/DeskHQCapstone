@@ -584,6 +584,10 @@ export function ProjectDetailPage({
         modelName: reportData.modelName || 'gemini',
         reportType: reportData.reportType,
         workflowType: reportData.workflowType,
+        ...(reportData.jobInfoSheet &&
+        typeof reportData.jobInfoSheet === "object"
+          ? { jobInfoSheet: reportData.jobInfoSheet }
+          : {}),
       };
 
       // Start the streaming request (don't await - it's a stream)

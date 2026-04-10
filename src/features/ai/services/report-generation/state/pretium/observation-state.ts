@@ -57,6 +57,12 @@ export const ObservationState = Annotation.Root({
     default: () => [],
   }),
 
+  /** Parsed Job Info Sheet (Excel) — project/client/PA metadata for observation reports */
+  jobInfoSheet: Annotation<Record<string, unknown> | null>({
+    reducer: (x, y) => (y !== undefined ? y : x),
+    default: () => null,
+  }),
+
   // ✅ NEW: The Source of Truth for Image Data which includes photo notes from the user/audio
   imageList: Annotation<ImageContext[]>({
     reducer: (x, y) => y ?? x, // Overwrite with new list if updated

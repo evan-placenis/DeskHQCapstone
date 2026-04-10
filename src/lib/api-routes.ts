@@ -48,6 +48,9 @@ export const apiRoutes = {
       projectId != null ? `/api/knowledge/store?projectId=${projectId}` : "/api/knowledge/store",
     byId: (id: string | number) => `/api/knowledge/${id}`,
   },
+  excelParser: "/api/excel-parser",
+  exportPdf: "/api/export-pdf",
+  exportDocx: "/api/export-docx",
   report: {
     byId: (reportId: string | number) => `/api/report/${reportId}`,
     status: (reportId: string | number) => `/api/report/${reportId}/status`,

@@ -720,6 +720,14 @@ export const TiptapEditor = forwardRef<TiptapEditorHandle, TiptapEditorProps>(fu
                     return '';
                 }
             },
+            getHtml() {
+                if (!editor) return '';
+                try {
+                    return editor.getHTML() ?? '';
+                } catch {
+                    return '';
+                }
+            },
             applyLibraryDiff(
                 range: { from: number; to: number },
                 aiGeneratedMarkdown: string,
