@@ -28,6 +28,8 @@ export function ReportWorkspace({
   onRequestPeerReview,
   onExport,
   exportPdfLoading,
+  onExportDocx,
+  exportDocxLoading,
   onSave,
   showSaveButton = false,
   peerReview,
@@ -270,6 +272,8 @@ export function ReportWorkspace({
         onRequestPeerReview={onRequestPeerReview}
         onExport={onExport}
         exportPdfLoading={exportPdfLoading}
+        onExportDocx={onExportDocx}
+        exportDocxLoading={exportDocxLoading}
         onSave={onSave}
         showSaveButton={showSaveButton}
         peerReview={peerReview}

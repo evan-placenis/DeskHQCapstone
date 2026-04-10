@@ -82,6 +82,7 @@
     "diff-match-patch": "^1.0.5",
     "embla-carousel-react": "^8.6.0",
     "exa-js": "^2.1.1",
+    "html-to-docx": "^1.8.0",
     "input-otp": "^1.1.0",
     "jsondiffpatch": "^0.7.3",
     "lucide-react": "^1.7.0",

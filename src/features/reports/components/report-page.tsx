@@ -63,6 +63,8 @@ function ReportPageContent() {
   showApprovalModalRef.current = showApprovalModal;
   const [isSaving, setIsSaving] = useState(false);
   const [isExportingPdf, setIsExportingPdf] = useState(false);
+  const [isExportingDocx, setIsExportingDocx] = useState(false);
+  const [jobInfoSheet, setJobInfoSheet] = useState<Record<string, unknown> | null>(null);
   const [polledReportPlan, setPolledReportPlan] = useState<any>(null);
 
   const currentUserId = authUser?.id ?? "";
@@ -99,6 +101,16 @@ function ReportPageContent() {
         })
         .then(data => {
           console.log("Fetched report:", data);
+
+          if (
+            data.job_info_sheet &&
+            typeof data.job_info_sheet === "object" &&
+            !Array.isArray(data.job_info_sheet)
+          ) {
+            setJobInfoSheet(data.job_info_sheet as Record<string, unknown>);
+          } else {
+            setJobInfoSheet(null);
+          }
 
           if (data.project_id) {
             setProjectId(data.project_id);
@@ -528,6 +540,60 @@ function ReportPageContent() {
     }
   };
 
+  const handleExportDocx = async ({ getTiptapHtml }: ReportExportPdfContext) => {
+    const tiptapHtml = getTiptapHtml();
+    if (!tiptapHtml.trim()) {
+      alert("Report has no content to export.");
+      return;
+    }
+    setIsExportingDocx(true);
+    try {
+      const res = await fetch(apiRoutes.exportDocx, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          tiptapHtml,
+          projectData: {
+            projectName: projectName.trim() || reportContent.title || "Report",
+            ...(reportContent.engineer?.trim()
+              ? { projectManager: reportContent.engineer.trim() }
+              : {}),
+            ...(reportContent.date?.trim()
+              ? { date: reportContent.date.trim() }
+              : {}),
+          },
+          ...(jobInfoSheet ? { jobInfoSheet } : {}),
+        }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(
+          typeof err.error === "string" ? err.error : "Word export failed",
+        );
+      }
+      const blob = await res.blob();
+      const safeBase =
+        (projectName.trim() || reportContent.title || "Report").replace(
+          /[^\w\- ]+/g,
+          "",
+        ) || "Report";
+      const safeName = safeBase.trim().replace(/\s+/g, "_");
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${safeName}_Report.docx`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "Word export failed");
+    } finally {
+      setIsExportingDocx(false);
+    }
+  };
+
   // 1. Add State for Photos
   const [photos, setPhotos] = useState<Photo[]>([]); // The actual image objects (url, id, etc.)
   // Fetch Report & Photos
@@ -660,6 +726,8 @@ function ReportPageContent() {
         onRequestPeerReview={!fromPeerReview ? () => setIsRequestPeerReviewModalOpen(true) : undefined}
         onExport={handleExportPDF}
         exportPdfLoading={isExportingPdf}
+        onExportDocx={handleExportDocx}
+        exportDocxLoading={isExportingDocx}
         peerReview={assignedReview ?? undefined}
         onAddReviewComment={assignedReview ? (comment, type) => handleAddReviewComment(assignedReview.id, comment, type) : undefined}
         onAddHighlightComment={assignedReview ? (text, sectionId, comment, type) => handleAddHighlightComment(assignedReview.id, text, sectionId, comment, type) : undefined}

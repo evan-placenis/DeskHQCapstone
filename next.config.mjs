@@ -11,7 +11,7 @@ const withPWA = withPWAInit({
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   /* config options here */
-  serverExternalPackages: ["puppeteer-core", "@sparticuz/chromium"],
+  serverExternalPackages: ["puppeteer-core", "@sparticuz/chromium", "html-to-docx"],
   turbopack: {},
   experimental: {
     serverActions: { bodySizeLimit: "50mb" },
