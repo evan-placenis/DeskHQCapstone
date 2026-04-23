@@ -8,6 +8,7 @@ export interface JobQueue {
             modeName?: string;
             selectedImageIds: string[];
             templateId: string;
+            jobInfoSheet?: Record<string, unknown>;
         },
         heliconeContext?: string,
     ): Promise<void>;

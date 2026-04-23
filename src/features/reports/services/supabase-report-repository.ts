@@ -60,6 +60,12 @@ export class SupabaseReportRepository implements ReportRepository {
             // JSONB columns come back as objects/arrays automatically
             reportContent: [],
             tiptapContent: data.tiptap_content || undefined, // Step 2: Markdown content
+            jobInfoSheet:
+                data.job_info_sheet &&
+                typeof data.job_info_sheet === "object" &&
+                !Array.isArray(data.job_info_sheet)
+                    ? (data.job_info_sheet as Record<string, unknown>)
+                    : null,
             isReviewRequired: true,
 
             // We usually load history lazily (separately) to keep this fast.
@@ -204,6 +210,12 @@ export class SupabaseReportRepository implements ReportRepository {
             createdAt: new Date(row.created_at || row.updated_at), // Map created_at
             reportContent: row.sections || [],
             tiptapContent: row.tiptap_content || undefined, // Step 2: Markdown content
+            jobInfoSheet:
+                row.job_info_sheet &&
+                typeof row.job_info_sheet === "object" &&
+                !Array.isArray(row.job_info_sheet)
+                    ? (row.job_info_sheet as Record<string, unknown>)
+                    : null,
             isReviewRequired: true,
             history: []
         }));
