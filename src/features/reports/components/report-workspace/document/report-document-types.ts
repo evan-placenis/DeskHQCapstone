@@ -31,8 +31,6 @@ export interface ReportDocumentProps {
   onRequestPeerReview?: () => void;
   onExport?: (ctx: ReportExportPdfContext) => void | Promise<void>;
   exportPdfLoading?: boolean;
-  onExportDocx?: (ctx: ReportExportPdfContext) => void | Promise<void>;
-  exportDocxLoading?: boolean;
   onSave?: () => void;
   showSaveButton?: boolean;
 

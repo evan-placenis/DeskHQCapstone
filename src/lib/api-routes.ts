@@ -50,7 +50,6 @@ export const apiRoutes = {
   },
   excelParser: "/api/excel-parser",
   exportPdf: "/api/export-pdf",
-  exportDocx: "/api/export-docx",
   report: {
     byId: (reportId: string | number) => `/api/report/${reportId}`,
     status: (reportId: string | number) => `/api/report/${reportId}/status`,

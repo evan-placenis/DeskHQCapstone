@@ -39,8 +39,6 @@ export interface ReportWorkspaceProps {
   onExport?: (ctx: ReportExportPdfContext) => void | Promise<void>;
   /** Disables Export PDF and shows loading label */
   exportPdfLoading?: boolean;
-  onExportDocx?: (ctx: ReportExportPdfContext) => void | Promise<void>;
-  exportDocxLoading?: boolean;
   onSave?: () => void;
   showSaveButton?: boolean;
 

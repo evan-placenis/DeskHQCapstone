@@ -20,8 +20,6 @@ export function ReportDocument({
   onRequestPeerReview,
   onExport,
   exportPdfLoading,
-  onExportDocx,
-  exportDocxLoading,
   onSave,
   showSaveButton = false,
   peerReview,
@@ -130,21 +128,10 @@ export function ReportDocument({
         showSaveButton={showSaveButton}
         onSave={onSave}
         exportPdfLoading={exportPdfLoading}
-        exportDocxLoading={exportDocxLoading}
         onExport={
           onExport
             ? () => {
                 onExport({
-                  getTiptapHtml: () =>
-                    editorRef?.current?.getHtml?.() ?? "",
-                });
-              }
-            : undefined
-        }
-        onExportDocx={
-          onExportDocx
-            ? () => {
-                onExportDocx({
                   getTiptapHtml: () =>
                     editorRef?.current?.getHtml?.() ?? "",
                 });
