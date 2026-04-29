@@ -112,8 +112,37 @@ export async function waitForGeminiFileActive(
   throw new Error(`Timed out waiting for Gemini file to become ACTIVE: ${fileName}`);
 }
 
+/** Best-effort fields from Google SDK / fetch errors for Trigger.dev logs. */
+function geminiErrorDetails(error: unknown): Record<string, unknown> {
+  const out: Record<string, unknown> = {
+    message: error instanceof Error ? error.message : String(error),
+  };
+  if (error && typeof error === "object") {
+    const e = error as Record<string, unknown>;
+    for (const k of ["status", "statusText", "code", "name"] as const) {
+      if (e[k] != null) out[k] = e[k];
+    }
+    if (e.cause != null) out.cause = String(e.cause);
+    const resp = e.response as Record<string, unknown> | undefined;
+    if (resp && typeof resp === "object") {
+      out.responseStatus = resp.status;
+      out.responseStatusText = resp.statusText;
+      if (resp.data != null) {
+        try {
+          out.responseData =
+            typeof resp.data === "string" ? resp.data.slice(0, 4000) : JSON.stringify(resp.data).slice(0, 4000);
+        } catch {
+          out.responseData = "(unserializable)";
+        }
+      }
+    }
+  }
+  return out;
+}
+
 /**
  * Create a context cache pointing at the uploaded file (single user turn with fileData).
+ * Returns `null` if cache creation fails so callers can fall back to non-cached requests (same file URI per probe).
  */
 export async function createContextCacheFromFile(
   apiKey: string,
@@ -123,35 +152,49 @@ export async function createContextCacheFromFile(
     ttlSeconds?: number;
     displayName?: string;
   },
-): Promise<CachedContentApiResponse> {
+): Promise<CachedContentApiResponse | null> {
   const cacheManager = new GoogleAICacheManager(apiKey);
   const model = options?.model ?? GEMINI_CACHED_AUDIO_MODEL;
   const ttlSeconds = options?.ttlSeconds ?? DEFAULT_CACHE_TTL_SECONDS;
 
-  const cached = await cacheManager.create({
-    model,
-    displayName: options?.displayName ?? `capture-cache-${Date.now()}`,
-    ttlSeconds,
-    contents: [
-      {
-        role: "user",
-        parts: [
-          {
-            fileData: {
-              fileUri: uploaded.uri,
-              mimeType: uploaded.mimeType,
+  try {
+    const cached = await cacheManager.create({
+      model,
+      displayName: options?.displayName ?? `capture-cache-${Date.now()}`,
+      ttlSeconds,
+      contents: [
+        {
+          role: "user",
+          parts: [
+            {
+              fileData: {
+                fileUri: uploaded.uri,
+                mimeType: uploaded.mimeType,
+              },
             },
-          },
-        ],
-      },
-    ],
-  });
+          ],
+        },
+      ],
+    });
 
-  const record = cached as { name?: string; model?: string };
-  if (!record.name || !record.model) {
-    throw new Error("Google cache create returned no name or model");
+    const record = cached as { name?: string; model?: string };
+    if (!record.name || !record.model) {
+      logger.error("[gemini-files-cache] cache create returned no name or model", {
+        fileUri: uploaded.uri,
+        record,
+      });
+      return null;
+    }
+    return cached as unknown as CachedContentApiResponse;
+  } catch (error: unknown) {
+    logger.error("[gemini-files-cache] Gemini cache creation failed — will fall back to non-cached probes", {
+      fileUri: uploaded.uri,
+      mimeType: uploaded.mimeType,
+      model,
+      ...geminiErrorDetails(error),
+    });
+    return null;
   }
-  return cached as unknown as CachedContentApiResponse;
 }
 
 export async function deleteGeminiFile(apiKey: string, fileName: string): Promise<void> {

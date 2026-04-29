@@ -1,5 +1,8 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { describePhotoFromCachedAudio } from "@/features/ai/services/audio/capture-audio-transcription";
+import {
+  describePhotoFromCachedAudio,
+  describePhotoFromSessionAudioFile,
+} from "@/features/ai/services/audio/capture-audio-transcription";
 import {
   createContextCacheFromFile,
   deleteContextCache,
@@ -230,12 +233,19 @@ export async function runCaptureTranscribeJob(
       displayName: `capture-session-${sessionId}`,
     });
 
-    logger.info("[transcribe-job] Gemini Files + context cache ready", {
-      sessionId,
-      geminiFileName: uploaded.name,
-      cacheName: cached.name,
-      cacheModel: cached.model,
-    });
+    if (cached) {
+      logger.info("[transcribe-job] Gemini Files + context cache ready", {
+        sessionId,
+        geminiFileName: uploaded.name,
+        cacheName: cached.name,
+        cacheModel: cached.model,
+      });
+    } else {
+      logger.warn(
+        "[transcribe-job] Context cache creation failed or incomplete — using non-cached probes (same Gemini file per request)",
+        { sessionId, geminiFileName: uploaded.name },
+      );
+    }
 
     const { data: sessionImages, error: siErr } = await admin
       .from("capture_session_images")
@@ -294,7 +304,7 @@ export async function runCaptureTranscribeJob(
       sessionId,
       photoCount: probeRows.length,
       concurrency: conc,
-      cacheName: cached.name,
+      cacheName: cached?.name ?? "(fallback — no cache)",
       lastPhotoAudioEndSec: LAST_PHOTO_AUDIO_END_SEC,
     });
 
@@ -309,12 +319,14 @@ export async function runCaptureTranscribeJob(
           meta.storage_path,
           meta.mime_type,
         );
-        const description = await describePhotoFromCachedAudio(
-          cached!,
-          item.project_image_id,
-          item.window,
-          image,
-        );
+        const description = cached
+          ? await describePhotoFromCachedAudio(cached, item.project_image_id, item.window, image)
+          : await describePhotoFromSessionAudioFile(
+              uploaded!,
+              item.project_image_id,
+              item.window,
+              image,
+            );
         return { projectImageId: item.project_image_id, description };
       });
 
