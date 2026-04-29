@@ -44,7 +44,7 @@ export function CaptureRecoveryGate() {
       return;
     }
     if (isPublicPath(pathname)) return;
-    if (pathname === ROUTES.capture || pathname?.startsWith(ROUTES.captureSession)) {
+    if (pathname?.startsWith(ROUTES.captureSession)) {
       setOpen(false);
       return;
     }

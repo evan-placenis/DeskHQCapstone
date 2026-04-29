@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { tasks } from "@trigger.dev/sdk/v3";
 import { Container } from "@/lib/container";
 import { createAuthenticatedClient } from "@/app/api/utils";
-import { expectedTempAudioPath } from "@/features/capture/services/capture-transcribe-job";
+import { expectedTempAudioPath } from "@/src/features/capture/services/capture-ai-pipeline-job";
 import { logger } from "@/lib/logger";
 
 /**

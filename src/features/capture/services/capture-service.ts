@@ -1,23 +1,10 @@
-import { CaptureOrchestrator } from '@/features/ai/orchestrators/capture-orchestrator';
 import type { CaptureSession } from "./capture-session-repository";
 import { CaptureSessionRepository } from "./capture-session-repository";
 import { ProjectService } from "@/features/projects/services/project-service";
 import { StorageService } from "@/features/projects/services/storage-service";
 import { SupabaseClient } from '@supabase/supabase-js';
 import { v4 as uuidv4 } from 'uuid';
-import type { AiSdkChatProvider } from "@/lib/ai-providers";
 import { parseTranscriptTextFromDb } from "@/features/capture/lib/transcript-payload";
-
-export interface AnalyzeAudioParams {
-  audioUrls: string[];
-  prompt?: string;
-  provider?: AiSdkChatProvider;
-  projectId?: string;
-  userId?: string;
-  reportId?: string;
-  client: SupabaseClient;
-  onFinish?: (event: { text: string; finishReason: string }) => void | Promise<void>;
-}
 
 export class ServiceError extends Error {
   constructor(message: string, public statusCode: number) {
@@ -27,70 +14,18 @@ export class ServiceError extends Error {
 }
 
 export class CaptureService {
-
-  private orchestrator: CaptureOrchestrator;
   private captureSessionRepo: CaptureSessionRepository;
   private projectService: ProjectService;
   private storageService: StorageService;
 
   constructor(
-    orchestrator: CaptureOrchestrator,
     captureSessionRepo: CaptureSessionRepository,
     projectService: ProjectService,
     storageService: StorageService
   ) {
-    this.orchestrator = orchestrator;
     this.captureSessionRepo = captureSessionRepo;
     this.projectService = projectService;
     this.storageService = storageService;
-  }
-
-  // ── Audio Analysis (AI) ──
-
-  async analyzeAudioStream(params: AnalyzeAudioParams) {
-    const {
-      audioUrls,
-      prompt = 'Transcribe and summarize this audio recording.',
-      provider = 'gemini-flash',
-      projectId,
-      userId,
-      reportId,
-      client,
-      onFinish,
-    } = params;
-
-    const userMessage = audioUrls.length > 0
-      ? `${prompt}\n\nAudio files to analyze:\n${audioUrls.map((url, i) => `${i + 1}. ${url}`).join('\n')}`
-      : prompt;
-
-    const messages = [{ role: 'user' as const, content: userMessage }];
-
-    const systemMessage = `You are an assistant for engineering site inspections and report writing.
-When the user provides audio file URLs, use your audio analysis tools to process them.
-Provide a clear transcription and/or summary of the key observations, safety notes, or findings.
-If the user asks for a specific format (e.g. bullet points, report section), structure your response accordingly.`;
-
-    return this.orchestrator.generateStream({
-      messages,
-      provider,
-      projectId,
-      userId,
-      reportId,
-      client,
-      systemMessage,
-      onFinish,
-    });
-  }
-
-  async analyzeAudio(params: Omit<AnalyzeAudioParams, 'onFinish'>): Promise<string> {
-    const streamResult = await this.analyzeAudioStream(params);
-
-    let fullText = '';
-    for await (const chunk of streamResult.textStream) {
-      fullText += chunk;
-    }
-
-    return fullText;
   }
 
   // ── Capture Session CRUD ──
@@ -165,9 +100,6 @@ If the user asks for a specific format (e.g. bullet points, report section), str
       photos: File[];
       takenAtMs: number[];
       audioFile: File | null;
-      notesText: string | null;
-      /** JSON string of transcript segments. Omit / undefined = do not overwrite (e.g. server STT already saved). */
-      transcriptSegments?: string | null;
       /** Full recording length in seconds (from client timeline); used for playback UI. */
       audioDurationSeconds?: number | null;
     },
@@ -218,12 +150,8 @@ If the user asks for a specific format (e.g. bullet points, report section), str
     let audioResult: { public_url: string; storage_path: string } | null = null;
 
     const baseSessionPatch: Partial<CaptureSession> = {
-      notes_text: data.notesText,
       status: "uploaded",
     };
-    if (data.transcriptSegments !== undefined) {
-      baseSessionPatch.transcript_text = data.transcriptSegments;
-    }
     if (
       data.audioDurationSeconds != null &&
       Number.isFinite(data.audioDurationSeconds) &&
@@ -268,7 +196,7 @@ If the user asks for a specific format (e.g. bullet points, report section), str
     audioUrl: string | null;
     audioStoragePath: string | null;
     audioDurationSeconds: number | null;
-    segments: Array<{ text: string; timestampMs: number }>;
+    segments: Array<{ text: string; timestampMs: number; endMs?: number }>;
     summaryNote: string | null;
     referencedImages: string[];
     photos: Array<{

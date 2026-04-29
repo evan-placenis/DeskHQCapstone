@@ -26,13 +26,6 @@ export async function POST(
         const formData = await request.formData();
         const audioFile = formData.get("audio") as File | null;
 
-        /** Omitted when client relies on server-side STT (preserve DB transcript). */
-        const transcriptSegments = formData.has("transcript_segments")
-            ? (typeof formData.get("transcript_segments") === "string"
-                ? (formData.get("transcript_segments") as string)
-                : null)
-            : undefined;
-
         const audioDurRaw = formData.get("audio_duration_seconds");
         const audioDurParsed =
             typeof audioDurRaw === "string" && audioDurRaw.trim() !== ""
@@ -59,8 +52,6 @@ export async function POST(
                 photos,
                 takenAtMs,
                 audioFile,
-                notesText: null,
-                transcriptSegments,
                 audioDurationSeconds,
             },
             user.id,

@@ -12,7 +12,6 @@ import { EditService } from "@/features/reports/services/edit-service";
 import { ChatOrchestrator } from "@/features/ai/orchestrators/chat-orchestrator";
 import { EditOrchestrator } from "@/features/ai/orchestrators/edit-orchestrator";
 import { ReportOrchestrator } from "@/features/ai/orchestrators/report-orchestrator";
-import { CaptureOrchestrator } from "@/features/ai/orchestrators/capture-orchestrator";
 import { CaptureService } from "@/features/capture/services/capture-service";
 import { ProjectService } from "@/features/projects/services/project-service";
 import { SupabaseCaptureSessionRepository } from "@/features/capture/services/supabase-capture-session-repository";
@@ -63,7 +62,6 @@ export class Container {
   private static _chatOrchestrator: ChatOrchestrator;
   private static _editOrchestrator: EditOrchestrator;
   private static _reportOrchestrator: ReportOrchestrator;
-  private static _captureOrchestrator: CaptureOrchestrator;
   private static _captureService: CaptureService;
   private static _projectService: ProjectService;
   private static _captureSessionRepo: SupabaseCaptureSessionRepository;
@@ -186,17 +184,9 @@ export class Container {
     return this._reportOrchestrator;
   }
 
-  static get captureOrchestrator() {
-    if (!this._captureOrchestrator) {
-      this._captureOrchestrator = new CaptureOrchestrator();
-    }
-    return this._captureOrchestrator;
-  }
-
   static get captureService() {
     if (!this._captureService) {
       this._captureService = new CaptureService(
-        this.captureOrchestrator,
         this.captureSessionRepo,
         this.projectService,
         this.storageService
