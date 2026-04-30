@@ -26,10 +26,27 @@ export async function GET(
             );
         }
 
+        const profile = await Container.userService.getUserProfile(user.id, supabase);
+        if (!profile?.organization_id) {
+            return NextResponse.json(
+                { error: "Organization not found for user" },
+                { status: 403 }
+            );
+        }
+
+        const project = await Container.projectService.getById(projectId, supabase);
+        if (!project) {
+            return NextResponse.json({ error: "Project not found" }, { status: 404 });
+        }
+        if (project.organizationId !== profile.organization_id) {
+            return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+        }
+
         const result = await Container.captureSessionService.getAudioTimeline(
             projectId,
             folderName,
-            supabase
+            supabase,
+            Container.adminClient,
         );
 
         return NextResponse.json(result);

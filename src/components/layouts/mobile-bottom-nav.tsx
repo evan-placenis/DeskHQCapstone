@@ -71,7 +71,7 @@ export function MobileBottomNav({ currentPage, onNavigate, onRecordClick, curren
       );
     }
     if (itemId === "capture") {
-      return currentPage === "capture" || currentPage === "capture-session";
+      return currentPage === "capture-session";
     }
     return currentPage === itemId;
   };

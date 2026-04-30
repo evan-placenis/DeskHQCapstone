@@ -8,7 +8,6 @@ import { supabase } from "@/lib/supabase-browser-client";
 import { apiRoutes } from "@/lib/api-routes";
 import { logger } from "@/lib/logger";
 import * as tus from "tus-js-client";
-import { parseTranscriptTextFromDb } from "@/features/capture/lib/transcript-payload";
 import { captureIDB } from "../services/capture-idb";
 import { pickSupportedAudioMimeType, useCaptureSession } from "../hooks/use-capture-session";
 import { flattenMultiPartAudioBlob } from "../utils/flatten-multi-part-audio-blob";
@@ -24,11 +23,6 @@ import {
 } from "@/components/ui/alert-dialog";
 
 type Step = "capture" | "choose-project" | "uploading" | "success";
-
-interface TranscriptEntry {
-  text: string;
-  timestampMs: number;
-}
 
 interface CapturedPhoto {
   id: number;
@@ -91,8 +85,6 @@ export function CaptureSessionPage({
   const [uploadedCount, setUploadedCount] = useState(0);
   const [totalUploadCount, setTotalUploadCount] = useState(0);
   const [needsNewSession, setNeedsNewSession] = useState(false);
-
-  const [transcriptEntries, setTranscriptEntries] = useState<TranscriptEntry[]>([]);
 
   const [projects, setProjects] = useState<Project[]>([]);
   const [projectsLoading, setProjectsLoading] = useState(false);
@@ -175,14 +167,6 @@ export function CaptureSessionPage({
   }, [isPaused]);
 
   useEffect(() => {
-    if (!sessionId) return;
-    const t = setTimeout(() => {
-      captureIDB.updateSession(sessionId, { transcriptEntries }).catch(() => {});
-    }, 400);
-    return () => clearTimeout(t);
-  }, [sessionId, transcriptEntries]);
-
-  useEffect(() => {
     let cancelled = false;
     (async () => {
       try {
@@ -193,9 +177,6 @@ export function CaptureSessionPage({
           setSessionId(session.sessionId);
           setFolderName(session.folderName);
           if (session.projectId) setSelectedProjectId(session.projectId);
-          if (session.transcriptEntries?.length) {
-            setTranscriptEntries(session.transcriptEntries);
-          }
           const validPhotos = idbPhotos.filter((p) => isUsableImageBlob(p.blob));
           const invalidPhotos = idbPhotos.filter((p) => !isUsableImageBlob(p.blob));
           if (invalidPhotos.length > 0) {
@@ -292,7 +273,6 @@ export function CaptureSessionPage({
           finalized: false,
           audioUploaded: false,
           metadataSent: false,
-          transcriptEntries: [],
           localAudioCaptured: false,
           createdAt: Date.now(),
         }).catch((e) => logger.warn("IDB save failed:", e));
@@ -330,7 +310,6 @@ export function CaptureSessionPage({
     if (!cont) {
       finalizedAudioBlobRef.current = null;
       recoveryAudioBlobRef.current = null;
-      setTranscriptEntries([]);
     }
     startSession({ continue: cont });
     isRecordingRef.current = true;
@@ -397,7 +376,6 @@ export function CaptureSessionPage({
     if (sessionId) {
       captureIDB.updateSession(sessionId, {
         step: "choose-project",
-        transcriptEntries,
       }).catch((e) => logger.warn("IDB session update failed:", e));
     }
     setProjectsLoading(true);
@@ -406,7 +384,7 @@ export function CaptureSessionPage({
       .then((data) => (data.projects ? setProjects(data.projects) : null))
       .catch(() => {})
       .finally(() => setProjectsLoading(false));
-  }, [sessionId, transcriptEntries]);
+  }, [sessionId]);
 
   const handlePostDoneSaveYes = useCallback(async () => {
     setPostDoneSaveBusy(true);
@@ -512,8 +490,6 @@ export function CaptureSessionPage({
       await captureIDB.updateSession(sessionId, { step: "uploading", projectId }).catch(() => {});
 
       const idbState = await captureIDB.getSession(sessionId).catch(() => null);
-      let segmentsForMeta: TranscriptEntry[] =
-        idbState?.transcriptEntries?.length ? idbState.transcriptEntries : transcriptEntries;
 
       // 1. Finalize session (idempotent — safe to call again on retry)
       const finalizeRes = await fetch(apiRoutes.captureSessions.finalize(sessionId), {
@@ -740,17 +716,15 @@ export function CaptureSessionPage({
           if (trJson.alreadyComplete === true) {
             const { data: row } = await supabase
               .from("capture_sessions")
-              .select("transcript_text, audio_duration_seconds")
+              .select("audio_duration_seconds")
               .eq("id", sessionId)
               .maybeSingle();
-            if (row?.transcript_text) {
-              const parsed = parseTranscriptTextFromDb(row.transcript_text);
-              segmentsForMeta = parsed.segments;
-              setTranscriptEntries(parsed.segments);
-              await captureIDB.updateSession(sessionId, { transcriptEntries: parsed.segments }).catch(() => {});
-              if (typeof row.audio_duration_seconds === "number" && row.audio_duration_seconds > 0) {
-                serverDurationSec = Math.ceil(row.audio_duration_seconds);
-              }
+            if (
+              row &&
+              typeof row.audio_duration_seconds === "number" &&
+              row.audio_duration_seconds > 0
+            ) {
+              serverDurationSec = Math.ceil(row.audio_duration_seconds);
             }
             await captureIDB.updateSession(sessionId, { audioUploaded: true }).catch(() => {});
           } else if (trJson.queued === true) {
@@ -768,16 +742,12 @@ export function CaptureSessionPage({
         }
       }
 
-      // 4. Finalize session row (duration, status). Omit transcript_segments — server STT already wrote DB.
+      // 4. Finalize session row (duration, status). Server STT writes its own transcript on capture_sessions.
       const idbFresh = await captureIDB.getSession(sessionId).catch(() => null);
       if (!(idbFresh?.metadataSent === true)) {
         const form = new FormData();
         const encodedMs = idbFresh?.audioEncodedDurationMs ?? idbState?.audioEncodedDurationMs ?? 0;
-        const lastTranscriptMs =
-          segmentsForMeta.length > 0
-            ? Math.max(...segmentsForMeta.map((e) => e.timestampMs))
-            : 0;
-        const inferredDurationSec = Math.ceil(Math.max(encodedMs, lastTranscriptMs) / 1000);
+        const inferredDurationSec = Math.ceil(encodedMs / 1000);
         const durationSec =
           serverDurationSec != null && serverDurationSec > 0
             ? serverDurationSec
@@ -826,7 +796,6 @@ export function CaptureSessionPage({
   }, [
     sessionId,
     selectedProjectId,
-    transcriptEntries,
     getAudioBlob,
     getRawAudioSegmentsAndMime,
     onSuccessRedirect,

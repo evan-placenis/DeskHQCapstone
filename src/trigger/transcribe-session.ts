@@ -9,7 +9,7 @@ import {
   persistTranscriptionFailure,
   type CaptureTranscribeJobPayload,
   type CaptureTranscribeJobResult,
-} from "@/features/capture/services/capture-transcribe-job";
+} from "@/src/features/capture/services/capture-ai-pipeline-job";
 import { logger } from "@/lib/logger";
 
 const envPaths = [

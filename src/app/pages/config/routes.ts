@@ -13,7 +13,6 @@ export type Page =
   | 'reviewer'
   | 'settings'
   | 'audio-timeline'
-  | 'capture'
   | 'capture-session';
 
 export const ROUTES = {
@@ -43,7 +42,6 @@ export const ROUTES = {
       : projectId
         ? `/pages/audio-timeline?projectId=${projectId}`
         : '/pages/audio-timeline',
-  capture: '/pages/capture',
   captureSession: '/pages/capture-session',
 };
 
@@ -59,7 +57,6 @@ export const getRoute = (page: Page): string => {
     case 'mystats': return ROUTES.mystats;
     case 'reviewer': return ROUTES.reviewer;
     case 'settings': return ROUTES.settings;
-    case 'capture': return ROUTES.capture;
     case 'capture-session': return ROUTES.captureSession;
     // For parameterized routes, we might return a base path or handle it differently
     // This function is mainly for the simple 1:1 mapping cases

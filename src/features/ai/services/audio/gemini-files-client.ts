@@ -1,26 +1,20 @@
 /**
- * Gemini Files API + context caching (Node / Trigger.dev).
+ * Gemini Files API helpers (Node / Trigger.dev).
  *
- * `runCaptureTranscribeJob` uploads audio here, creates a cache, runs
- * `describePhotoFromCachedAudio` (per-photo probes), then deletes the uploaded Gemini file
- * + cache in `finally` (see `capture-audio-transcription.ts`).
- * Uses `GOOGLE_API_KEY`.
+ * `runCaptureTranscribeJob` uploads audio here for the Master Transcribe pass,
+ * then deletes the file in `finally`. Uses `GOOGLE_API_KEY`.
  */
 import fs from "fs/promises";
 import os from "os";
 import path from "path";
 import {
   FileState,
-  GoogleAICacheManager,
   GoogleAIFileManager,
 } from "@google/generative-ai/server";
 import { logger } from "@/lib/logger";
 
-/** Model id for cached audio (SDK adds `models/` prefix if missing). */
+/** Default Gemini model for capture audio (master transcribe + router). */
 export const GEMINI_CACHED_AUDIO_MODEL = "gemini-3.1-flash-lite-preview";
-
-/** Default TTL for cached content (1 hour). */
-export const DEFAULT_CACHE_TTL_SECONDS = 3600;
 
 export type UploadedGeminiFile = {
   name: string;
@@ -28,16 +22,10 @@ export type UploadedGeminiFile = {
   mimeType: string;
 };
 
-/** Full API payload from `GoogleAICacheManager.create` (required for `getGenerativeModelFromCachedContent`). */
-export type CachedContentApiResponse = Record<string, unknown> & {
-  name: string;
-  model: string;
-};
-
 export function getGoogleApiKey(): string {
   const key = process.env.GOOGLE_API_KEY;
   if (!key?.trim()) {
-    throw new Error("GOOGLE_API_KEY is not set (required for Gemini Files API and caching)");
+    throw new Error("GOOGLE_API_KEY is not set (required for Gemini Files API)");
   }
   return key.trim();
 }
@@ -62,7 +50,7 @@ export async function removeLocalFileIfExists(filePath: string): Promise<void> {
 }
 
 /**
- * Upload a local file to Gemini Files; returns metadata including `uri` for caching.
+ * Upload a local file to Gemini Files; returns metadata including `uri` for fileData parts.
  */
 export async function uploadLocalAudioToGoogleFiles(
   apiKey: string,
@@ -87,7 +75,7 @@ export async function uploadLocalAudioToGoogleFiles(
 }
 
 /**
- * Poll until the uploaded file is ACTIVE (required before creating a context cache).
+ * Poll until the uploaded file is ACTIVE (required before referencing it in `generateContent`).
  * Defaults: 10 min timeout, 5 s poll interval — large field recordings can take a while to process.
  */
 export async function waitForGeminiFileActive(
@@ -112,65 +100,11 @@ export async function waitForGeminiFileActive(
   throw new Error(`Timed out waiting for Gemini file to become ACTIVE: ${fileName}`);
 }
 
-/**
- * Create a context cache pointing at the uploaded file (single user turn with fileData).
- */
-export async function createContextCacheFromFile(
-  apiKey: string,
-  uploaded: UploadedGeminiFile,
-  options?: {
-    model?: string;
-    ttlSeconds?: number;
-    displayName?: string;
-  },
-): Promise<CachedContentApiResponse> {
-  const cacheManager = new GoogleAICacheManager(apiKey);
-  const model = options?.model ?? GEMINI_CACHED_AUDIO_MODEL;
-  const ttlSeconds = options?.ttlSeconds ?? DEFAULT_CACHE_TTL_SECONDS;
-
-  const cached = await cacheManager.create({
-    model,
-    displayName: options?.displayName ?? `capture-cache-${Date.now()}`,
-    ttlSeconds,
-    contents: [
-      {
-        role: "user",
-        parts: [
-          {
-            fileData: {
-              fileUri: uploaded.uri,
-              mimeType: uploaded.mimeType,
-            },
-          },
-        ],
-      },
-    ],
-  });
-
-  const record = cached as { name?: string; model?: string };
-  if (!record.name || !record.model) {
-    throw new Error("Google cache create returned no name or model");
-  }
-  return cached as unknown as CachedContentApiResponse;
-}
-
 export async function deleteGeminiFile(apiKey: string, fileName: string): Promise<void> {
   try {
     const fileManager = new GoogleAIFileManager(apiKey);
     await fileManager.deleteFile(fileName);
   } catch (e) {
     logger.warn("[gemini-files-cache] deleteGeminiFile failed (non-fatal)", { fileName, e });
-  }
-}
-
-export async function deleteContextCache(apiKey: string, cacheResourceName: string): Promise<void> {
-  try {
-    const cacheManager = new GoogleAICacheManager(apiKey);
-    await cacheManager.delete(cacheResourceName);
-  } catch (e) {
-    logger.warn("[gemini-files-cache] deleteContextCache failed (non-fatal)", {
-      cacheResourceName,
-      e,
-    });
   }
 }

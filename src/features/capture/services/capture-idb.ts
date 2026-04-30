@@ -31,7 +31,6 @@ export interface IDBSession {
   finalized: boolean;
   audioUploaded: boolean;
   metadataSent: boolean;
-  transcriptEntries: { text: string; timestampMs: number }[];
   createdAt: number;
   /** True once mic recording produced at least one audio chunk (persisted for recovery). */
   localAudioCaptured?: boolean;
@@ -47,7 +46,7 @@ export interface IDBAudioChunk {
   blob: Blob;
 }
 
-/** Session is worth recovering only if it has photos, audio, speech transcript, or progressed past empty capture. */
+/** Session is worth recovering only if it has photos, audio, or progressed past empty capture. */
 function sessionHasRecoverableContent(
   session: IDBSession,
   photos: IDBPhoto[]
@@ -55,7 +54,6 @@ function sessionHasRecoverableContent(
   if (photos.length > 0) return true;
   if (session.step !== "capture") return true;
   if (session.projectId) return true;
-  if (session.transcriptEntries?.length) return true;
   if (session.localAudioCaptured) return true;
   return false;
 }
