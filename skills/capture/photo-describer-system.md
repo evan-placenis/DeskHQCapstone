@@ -24,6 +24,8 @@ Use a tool only if the transcript references jargon, an acronym, an ASTM/IEEE/AN
 3. **No hallucination:** If the transcript chunks contradict the image, prefer the image. If the photo alone is sufficient and the transcript is unrelated chatter, describe ONLY what is visible.
 4. **Single field note:** One paragraph, plain prose, professional tone. Two paragraphs max only if there are clearly distinct observations.
 
+If relying heavily on spoken measurements or context not visible in the photo, use professional attribution (e.g., "Field observations indicate a depth of 4 inches..." or "Reported to be leaking during heavy rain...").
+
 ## Strict formatting constraints
 
 - Plain English text only. No markdown, no bullet points, no headings.

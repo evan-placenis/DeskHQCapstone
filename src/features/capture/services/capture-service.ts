@@ -190,7 +190,14 @@ export class CaptureService {
   async getAudioTimeline(
     projectId: string,
     folderName: string,
-    client: SupabaseClient
+    client: SupabaseClient,
+    /**
+     * Optional client with permission to read `capture_session_images` (e.g. service role).
+     * The user-scoped client often cannot read junction rows under RLS, which leaves
+     * `taken_at_ms` unset and forces a misleading `idx * 1000` fallback on the timeline.
+     * Call sites must verify project/org access before passing a privileged reader.
+     */
+    junctionReader?: SupabaseClient,
   ): Promise<{
     sessionId: string | null;
     audioUrl: string | null;
@@ -220,10 +227,16 @@ export class CaptureService {
 
     const folderImages = await this.storageService.getProjectImagesByFolder(projectId, folderName, client);
 
+    const jc = junctionReader ?? client;
+
     let takenAtMap: Record<string, number> = {};
     if (sessionId && folderImages.length > 0) {
       const imageIds = folderImages.map((img: any) => img.id);
-      const sessionImages = await this.captureSessionRepo.getSessionImagesBySessionId(sessionId, imageIds, client);
+      const sessionImages = await this.captureSessionRepo.getSessionImagesBySessionId(
+        sessionId,
+        imageIds,
+        jc,
+      );
       for (const si of sessionImages) {
         takenAtMap[si.project_image_id] = si.taken_at_ms;
       }
