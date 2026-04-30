@@ -1,15 +1,11 @@
 /**
  * Re-run the capture transcription pipeline (`transcribe-session`) using data already in Supabase.
  *
- * - Ensures **every gallery image** in `project_images` for this session’s `folder_name`
- *   has a **capture_session_images** row whose **taken_at_ms** comes **only**
- *   from **`capture_session_images`** (true session-timeline offsets from capture upload).
- *   Refreshes `taken_at_ms` via UPDATE so bogus values rewritten earlier are overwritten
- *   with the authoritative row value (repair idempotent writes).
- * - No invented timestamps (`created_at` is not used).
- * - Errors if folder images lack a session link (`taken_at_ms` unknown).
+ * Read-only check on photo links: every `project_images` row in this session’s `folder_name`
+ * must have a `capture_session_images` row. **`taken_at_ms` is never modified** here—only
+ * read for logging; it is owned by the capture upload flow.
  *
- * Prerequisites: Audio at `{org}/{project}/temp/{sessionId}/audio.webm`, valid session row.
+ * - Clears transcript / error, sets transcription_status=queued, triggers `transcribe-session`.
  *
  *   npm run recapture-test -- <sessionId>
  *
@@ -31,18 +27,10 @@ function expectedTempAudioPath(
   return `${organizationId}/${projectId}/temp/${sessionId}/audio.webm`;
 }
 
-function normalizeTakenMs(raw: unknown): number {
-  if (typeof raw === "number" && Number.isFinite(raw)) {
-    return Math.max(0, Math.round(raw));
-  }
-  return 0;
-}
-
 /**
- * Re-apply capture_session_images.taken_at_ms from DB for rows that join session + folder.
- * Fails fast if folder has images missing from CSI.
+ * Verifies folder images are linked in `capture_session_images`. Does not write `taken_at_ms`.
  */
-async function syncSessionImages(
+async function verifyCaptureSessionImageLinks(
   admin: SupabaseClient,
   sessionId: string,
   projectId: string,
@@ -92,37 +80,27 @@ async function syncSessionImages(
     throw new Error(
       `Folder has ${missingInSession.length} project_image(s) with no capture_session_images row:\n` +
         missingInSession.join("\n") +
-        "\nAdd links via normal capture upload; this script cannot invent taken_at_ms.",
+        "\nAdd links via normal capture upload.",
     );
   }
 
-  const planned = allLinks
-    .filter((l) => folderIds.has(l.project_image_id))
-    .map((l) => ({
-      projectImageId: l.project_image_id,
-      taken_at_ms: normalizeTakenMs(l.taken_at_ms),
-    }))
-    .sort(
-      (a, b) =>
-        a.taken_at_ms - b.taken_at_ms ||
-        a.projectImageId.localeCompare(b.projectImageId),
-    );
-
-  for (const row of planned) {
-    const { error } = await admin
-      .from("capture_session_images")
-      .update({ taken_at_ms: row.taken_at_ms })
-      .eq("capture_session_id", sessionId)
-      .eq("project_image_id", row.projectImageId);
-
-    if (error) throw new Error(`update link ${row.projectImageId}: ${error.message}`);
-  }
-
-  console.log(
-    `[recapture-test] Verified ${planned.length} photo timeline(s) from capture_session_images (ordered by taken_at_ms).`,
+  const inFolder = allLinks.filter((l) => folderIds.has(l.project_image_id));
+  const sorted = [...inFolder].sort(
+    (a, b) =>
+      Number(a.taken_at_ms ?? 0) - Number(b.taken_at_ms ?? 0) ||
+      a.project_image_id.localeCompare(b.project_image_id),
   );
 
-  return planned.length;
+  console.log(
+    `[recapture-test] Read-only check: ${sorted.length} photo link(s); taken_at_ms (ms) sample: ` +
+      sorted
+        .slice(0, 5)
+        .map((r) => `${String(r.project_image_id).slice(0, 8)}…=${r.taken_at_ms ?? "null"}`)
+        .join(", ") +
+      (sorted.length > 5 ? ", …" : ""),
+  );
+
+  return sorted.length;
 }
 
 async function main() {
@@ -173,7 +151,12 @@ async function main() {
 
   const storagePath = expectedTempAudioPath(organizationId, projectId, sessionId);
 
-  const plannedCount = await syncSessionImages(admin, sessionId, projectId, folderName);
+  const photoLinkCount = await verifyCaptureSessionImageLinks(
+    admin,
+    sessionId,
+    projectId,
+    folderName,
+  );
 
   const { error: prepErr } = await admin
     .from("capture_sessions")
@@ -199,7 +182,7 @@ async function main() {
   console.log("session_id:", sessionId);
   console.log("project_id:", projectId);
   console.log("folder_name:", folderName);
-  console.log("images_verified:", plannedCount);
+  console.log("images_linked_verified:", photoLinkCount);
   console.log("storagePath:", storagePath);
   console.log("Trigger run ID:", handle.id);
   console.log("");
